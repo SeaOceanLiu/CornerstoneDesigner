@@ -30,7 +30,7 @@
 | 子模块依赖 | [dependencies.md](design/guidelines/dependencies.md) |
 | Session 历史记录 | [history.md](design/guidelines/history.md) |
 | 测试用例规范 | [testing.md](design/guidelines/testing.md) |
-| 瀑布流程设计文档 | [doc/01_需求说明文档.md](doc/01_需求说明文档.md) → [05_实施编码文档.md](doc/05_实施编码文档.md)（按顺序阅读） |
+| 瀑布流程设计文档 | [design/01_需求说明文档.md](design/01_需求说明文档.md) → [05_实施编码文档.md](design/05_实施编码文档.md)（按顺序阅读） |
 
 ## 快速链接
 
@@ -39,8 +39,8 @@
 ## 项目信息
 
 - 基于 C++17 的 UI 设计器，Dogfooding：设计器自身是 UICornerstone 应用（SDL3 后端）
-- UI 方案：**C++ Binding + JSON**（静态骨架 JSON 声明式 + 动态区域 Binding 命令式），见 `doc/02_设计规格文档.md`
-- 仓库布局：`doc/` 设计文档、`include/Designer/` 公共头、`src/` 实现、`layouts/` 设计器自身 JSON 布局、`build_scripts/` 构建脚本、`subModules/UICornerstone/` 子模块
+- UI 方案：**C++ Binding + JSON**（静态骨架 JSON 声明式 + 动态区域 Binding 命令式），见 `design/02_设计规格文档.md`
+- 仓库布局：`design/` 设计文档、`include/Designer/` 公共头、`src/` 实现、`layouts/` 设计器自身 JSON 布局、`build_scripts/` 构建脚本、`subModules/UICornerstone/` 子模块
 - 构建：`git clone --recursive` 后 `build_scripts\build.bat sdl3`（详见 [build.md](design/guidelines/build.md)）
 
 ## 提交与推送规则
