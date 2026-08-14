@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1020" height="130" viewBox="0 0 1020 130" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#4A90D9"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1020" height="130" rx="8" fill="#1A1A1A"/>
+
+  <g font-size="12" fill="#E0E0E0" text-anchor="middle">
+    <rect x="20" y="35" width="140" height="56" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+    <text x="90" y="58">编辑控件回调</text>
+    <text x="90" y="76">(value-changed)</text>
+
+    <path d="M164 63 L184 63" stroke="#4A90D9" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="188" y="35" width="140" height="56" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+    <text x="258" y="58">属性校验</text>
+    <text x="258" y="76">(数值范围/颜色格式)</text>
+
+    <path d="M332 63 L352 63" stroke="#4A90D9" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="356" y="35" width="140" height="56" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+    <text x="426" y="58">PropertyChangeCommand</text>
+    <text x="426" y="76">(旧值/新值, 入栈)</text>
+
+    <path d="M500 63 L520 63" stroke="#4A90D9" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="524" y="35" width="140" height="56" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+    <text x="594" y="58">内存模型更新</text>
+    <text x="594" y="76">(唯一数据源)</text>
+
+    <path d="M668 63 L688 63" stroke="#4A90D9" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="692" y="35" width="140" height="56" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+    <text x="762" y="58">画布增量更新</text>
+    <text x="762" y="76">(Binding Set*)</text>
+
+    <path d="M836 63 L856 63" stroke="#4A90D9" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="860" y="35" width="140" height="56" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+    <text x="930" y="58">预览防抖刷新</text>
+    <text x="930" y="76">(300ms 合并)</text>
+  </g>
+</svg>

@@ -72,25 +72,14 @@ public:
 
 ### 6.1 闭合状态
 
-```
-┌──────────────────┬─┐
-│ Horizontal       │▼│
-└──────────────────┴─┘
-```
+![ComboBox 闭合状态](assets/combobox-collapsed.svg)
 
 - 左侧：显示当前选中项的 label
 - 右侧：下拉箭头 ▼，点击展开列表
 
 ### 6.2 展开状态
 
-```
-┌──────────────────┬─┐
-│ Horizontal       │▲│
-├────────────────────┤
-│ Horizontal         │  ← 高亮
-│ Vertical           │
-└────────────────────┘
-```
+![ComboBox 展开状态](assets/combobox-expanded.svg)
 
 - 列表浮动于其他控件之上（z-order 提升）
 - 列表背景色与 Button 的 normal 背景一致

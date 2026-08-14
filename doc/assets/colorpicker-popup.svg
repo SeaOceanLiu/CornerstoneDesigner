@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="470" viewBox="0 0 420 470" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <rect x="0" y="0" width="420" height="470" rx="8" fill="#FFFFFF"/>
+  <rect x="30" y="10" width="360" height="440" rx="8" fill="#FFFFFF" stroke="#555555" stroke-width="1.5"/>
+
+  <text x="50" y="42" font-size="13" fill="#333333">预设色面板 (5×5 网格)</text>
+
+  <!-- 5x5 预设色板 -->
+  <g>
+    <rect x="50" y="56" width="56" height="28" rx="3" fill="#4A90D9"/><rect x="114" y="56" width="56" height="28" rx="3" fill="#E06060"/><rect x="178" y="56" width="56" height="28" rx="3" fill="#60A060"/><rect x="242" y="56" width="56" height="28" rx="3" fill="#E0C060"/><rect x="306" y="56" width="56" height="28" rx="3" fill="#9060C0"/>
+    <rect x="50" y="92" width="56" height="28" rx="3" fill="#60A0E0"/><rect x="114" y="92" width="56" height="28" rx="3" fill="#E08040"/><rect x="178" y="92" width="56" height="28" rx="3" fill="#40B0A0"/><rect x="242" y="92" width="56" height="28" rx="3" fill="#C04080"/><rect x="306" y="92" width="56" height="28" rx="3" fill="#808080"/>
+    <rect x="50" y="128" width="56" height="28" rx="3" fill="#202020"/><rect x="114" y="128" width="56" height="28" rx="3" fill="#606060"/><rect x="178" y="128" width="56" height="28" rx="3" fill="#A0A0A0"/><rect x="242" y="128" width="56" height="28" rx="3" fill="#E0E0E0"/><rect x="306" y="128" width="56" height="28" rx="3" fill="#FFFFFF" stroke="#999999" stroke-width="1"/>
+    <rect x="50" y="164" width="56" height="28" rx="3" fill="#400000"/><rect x="114" y="164" width="56" height="28" rx="3" fill="#004000"/><rect x="178" y="164" width="56" height="28" rx="3" fill="#000040"/><rect x="242" y="164" width="56" height="28" rx="3" fill="#404000"/><rect x="306" y="164" width="56" height="28" rx="3" fill="#004040"/>
+    <rect x="50" y="200" width="56" height="28" rx="3" fill="#FFF0F0"/><rect x="114" y="200" width="56" height="28" rx="3" fill="#F0FFF0"/><rect x="178" y="200" width="56" height="28" rx="3" fill="#F0F0FF"/><rect x="242" y="200" width="56" height="28" rx="3" fill="#FFFFF0"/><rect x="306" y="200" width="56" height="28" rx="3" fill="#F0FFFF"/>
+  </g>
+
+  <!-- 十六进制输入 -->
+  <text x="50" y="266" font-size="12" fill="#333333">#</text>
+  <rect x="66" y="248" width="220" height="26" rx="3" fill="#FFFFFF" stroke="#999999" stroke-width="1"/>
+  <text x="74" y="265" font-size="12" fill="#333333">4A90D9</text>
+
+  <!-- R/G/B 滑块 -->
+  <text x="50" y="316" font-size="12" fill="#333333">R</text>
+  <rect x="74" y="308" width="200" height="6" rx="3" fill="#DDDDDD"/>
+  <circle cx="150" cy="311" r="9" fill="#C06060" stroke="#333333" stroke-width="1"/>
+  <text x="290" y="316" font-size="12" fill="#333333">145</text>
+
+  <text x="50" y="366" font-size="12" fill="#333333">G</text>
+  <rect x="74" y="358" width="200" height="6" rx="3" fill="#DDDDDD"/>
+  <circle cx="96" cy="361" r="9" fill="#60A060" stroke="#333333" stroke-width="1"/>
+  <text x="290" y="366" font-size="12" fill="#333333">72</text>
+
+  <text x="50" y="416" font-size="12" fill="#333333">B</text>
+  <rect x="74" y="408" width="200" height="6" rx="3" fill="#DDDDDD"/>
+  <circle cx="220" cy="411" r="9" fill="#6060C0" stroke="#333333" stroke-width="1"/>
+  <text x="290" y="416" font-size="12" fill="#333333">217</text>
+
+  <!-- 确定 / 取消 -->
+  <rect x="180" y="404" width="76" height="30" rx="4" fill="#4A90D9"/>
+  <text x="218" y="423" font-size="12" fill="#FFFFFF" text-anchor="middle">确定</text>
+  <rect x="266" y="404" width="76" height="30" rx="4" fill="#FFFFFF" stroke="#999999" stroke-width="1"/>
+  <text x="304" y="423" font-size="12" fill="#333333" text-anchor="middle">取消</text>
+</svg>

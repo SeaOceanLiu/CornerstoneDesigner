@@ -43,16 +43,7 @@ public:
 
 ### 与父容器的关系
 
-```
-┌──────────────────────────────┐
-│         Panel (parent)        │
-│  ┌──────┬────────┬─────────┐ │
-│  │ Left  │ Split │  Right   │ │
-│  │ Panel │ ter   │  Panel   │ │
-│  │ 200px │       │  750px   │ │
-│  └──────┴────────┴─────────┘ │
-└──────────────────────────────┘
-```
+![Splitter 三分栏布局](assets/splitter-layout.svg)
 
 Splitter 的 rect 由父容器和左右 Panel 的尺寸自动计算。
 

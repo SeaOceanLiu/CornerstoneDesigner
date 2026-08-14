@@ -1,0 +1,320 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="860" viewBox="0 0 1200 860" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#EEEEEE" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+
+  <!-- 底板 -->
+  <rect x="0" y="0" width="1200" height="860" rx="8" fill="#1A1A1A"/>
+  <text x="36" y="26" font-size="15" font-weight="bold" fill="#E0E0E0">CornerstoneDesigner 主窗口 — UI 概念图（默认 1200×800）</text>
+
+  <!-- ══ 主窗口 ══ -->
+  <rect x="20" y="30" width="1160" height="760" rx="4" fill="#202020" stroke="#505050" stroke-width="1"/>
+
+  <!-- 标题栏 -->
+  <rect x="20" y="30" width="1160" height="36" rx="4" fill="#2A2A2A"/>
+  <rect x="20" y="60" width="1160" height="6" fill="#2A2A2A"/>
+  <text x="36" y="54" font-size="13" fill="#E0E0E0">CornerstoneDesigner — 未命名项目.csd<tspan fill="#E06060"> *</tspan></text>
+  <rect x="1108" y="42" width="12" height="12" rx="2" fill="#505050"/>
+  <rect x="1128" y="42" width="12" height="12" rx="2" fill="#505050"/>
+  <rect x="1148" y="42" width="12" height="12" rx="2" fill="#E06060"/>
+
+  <!-- 菜单栏 -->
+  <rect x="20" y="66" width="1160" height="28" fill="#282828"/>
+  <text x="36" y="84" font-size="13" fill="#E0E0E0">文件</text>
+  <text x="72" y="84" font-size="13" fill="#E0E0E0">编辑</text>
+  <text x="108" y="84" font-size="13" fill="#E0E0E0">视图</text>
+  <text x="144" y="84" font-size="13" fill="#E0E0E0">帮助</text>
+
+  <!-- ══ 左栏：工具箱/控件树/资源（Tab） ══ -->
+  <rect x="20" y="94" width="240" height="664" fill="#282828"/>
+  <rect x="20" y="94" width="240" height="32" fill="#282828"/>
+  <text x="48" y="114" font-size="13" fill="#E0E0E0">工具箱</text>
+  <text x="132" y="114" font-size="13" fill="#A0A0A0">控件树</text>
+  <text x="216" y="114" font-size="13" fill="#A0A0A0">资源</text>
+  <rect x="36" y="122" width="72" height="2" fill="#4A90D9"/>
+
+  <!-- 搜索框 -->
+  <rect x="32" y="134" width="200" height="22" rx="4" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="40" y="148" font-size="11" fill="#808080">搜索控件…</text>
+  <circle cx="220" cy="145" r="4" fill="none" stroke="#707070" stroke-width="1.2"/>
+  <line x1="223" y1="148" x2="227" y2="152" stroke="#707070" stroke-width="1.2"/>
+
+  <!-- 基础控件 -->
+  <text x="32" y="172" font-size="11" fill="#8A8A8A">基础控件</text>
+  <!-- Label -->
+  <text x="56" y="206" font-size="12" fill="#E0E0E0">Label</text>
+  <rect x="34" y="195" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <text x="38" y="207" font-size="11" font-weight="bold" fill="#B0B0B0">A</text>
+  <!-- Button 选中态 -->
+  <rect x="28" y="214" width="224" height="24" rx="4" fill="#2A3F5C"/>
+  <rect x="28" y="214" width="3" height="24" rx="1.5" fill="#4A90D9"/>
+  <text x="56" y="231" font-size="12" fill="#6FA8DC">Button</text>
+  <rect x="34" y="219" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#4A90D9" stroke-width="1"/>
+  <rect x="37" y="223" width="8" height="6" rx="1.5" fill="#9AA"/>
+  <!-- CheckBox -->
+  <text x="56" y="255" font-size="12" fill="#E0E0E0">CheckBox</text>
+  <rect x="34" y="243" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36.5" y="246.5" width="7" height="7" rx="1.5" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <path d="M38.5 249.5 l2 2 l3.5 -4" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <!-- EditBox -->
+  <text x="56" y="279" font-size="12" fill="#E0E0E0">EditBox</text>
+  <rect x="34" y="267" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36" y="270" width="10" height="6" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <line x1="42" y1="270.5" x2="42" y2="275.5" stroke="#B0B0B0" stroke-width="1"/>
+  <!-- TextArea -->
+  <text x="56" y="303" font-size="12" fill="#E0E0E0">TextArea</text>
+  <rect x="34" y="291" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36" y="294.5" width="10" height="7" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <line x1="38" y1="297" x2="44" y2="297" stroke="#B0B0B0" stroke-width="1"/>
+  <line x1="38" y1="299.5" x2="44" y2="299.5" stroke="#B0B0B0" stroke-width="1"/>
+  <!-- ProgressBar -->
+  <text x="56" y="327" font-size="12" fill="#E0E0E0">ProgressBar</text>
+  <rect x="34" y="315" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36" y="317" width="10" height="4" rx="1" fill="#B0B0B0"/>
+  <rect x="36" y="317" width="6" height="4" rx="1" fill="#4A90D9"/>
+  <!-- Slider -->
+  <text x="56" y="351" font-size="12" fill="#E0E0E0">Slider</text>
+  <rect x="34" y="339" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <line x1="36" y1="346" x2="46" y2="346" stroke="#B0B0B0" stroke-width="1"/>
+  <circle cx="42" cy="346" r="2.5" fill="#4A90D9"/>
+  <!-- Image -->
+  <text x="56" y="375" font-size="12" fill="#E0E0E0">Image</text>
+  <rect x="34" y="363" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36" y="366.5" width="10" height="7" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <path d="M37 371.5 l3 -3.5 l2.5 3 l2.5 -2.5 l2 2.5" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+
+  <!-- 容器控件 -->
+  <text x="32" y="401" font-size="11" fill="#8A8A8A">容器控件</text>
+  <!-- Panel -->
+  <text x="56" y="425" font-size="12" fill="#E0E0E0">Panel</text>
+  <rect x="34" y="414" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36.5" y="416" width="9" height="9" rx="1.5" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <!-- WinFrame -->
+  <text x="56" y="449" font-size="12" fill="#E0E0E0">WinFrame</text>
+  <rect x="34" y="438" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36" y="440" width="10" height="8" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <rect x="36" y="440" width="10" height="2.5" fill="#B0B0B0"/>
+  <!-- Splitter -->
+  <text x="56" y="473" font-size="12" fill="#E0E0E0">Splitter</text>
+  <rect x="34" y="462" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <line x1="38" y1="464" x2="38" y2="474" stroke="#B0B0B0" stroke-width="1"/>
+  <line x1="44" y1="464" x2="44" y2="474" stroke="#B0B0B0" stroke-width="1"/>
+  <rect x="40.5" y="466.5" width="3" height="3" fill="#B0B0B0"/>
+
+  <!-- 高级控件 -->
+  <text x="32" y="499" font-size="11" fill="#8A8A8A">高级控件</text>
+  <!-- Menu -->
+  <text x="56" y="523" font-size="12" fill="#E0E0E0">Menu</text>
+  <rect x="34" y="512" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <line x1="36" y1="515" x2="46" y2="515" stroke="#B0B0B0" stroke-width="1"/>
+  <line x1="36" y1="519" x2="46" y2="519" stroke="#B0B0B0" stroke-width="1"/>
+  <line x1="36" y1="523" x2="46" y2="523" stroke="#B0B0B0" stroke-width="1"/>
+  <!-- ComboBox -->
+  <text x="56" y="547" font-size="12" fill="#E0E0E0">ComboBox</text>
+  <rect x="34" y="536" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36" y="539" width="10" height="6" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <path d="M42.5 542 l2 2 l2 -2" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <!-- TreeView -->
+  <text x="56" y="571" font-size="12" fill="#E0E0E0">TreeView</text>
+  <rect x="34" y="560" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <path d="M36.5 563.5 l3 2.5 l-3 2.5 z" fill="#B0B0B0"/>
+  <line x1="42" y1="564" x2="47" y2="564" stroke="#B0B0B0" stroke-width="1"/>
+  <line x1="42" y1="567" x2="47" y2="567" stroke="#B0B0B0" stroke-width="1"/>
+  <line x1="42" y1="570" x2="47" y2="570" stroke="#B0B0B0" stroke-width="1"/>
+  <!-- ColorPicker -->
+  <text x="56" y="595" font-size="12" fill="#E0E0E0">ColorPicker</text>
+  <rect x="34" y="584" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <circle cx="41" cy="591" r="4.5" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <path d="M41 586.5 a4.5 4.5 0 0 1 4.5 4.5" fill="none" stroke="#E06060" stroke-width="1.2"/>
+  <path d="M45.5 591 a4.5 4.5 0 0 1 -4.5 4.5" fill="none" stroke="#E0C060" stroke-width="1.2"/>
+  <path d="M41 595.5 a4.5 4.5 0 0 1 -4.5 -4.5" fill="none" stroke="#60A0E0" stroke-width="1.2"/>
+  <!-- NumericUpDown -->
+  <text x="56" y="619" font-size="12" fill="#E0E0E0">NumericUpDown</text>
+  <rect x="34" y="608" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36" y="610.5" width="10" height="7" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <path d="M41 612.5 l1.8 1.8 h-3.6 z" fill="#B0B0B0"/>
+  <path d="M43 617 l-1.8 1.8 h-3.6 l1.8 -1.8 z" fill="#B0B0B0"/>
+  <!-- Dialog -->
+  <text x="56" y="643" font-size="12" fill="#E0E0E0">Dialog</text>
+  <rect x="34" y="632" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36" y="634.5" width="10" height="7" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <rect x="38" y="636.5" width="6" height="3" rx="0.5" fill="#4A90D9" opacity="0.5"/>
+  <!-- Animation -->
+  <text x="56" y="667" font-size="12" fill="#E0E0E0">Animation</text>
+  <rect x="34" y="656" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <path d="M40.5 660.5 l4.5 3.5 l-4.5 3.5 z" fill="#B0B0B0"/>
+
+  <!-- 组件（动态分组） -->
+  <text x="32" y="697" font-size="11" fill="#8A8A8A">组件<tspan fill="#606060">（动态）</tspan></text>
+  <!-- Greeter -->
+  <text x="56" y="721" font-size="12" fill="#E0E0E0">Greeter</text>
+  <rect x="34" y="710" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36.5" y="712" width="6" height="6" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <rect x="44" y="715" width="6" height="6" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <!-- FramedGreeter -->
+  <text x="56" y="745" font-size="12" fill="#E0E0E0">FramedGreeter</text>
+  <rect x="34" y="734" width="14" height="14" rx="3" fill="#2A2A2A" stroke="#666" stroke-width="1"/>
+  <rect x="36.5" y="736" width="6" height="6" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <rect x="44" y="739" width="6" height="6" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+
+  <!-- 左栏滚动条 -->
+  <rect x="248" y="150" width="4" height="480" rx="2" fill="#3A3A3A"/>
+  <rect x="248" y="170" width="4" height="110" rx="2" fill="#555555"/>
+
+  <!-- ══ 中央画布 ══ -->
+  <rect x="260" y="94" width="680" height="664" fill="#202020"/>
+
+  <!-- 画布工具栏 -->
+  <rect x="260" y="94" width="680" height="32" fill="#282828"/>
+  <rect x="272" y="100" width="88" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="282" y="114" font-size="12" fill="#E0E0E0">100%</text>
+  <path d="M354 111 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <text x="372" y="115" font-size="14" fill="#E0E0E0">−</text>
+  <rect x="392" y="100" width="34" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="401" y="114" font-size="12" fill="#E0E0E0">1:1</text>
+  <text x="436" y="115" font-size="14" fill="#E0E0E0">+</text>
+  <line x1="462" y1="102" x2="462" y2="122" stroke="#3A3A3A" stroke-width="1"/>
+  <rect x="472" y="105" width="12" height="12" rx="2" fill="#4A90D9" stroke="#707070" stroke-width="1"/>
+  <path d="M475 110.5 l2 2 l3.5 -4" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+  <text x="490" y="115" font-size="12" fill="#E0E0E0">网格</text>
+  <rect x="540" y="105" width="12" height="12" rx="2" fill="#4A90D9" stroke="#707070" stroke-width="1"/>
+  <path d="M543 110.5 l2 2 l3.5 -4" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+  <text x="558" y="115" font-size="12" fill="#E0E0E0">对齐</text>
+
+  <!-- 对齐/分布命令组（多选 ≥2 启用） -->
+  <line x1="596" y1="102" x2="596" y2="122" stroke="#3A3A3A" stroke-width="1"/>
+  <rect x="604" y="100" width="56" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="612" y="115" font-size="12" fill="#E0E0E0">对齐</text>
+  <path d="M652 111 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <rect x="664" y="100" width="56" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="672" y="115" font-size="12" fill="#E0E0E0">分布</text>
+  <path d="M712 111 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <text x="728" y="106" font-size="9" fill="#606060">（选中 ≥2 个控件时可用）</text>
+
+  <rect x="800" y="100" width="48" height="22" rx="3" fill="#333333"/>
+  <text x="813" y="115" font-size="12" fill="#A0A0A0">设计</text>
+  <rect x="852" y="100" width="52" height="22" rx="3" fill="#2A3F5C"/>
+  <text x="865" y="115" font-size="12" fill="#FFFFFF">预览</text>
+
+  <!-- 纸面（被设计布局） -->
+  <rect x="272" y="134" width="656" height="576" rx="2" fill="#FFFFFF"/>
+  <rect x="272" y="134" width="656" height="576" rx="2" fill="url(#grid)"/>
+
+  <!-- 纸面顶部示例标题 -->
+  <text x="600" y="162" font-size="13" fill="#555555" text-anchor="middle">登录表单示例</text>
+
+  <!-- Panel 容器 -->
+  <rect x="392" y="222" width="360" height="216" rx="6" fill="none" stroke="#B0B0B0" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="398" y="216" font-size="9" fill="#B0B0B0">Panel: contentPanel</text>
+
+  <!-- Panel 内控件 -->
+  <text x="416" y="260" font-size="12" fill="#444444">用户名</text>
+  <rect x="480" y="244" width="200" height="26" rx="3" fill="#FAFAFA" stroke="#C0C0C0" stroke-width="1"/>
+  <text x="488" y="261" font-size="12" fill="#AAAAAA">admin</text>
+  <text x="416" y="312" font-size="12" fill="#444444">密码</text>
+  <rect x="480" y="296" width="200" height="26" rx="3" fill="#FAFAFA" stroke="#C0C0C0" stroke-width="1"/>
+  <text x="488" y="313" font-size="12" fill="#AAAAAA">••••••</text>
+  <rect x="416" y="340" width="16" height="16" rx="3" fill="#4A90D9" stroke="#888888" stroke-width="1"/>
+  <path d="M419.5 347 l3 3 l5.5 -6" fill="none" stroke="#FFFFFF" stroke-width="1.4"/>
+  <text x="438" y="352" font-size="12" fill="#444444">记住我</text>
+
+  <!-- Button 登录（选中态 + 控点） -->
+  <rect x="560" y="360" width="140" height="40" rx="4" fill="#4A90D9"/>
+  <text x="630" y="384" font-size="14" fill="#FFFFFF" text-anchor="middle">登录</text>
+  <rect x="556" y="356" width="148" height="48" rx="6" fill="none" stroke="#4A90D9" stroke-width="2"/>
+
+  <!-- 对齐参考线 -->
+  <line x1="272" y1="356" x2="556" y2="356" stroke="#FF8800" stroke-width="1" stroke-dasharray="4 3" opacity="0.8"/>
+  <line x1="556" y1="134" x2="556" y2="356" stroke="#FF8800" stroke-width="1" stroke-dasharray="4 3" opacity="0.8"/>
+  <circle cx="272" cy="356" r="2" fill="#FF8800" opacity="0.8"/>
+  <circle cx="556" cy="134" r="2" fill="#FF8800" opacity="0.8"/>
+
+  <!-- 8 方向控点 -->
+  <rect x="552.5" y="352.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="626.5" y="352.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="700.5" y="352.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="552.5" y="376.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="700.5" y="376.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="552.5" y="400.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="626.5" y="400.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="700.5" y="400.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+
+  <!-- ══ 右栏：属性面板 ══ -->
+  <rect x="940" y="94" width="240" height="664" fill="#282828"/>
+  <rect x="940" y="94" width="240" height="32" fill="#282828"/>
+  <text x="968" y="114" font-size="13" fill="#E0E0E0">属性</text>
+  <text x="1016" y="114" font-size="13" fill="#A0A0A0">事件</text>
+  <rect x="952" y="122" width="56" height="2" fill="#4A90D9"/>
+
+  <!-- 布局分组（含布局引擎属性） -->
+  <text x="952" y="152" font-size="11" fill="#8A8A8A">布局</text>
+  <text x="952" y="184" font-size="12" fill="#C0C0C0">x</text>
+  <rect x="1000" y="172" width="150" height="20" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="1132" y="185" font-size="12" fill="#E0E0E0" text-anchor="end">320</text>
+  <text x="952" y="212" font-size="12" fill="#C0C0C0">y</text>
+  <rect x="1000" y="200" width="150" height="20" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="1132" y="213" font-size="12" fill="#E0E0E0" text-anchor="end">240</text>
+  <text x="952" y="240" font-size="12" fill="#C0C0C0">宽</text>
+  <rect x="1000" y="228" width="150" height="20" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="1132" y="241" font-size="12" fill="#E0E0E0" text-anchor="end">140</text>
+  <text x="952" y="268" font-size="12" fill="#C0C0C0">高</text>
+  <rect x="1000" y="256" width="150" height="20" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="1132" y="269" font-size="12" fill="#E0E0E0" text-anchor="end">40</text>
+  <text x="952" y="296" font-size="12" fill="#C0C0C0">锚点</text>
+  <rect x="1000" y="284" width="150" height="20" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="1006" y="297" font-size="12" fill="#E0E0E0">top-left</text>
+  <path d="M1144 292 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <text x="952" y="324" font-size="12" fill="#C0C0C0">布局</text>
+  <rect x="1000" y="312" width="150" height="20" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="1006" y="325" font-size="12" fill="#E0E0E0">绝对</text>
+  <path d="M1144 320 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+
+  <!-- 外观分组 -->
+  <text x="952" y="358" font-size="11" fill="#8A8A8A">外观</text>
+  <text x="952" y="386" font-size="12" fill="#C0C0C0">文本</text>
+  <rect x="1000" y="374" width="150" height="20" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="1006" y="387" font-size="12" fill="#E0E0E0">登录</text>
+  <text x="952" y="416" font-size="12" fill="#C0C0C0">颜色</text>
+  <rect x="1000" y="404" width="16" height="16" rx="2" fill="#4A90D9" stroke="#505050" stroke-width="1"/>
+  <text x="1024" y="416" font-size="12" fill="#E0E0E0">#4A90D9</text>
+  <text x="952" y="444" font-size="12" fill="#C0C0C0">字号</text>
+  <rect x="1000" y="432" width="150" height="20" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="1132" y="445" font-size="12" fill="#E0E0E0" text-anchor="end">14</text>
+
+  <!-- 行为分组 -->
+  <text x="952" y="476" font-size="11" fill="#8A8A8A">行为</text>
+  <text x="952" y="504" font-size="12" fill="#C0C0C0">可见</text>
+  <rect x="1000" y="492" width="14" height="14" rx="2" fill="#4A90D9" stroke="#505050" stroke-width="1"/>
+  <path d="M1003 498.5 l2 2 l4.5 -5" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+  <text x="952" y="532" font-size="12" fill="#C0C0C0">可用</text>
+  <rect x="1000" y="520" width="14" height="14" rx="2" fill="#4A90D9" stroke="#505050" stroke-width="1"/>
+  <path d="M1003 526.5 l2 2 l4.5 -5" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+
+  <!-- 重置按钮 -->
+  <rect x="952" y="554" width="200" height="26" rx="4" fill="none" stroke="#505050" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="1052" y="570" font-size="12" fill="#A0A0A0" text-anchor="middle">重置默认值</text>
+
+  <!-- 右栏滚动条 -->
+  <rect x="1160" y="150" width="4" height="430" rx="2" fill="#3A3A3A"/>
+  <rect x="1160" y="170" width="4" height="140" rx="2" fill="#555555"/>
+
+  <!-- ══ 状态栏 ══ -->
+  <rect x="20" y="758" width="1160" height="32" fill="#202020" stroke="#404040" stroke-width="1"/>
+  <text x="36" y="778" font-size="12" fill="#A0A0A0">就绪</text>
+  <text x="380" y="778" font-size="12" fill="#E0E0E0">选中: loginBtn (Button)  x=320 y=240  140×40</text>
+  <text x="1156" y="778" font-size="12" fill="#A0A0A0" text-anchor="end">缩放 100%  |  控件 3  |  网格 开</text>
+
+  <!-- ══ 图例 ══ -->
+  <text x="36" y="820" font-size="12" fill="#C0C0C0">图例：</text>
+  <rect x="88" y="808" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <text x="106" y="818" font-size="12" fill="#C0C0C0">选中高亮 / 8 向控点</text>
+  <line x1="256" y1="814" x2="280" y2="814" stroke="#FF8800" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="286" y="818" font-size="12" fill="#C0C0C0">对齐参考线（8px 吸附）</text>
+  <rect x="456" y="808" width="12" height="12" rx="2" fill="none" stroke="#B0B0B0" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="474" y="818" font-size="12" fill="#C0C0C0">Panel 容器边框</text>
+  <rect x="624" y="808" width="12" height="12" rx="2" fill="#E06060"/>
+  <text x="642" y="818" font-size="12" fill="#C0C0C0">警告 / 未保存标记</text>
+  <text x="820" y="818" font-size="12" fill="#808080">（工具图标为示意，实际资源见 §12）</text>
+</svg>

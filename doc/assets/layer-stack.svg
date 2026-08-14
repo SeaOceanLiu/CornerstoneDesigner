@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="330" viewBox="0 0 760 330" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <rect x="0" y="0" width="760" height="330" rx="8" fill="#1A1A1A"/>
+
+  <!-- 应用层 -->
+  <rect x="20" y="20" width="720" height="86" rx="6" fill="#282828" stroke="#4A90D9" stroke-width="1"/>
+  <text x="40" y="46" font-size="14" font-weight="bold" fill="#E0E0E0">CornerstoneDesigner 应用层（C++17）</text>
+  <text x="40" y="70" font-size="12" fill="#A0A0A0">LayoutEngine | ProjectManager | Serializer | CodeGen</text>
+  <text x="40" y="90" font-size="12" fill="#A0A0A0">UndoRedoService | EventManager | 八模块业务逻辑</text>
+
+  <!-- C++ Binding 层 -->
+  <rect x="20" y="112" width="720" height="110" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+  <text x="40" y="138" font-size="14" font-weight="bold" fill="#E0E0E0">C++ Binding 层（type-safe 封装）</text>
+  <text x="40" y="162" font-size="12" fill="#A0A0A0">UICornerstone::Create / Run / CreateViewport</text>
+  <text x="40" y="182" font-size="12" fill="#A0A0A0">Control（Set*/Get* 属性、SetCallback 事件）</text>
+  <text x="40" y="202" font-size="12" fill="#A0A0A0">Event（IsClick / GetValueChanged … 具名访问器）</text>
+  <text x="40" y="222" font-size="12" fill="#A0A0A0">LoadLayout / RegisterAction / FindControl</text>
+
+  <!-- C ABI 层 -->
+  <rect x="20" y="228" width="720" height="42" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+  <text x="40" y="254" font-size="13" fill="#E0E0E0">C ABI 层（UICornerstone_* 函数）</text>
+
+  <!-- 核心 DLL -->
+  <rect x="20" y="276" width="720" height="40" rx="6" fill="#202020" stroke="#404040" stroke-width="1"/>
+  <text x="40" y="301" font-size="13" fill="#A0A0A0">核心 DLL + 后端 DLL（sdl3，LoadLibrary 动态加载）</text>
+</svg>

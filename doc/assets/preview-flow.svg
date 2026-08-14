@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="340" viewBox="0 0 620 340" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#4A90D9"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="620" height="340" rx="8" fill="#1A1A1A"/>
+
+  <g font-size="12" fill="#E0E0E0" text-anchor="middle">
+    <rect x="150" y="24" width="320" height="48" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+    <text x="310" y="45">内存模型变更</text>
+    <text x="310" y="62" fill="#A0A0A0">(防抖 300ms)</text>
+
+    <path d="M310 76 L310 96" stroke="#4A90D9" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="150" y="100" width="320" height="48" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+    <text x="310" y="129">SerializeToJson()</text>
+
+    <path d="M310 152 L310 172" stroke="#4A90D9" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="150" y="176" width="320" height="48" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+    <text x="310" y="205">m_preview-&gt;LoadLayout(json)</text>
+    <text x="500" y="196" font-size="11" fill="#8A8A8A" text-anchor="start">← 预览子视口</text>
+    <text x="500" y="212" font-size="11" fill="#8A8A8A" text-anchor="start">(CreateViewport)</text>
+
+    <path d="M310 228 L310 248" stroke="#4A90D9" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="150" y="252" width="320" height="48" rx="6" fill="#282828" stroke="#404040" stroke-width="1"/>
+    <text x="310" y="281">UICornerstone 渲染</text>
+    <text x="310" y="296" fill="#A0A0A0">(当前预览区域)</text>
+  </g>
+</svg>

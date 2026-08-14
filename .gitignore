@@ -427,3 +427,13 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# CornerstoneDesigner
+# CMake build output
+build/
+
+# Temporary files (see design/guidelines/coding.md)
+Temp/
+
+# Designer project autosave backups
+*.csd.autosave
