@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="170" viewBox="0 0 860 170" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <!-- 底板 -->
+  <rect x="0" y="0" width="860" height="170" rx="8" fill="#1A1A1A"/>
+  <text x="24" y="30" font-size="15" font-weight="bold" fill="#E0E0E0">状态栏（statusBar）— Panel + 3 Label 三段式</text>
+
+  <!-- 状态栏 -->
+  <rect x="20" y="52" width="820" height="40" rx="4" fill="#202020" stroke="#404040" stroke-width="1"/>
+
+  <!-- 左段：提示 -->
+  <text x="36" y="76" font-size="12" fill="#A0A0A0">就绪</text>
+  <line x1="300" y1="56" x2="300" y2="88" stroke="#3A3A3A" stroke-width="1"/>
+
+  <!-- 中段：选中信息 -->
+  <text x="316" y="76" font-size="12" fill="#E0E0E0">选中: loginBtn (Button)  x=320 y=240  140×40</text>
+  <line x1="640" y1="56" x2="640" y2="88" stroke="#3A3A3A" stroke-width="1"/>
+
+  <!-- 右段：状态 -->
+  <text x="820" y="76" font-size="12" fill="#A0A0A0" text-anchor="end">缩放 100%  |  控件 3  |  网格 开  |  对齐 开</text>
+
+  <!-- 警示状态示例 -->
+  <rect x="20" y="104" width="820" height="34" rx="4" fill="#202020" stroke="#3A2222" stroke-width="1"/>
+  <text x="36" y="125" font-size="12" fill="#E06060">预览加载失败: LayoutParser: unexpected token at line 12</text>
+  <text x="820" y="125" font-size="12" fill="#E06060" text-anchor="end">预览区保留上次成功内容</text>
+
+  <!-- 图注 -->
+  <text x="24" y="158" font-size="11" fill="#606060">左=操作提示（错误红色）；中=选中信息（多选时显示 N 个控件）；右=缩放/控件数/网格/对齐状态。项目名与未保存 * 在窗口标题栏（§10）。</text>
+</svg>

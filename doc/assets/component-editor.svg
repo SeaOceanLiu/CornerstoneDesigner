@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="660" viewBox="0 0 1100 660" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <!-- 底板 -->
+  <rect x="0" y="0" width="1100" height="660" rx="8" fill="#1A1A1A"/>
+  <text x="24" y="30" font-size="15" font-weight="bold" fill="#E0E0E0">组件编辑模式（P2）— 画布 = template 编辑区 + 旁挂 props 声明表单</text>
+
+  <!-- 顶部模式条 -->
+  <rect x="20" y="46" width="1060" height="34" rx="4" fill="#2A2A2A" stroke="#505050" stroke-width="1"/>
+  <rect x="28" y="54" width="64" height="20" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="38" y="68" font-size="12" fill="#A0A0A0">返回</text>
+  <text x="110" y="68" font-size="12" fill="#E0E0E0">组件编辑模式 — <tspan fill="#6FA8DC">FramedGreeter</tspan></text>
+  <rect x="906" y="52" width="40" height="18" rx="3" fill="none" stroke="#B08060" stroke-width="1"/>
+  <text x="913" y="65" font-size="10" fill="#B08060">P2</text>
+
+  <!-- 左侧工具箱（组件 Tab 高亮） -->
+  <rect x="20" y="90" width="250" height="520" fill="#282828"/>
+  <rect x="20" y="90" width="250" height="32" fill="#282828"/>
+  <text x="40" y="110" font-size="13" fill="#A0A0A0">工具箱</text>
+  <text x="100" y="110" font-size="13" fill="#A0A0A0">控件树</text>
+  <text x="170" y="110" font-size="13" fill="#A0A0A0">资源</text>
+  <rect x="28" y="118" width="96" height="2" fill="#4A90D9"/>
+  <text x="36" y="146" font-size="11" fill="#8A8A8A">组件 <tspan fill="#606060">（动态）</tspan></text>
+  <!-- Greeter -->
+  <rect x="28" y="156" width="234" height="26" rx="4" fill="#2A3F5C"/>
+  <text x="52" y="174" font-size="12" fill="#6FA8DC">Greeter</text>
+  <rect x="32" y="161" width="14" height="14" rx="3" fill="#202020" stroke="#4A90D9" stroke-width="1"/>
+  <rect x="34.5" y="163" width="6" height="6" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <rect x="41" y="166" width="6" height="6" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <!-- FramedGreeter -->
+  <text x="52" y="200" font-size="12" fill="#E0E0E0">FramedGreeter</text>
+  <rect x="32" y="187" width="14" height="14" rx="3" fill="#202020" stroke="#666" stroke-width="1"/>
+  <rect x="34.5" y="189" width="6" height="6" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <rect x="41" y="192" width="6" height="6" rx="1" fill="none" stroke="#B0B0B0" stroke-width="1"/>
+  <text x="36" y="230" font-size="11" fill="#606060">拖动"组件"分组项到</text>
+  <text x="36" y="248" font-size="11" fill="#606060">画布 = 创建引用</text>
+  <text x="36" y="266" font-size="11" fill="#606060">（type=组件名）</text>
+
+  <!-- 画布（template 编辑区） -->
+  <rect x="280" y="90" width="520" height="520" fill="#202020" stroke="#404040" stroke-width="1"/>
+  <rect x="288" y="98" width="504" height="430" rx="2" fill="#FFFFFF"/>
+  <rect x="288" y="98" width="504" height="430" rx="2" fill="url(#grid)"/>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#EEEEEE" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <text x="540" y="124" font-size="12" fill="#555555" text-anchor="middle">template 编辑区</text>
+
+  <!-- template 内容：Panel + Label {{greeting}} + Button {{action}} -->
+  <rect x="352" y="160" width="360" height="180" rx="6" fill="none" stroke="#B0B0B0" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="358" y="154" font-size="9" fill="#B0B0B0">Panel</text>
+  <text x="378" y="200" font-size="14" fill="#444444">{{greeting}}，<tspan fill="#4A90D9">模板占位</tspan></text>
+  <rect x="378" y="270" width="120" height="34" rx="4" fill="#4A90D9"/>
+  <text x="438" y="292" font-size="13" fill="#FFFFFF" text-anchor="middle">{{action}}</text>
+
+  <!-- 锁定提示 -->
+  <rect x="352" y="360" width="260" height="56" rx="4" fill="#282828" stroke="#B08060" stroke-width="1"/>
+  <text x="366" y="382" font-size="12" fill="#E0B060">🔒 组件内控件已锁定</text>
+  <text x="366" y="402" font-size="11" fill="#A0A0A0">防止误改引用侧实例</text>
+
+  <!-- 引用说明 -->
+  <text x="300" y="548" font-size="12" fill="#8A8A8A">画布中组件引用：整体块 rect 常规编辑；双击引用 → 进入组件编辑</text>
+
+  <!-- 右侧 props 声明表单 -->
+  <rect x="820" y="90" width="260" height="520" fill="#282828" stroke="#404040" stroke-width="1"/>
+  <text x="836" y="116" font-size="12" font-weight="bold" fill="#E0E0E0">props 声明（FramedGreeter）</text>
+
+  <!-- 列头 -->
+  <text x="836" y="142" font-size="11" fill="#8A8A8A">名称</text>
+  <text x="908" y="142" font-size="11" fill="#8A8A8A">类型</text>
+  <text x="968" y="142" font-size="11" fill="#8A8A8A">默认值</text>
+  <line x1="836" y1="150" x2="1064" y2="150" stroke="#3A3A3A" stroke-width="1"/>
+
+  <!-- props 行 1 -->
+  <text x="836" y="174" font-size="12" fill="#E0E0E0">greeting</text>
+  <text x="908" y="174" font-size="12" fill="#A0A0A0">string</text>
+  <text x="968" y="174" font-size="12" fill="#A0A0A0">"你好"</text>
+  <line x1="836" y1="182" x2="1064" y2="182" stroke="#2A2A2A" stroke-width="1"/>
+  <!-- props 行 2 -->
+  <text x="836" y="206" font-size="12" fill="#E0E0E0">action</text>
+  <text x="908" y="206" font-size="12" fill="#A0A0A0">string</text>
+  <text x="968" y="206" font-size="12" fill="#A0A0A0">"点击"</text>
+  <line x1="836" y1="214" x2="1064" y2="214" stroke="#2A2A2A" stroke-width="1"/>
+  <!-- props 行 3（新增中） -->
+  <rect x="836" y="222" width="228" height="24" rx="3" fill="#2A3F5C"/>
+  <rect x="836" y="222" width="3" height="24" rx="1.5" fill="#4A90D9"/>
+  <rect x="840" y="224" width="70" height="18" rx="2" fill="#202020" stroke="#4A90D9" stroke-width="1"/>
+  <rect x="914" y="224" width="56" height="18" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="920" y="237" font-size="11" fill="#808080">enum</text>
+  <rect x="974" y="224" width="90" height="18" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="980" y="237" font-size="11" fill="#808080">选项…</text>
+
+  <rect x="836" y="256" width="80" height="24" rx="4" fill="#2A3F5C"/>
+  <text x="850" y="272" font-size="12" fill="#E0E0E0">+ 添加</text>
+
+  <!-- 传值说明 -->
+  <rect x="836" y="300" width="228" height="180" rx="4" fill="#202020" stroke="#404040" stroke-width="1"/>
+  <text x="852" y="324" font-size="12" font-weight="bold" fill="#E0E0E0">引用侧（画布）：</text>
+  <text x="852" y="348" font-size="12" fill="#C0C0C0">属性面板显示 props 传值表单</text>
+  <text x="852" y="372" font-size="12" fill="#C0C0C0">+ _comp_ 对外事件绑定</text>
+  <text x="852" y="404" font-size="12" font-weight="bold" fill="#E0E0E0">导出：</text>
+  <text x="852" y="428" font-size="12" fill="#C0C0C0">components 区 + 引用原样保留</text>
+  <text x="852" y="452" font-size="12" fill="#C0C0C0">引擎侧展开渲染</text>
+  <text x="852" y="476" font-size="12" fill="#8A8A8A">（v1.0.0 实测支持嵌套）</text>
+
+  <!-- 图注 -->
+  <text x="24" y="642" font-size="11" fill="#606060">进入方式：双击画布中组件引用，或工具箱"组件"分组右键"编辑"；退出返回设计态。复用设计态/属性面板/控件树。</text>
+</svg>

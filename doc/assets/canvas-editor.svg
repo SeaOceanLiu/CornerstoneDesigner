@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="780" viewBox="0 0 1100 780" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#EEEEEE" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+
+  <!-- 底板 -->
+  <rect x="0" y="0" width="1100" height="780" rx="8" fill="#1A1A1A"/>
+  <text x="24" y="30" font-size="15" font-weight="bold" fill="#E0E0E0">中央画布（F2）· 设计态 — 工具栏 + 网格 + 选中/多选 + 对齐命令</text>
+
+  <!-- 画布区 -->
+  <rect x="20" y="46" width="1060" height="660" rx="4" fill="#202020" stroke="#505050" stroke-width="1"/>
+
+  <!-- ══ 画布工具栏 ══ -->
+  <rect x="20" y="46" width="1060" height="34" fill="#282828"/>
+
+  <!-- 缩放 ComboBox（展开） -->
+  <rect x="28" y="52" width="88" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="36" y="67" font-size="12" fill="#E0E0E0">100%</text>
+  <path d="M108 58 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <!-- 缩放下拉（展开） -->
+  <rect x="28" y="80" width="120" rx="4" fill="#2A2A2A" stroke="#505050" stroke-width="1"/>
+  <text x="36" y="100" font-size="12" fill="#C0C0C0">25%</text>
+  <text x="36" y="124" font-size="12" fill="#C0C0C0">50%</text>
+  <text x="36" y="148" font-size="12" fill="#C0C0C0">75%</text>
+  <rect x="32" y="154" width="112" height="22" rx="3" fill="#2A3F5C"/>
+  <text x="36" y="172" font-size="12" fill="#6FA8DC">100%</text>
+  <text x="36" y="196" font-size="12" fill="#C0C0C0">150%</text>
+  <text x="36" y="220" font-size="12" fill="#C0C0C0">200%</text>
+
+  <!-- 缩放按钮 -->
+  <text x="168" y="67" font-size="14" fill="#E0E0E0">−</text>
+  <rect x="188" y="52" width="40" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="198" y="67" font-size="12" fill="#E0E0E0">1:1</text>
+  <text x="240" y="67" font-size="14" fill="#E0E0E0">+</text>
+  <line x1="262" y1="54" x2="262" y2="74" stroke="#3A3A3A" stroke-width="1"/>
+
+  <!-- 网格/对齐开关 -->
+  <rect x="272" y="56" width="12" height="12" rx="2" fill="#4A90D9" stroke="#707070" stroke-width="1"/>
+  <path d="M275 61.5 l2 2 l3.5 -4" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+  <text x="290" y="67" font-size="12" fill="#E0E0E0">网格</text>
+  <rect x="336" y="56" width="12" height="12" rx="2" fill="#4A90D9" stroke="#707070" stroke-width="1"/>
+  <path d="M339 61.5 l2 2 l3.5 -4" fill="none" stroke="#FFFFFF" stroke-width="1.2"/>
+  <text x="354" y="67" font-size="12" fill="#E0E0E0">对齐</text>
+  <line x1="392" y1="54" x2="392" y2="74" stroke="#3A3A3A" stroke-width="1"/>
+
+  <!-- 对齐/分布下拉组（对齐▾ 展开） -->
+  <rect x="400" y="52" width="56" height="22" rx="3" fill="#202020" stroke="#4A90D9" stroke-width="1.5"/>
+  <text x="408" y="67" font-size="12" fill="#E0E0E0">对齐</text>
+  <path d="M448 58 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <rect x="460" y="52" width="56" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="468" y="67" font-size="12" fill="#A0A0A0">分布</text>
+  <path d="M508 58 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+
+  <!-- 对齐下拉（展开） -->
+  <rect x="400" y="80" width="200" rx="4" fill="#2A2A2A" stroke="#505050" stroke-width="1"/>
+  <rect x="404" y="84" width="192" height="22" rx="3" fill="#2A3F5C"/>
+  <text x="412" y="100" font-size="12" fill="#6FA8DC">左对齐</text>
+  <text x="412" y="126" font-size="12" fill="#C0C0C0">水平居中</text>
+  <text x="412" y="150" font-size="12" fill="#C0C0C0">右对齐</text>
+  <line x1="408" y1="158" x2="592" y2="158" stroke="#3A3A3A" stroke-width="1"/>
+  <text x="412" y="182" font-size="12" fill="#C0C0C0">顶对齐</text>
+  <text x="412" y="206" font-size="12" fill="#C0C0C0">垂直居中</text>
+  <text x="412" y="230" font-size="12" fill="#C0C0C0">底对齐</text>
+  <line x1="408" y1="238" x2="592" y2="238" stroke="#3A3A3A" stroke-width="1"/>
+  <text x="412" y="262" font-size="12" fill="#C0C0C0">等宽</text>
+  <text x="412" y="286" font-size="12" fill="#C0C0C0">等高</text>
+  <line x1="408" y1="294" x2="592" y2="294" stroke="#3A3A3A" stroke-width="1"/>
+  <text x="412" y="318" font-size="12" fill="#C0C0C0">水平分布</text>
+  <text x="412" y="342" font-size="12" fill="#C0C0C0">垂直分布</text>
+
+  <!-- 设计/预览 -->
+  <rect x="932" y="52" width="48" height="22" rx="3" fill="#2A3F5C"/>
+  <text x="945" y="67" font-size="12" fill="#FFFFFF">设计</text>
+  <rect x="984" y="52" width="52" height="22" rx="3" fill="#333333"/>
+  <text x="997" y="67" font-size="12" fill="#A0A0A0">预览</text>
+  <text x="900" y="67" font-size="10" fill="#606060" text-anchor="end">Ctrl+滚轮 缩放</text>
+
+  <!-- ══ 纸面 ══ -->
+  <rect x="28" y="128" width="1044" height="560" rx="2" fill="#FFFFFF"/>
+  <rect x="28" y="128" width="1044" height="560" rx="2" fill="url(#grid)"/>
+
+  <!-- 纸面标题 -->
+  <text x="550" y="154" font-size="13" fill="#555555" text-anchor="middle">登录表单示例 — 多选两个 Button</text>
+
+  <!-- 控件 1：btnLogin（选中） -->
+  <rect x="360" y="240" width="140" height="40" rx="4" fill="#4A90D9"/>
+  <text x="430" y="264" font-size="14" fill="#FFFFFF" text-anchor="middle">登录</text>
+  <rect x="356" y="236" width="148" height="48" rx="6" fill="none" stroke="#4A90D9" stroke-width="2"/>
+
+  <!-- 控件 2：btnCancel（选中） -->
+  <rect x="520" y="420" width="140" height="40" rx="4" fill="#6A6A6A"/>
+  <text x="590" y="444" font-size="14" fill="#FFFFFF" text-anchor="middle">取消</text>
+  <rect x="516" y="416" width="148" height="48" rx="6" fill="none" stroke="#4A90D9" stroke-width="2"/>
+
+  <!-- 对齐参考线（吸附） -->
+  <line x1="28" y1="236" x2="356" y2="236" stroke="#FF8800" stroke-width="1" stroke-dasharray="4 3" opacity="0.8"/>
+  <line x1="356" y1="128" x2="356" y2="236" stroke="#FF8800" stroke-width="1" stroke-dasharray="4 3" opacity="0.8"/>
+  <circle cx="28" cy="236" r="2" fill="#FF8800" opacity="0.8"/>
+  <circle cx="356" cy="128" r="2" fill="#FF8800" opacity="0.8"/>
+
+  <!-- 包围盒标注 -->
+  <rect x="340" y="220" width="332" height="252" rx="4" fill="none" stroke="#B08060" stroke-width="1" stroke-dasharray="5 4"/>
+  <text x="676" y="240" font-size="10" fill="#B08060">多选包围盒（对齐/分布基准）</text>
+
+  <!-- 8 向控点（btnLogin） -->
+  <rect x="352.5" y="232.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="426.5" y="232.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="500.5" y="232.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="352.5" y="256.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="500.5" y="256.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="352.5" y="280.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="426.5" y="280.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+  <rect x="500.5" y="280.5" width="7" height="7" rx="1.5" fill="#FFFFFF" stroke="#4A90D9" stroke-width="1.5"/>
+
+  <!-- 右下角缩放标注 -->
+  <text x="880" y="640" font-size="10" fill="#909090">背景网格：25/50/100px 三档 #303030</text>
+  <text x="880" y="660" font-size="10" fill="#909090">吸附阈值 8px，#FF8800 辅助线</text>
+
+  <!-- 图注 -->
+  <text x="24" y="760" font-size="11" fill="#606060">设计态要点：选中高亮 + HandleControl 8 向控点；拖入/移动经视口缩放反变换；多选（Ctrl+单击 / 框选 P2）→ 对齐/分布命令启用（选中 ≥2）。预览态见 §5.2 与 preview-flow.svg。</text>
+</svg>

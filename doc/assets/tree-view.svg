@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="560" viewBox="0 0 860 560" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <!-- 底板 -->
+  <rect x="0" y="0" width="860" height="560" rx="8" fill="#1A1A1A"/>
+  <text x="24" y="30" font-size="15" font-weight="bold" fill="#E0E0E0">左栏 · 控件树（F2.2）— CreateTreeView 层级</text>
+
+  <!-- Tab 条 -->
+  <rect x="20" y="46" width="400" height="32" rx="4" fill="#282828" stroke="#505050" stroke-width="1"/>
+  <text x="40" y="66" font-size="13" fill="#A0A0A0">工具箱</text>
+  <rect x="100" y="52" width="96" height="20" rx="3" fill="#2A3F5C"/>
+  <text x="112" y="66" font-size="13" fill="#6FA8DC">控件树</text>
+  <rect x="100" y="72" width="96" height="2" fill="#4A90D9"/>
+  <text x="234" y="66" font-size="13" fill="#A0A0A0">资源</text>
+
+  <!-- 树面板 -->
+  <rect x="20" y="86" width="400" height="420" rx="4" fill="#282828" stroke="#404040" stroke-width="1"/>
+
+  <!-- root（展开） -->
+  <path d="M38 116 l3.5 -3 l3.5 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <text x="52" y="120" font-size="12" fill="#E0E0E0">root <tspan fill="#808080">(panel)</tspan></text>
+
+  <!-- contentPanel（展开，选中高亮） -->
+  <path d="M68 148 l3.5 -3 l3.5 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <rect x="82" y="136" width="3" height="24" rx="1.5" fill="#4A90D9"/>
+  <text x="96" y="154" font-size="12" fill="#6FA8DC">contentPanel <tspan fill="#808080">(panel)</tspan></text>
+
+  <!-- 子控件 -->
+  <line x1="76" y1="152" x2="76" y2="176" stroke="#3A3A3A" stroke-width="1"/>
+  <circle cx="76" cy="176" r="2" fill="#3A3A3A"/>
+  <text x="112" y="180" font-size="12" fill="#C0C0C0">用户名 <tspan fill="#707070">(label)</tspan></text>
+  <circle cx="76" cy="200" r="2" fill="#3A3A3A"/>
+  <text x="112" y="204" font-size="12" fill="#C0C0C0">密码 <tspan fill="#707070">(label)</tspan></text>
+  <!-- loginBtn（选中态） -->
+  <circle cx="76" cy="224" r="2" fill="#3A3A3A"/>
+  <rect x="96" y="212" width="3" height="24" rx="1.5" fill="#4A90D9"/>
+  <rect x="104" y="214" width="150" height="20" rx="3" fill="#2A3F5C"/>
+  <text x="112" y="228" font-size="12" fill="#6FA8DC">loginBtn <tspan fill="#808080">(button)</tspan></text>
+  <circle cx="76" cy="248" r="2" fill="#3A3A3A"/>
+  <text x="112" y="252" font-size="12" fill="#C0C0C0">记住我 <tspan fill="#707070">(check-box)</tspan></text>
+
+  <!-- mainWinFrame（折叠） -->
+  <path d="M38 284 l3.5 3 l3.5 -3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <text x="52" y="288" font-size="12" fill="#E0E0E0">mainWinFrame <tspan fill="#808080">(win-frame)</tspan></text>
+
+  <!-- 组件引用节点（P2） -->
+  <path d="M38 316 l3.5 3 l3.5 -3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <text x="52" y="320" font-size="12" fill="#E0E0E0">greeterRef <tspan fill="#808080">(组件 Greeter)</tspan></text>
+  <rect x="196" y="310" width="34" height="16" rx="3" fill="none" stroke="#B08060" stroke-width="1"/>
+  <text x="202" y="322" font-size="10" fill="#B08060">组件</text>
+
+  <!-- 三联动标注 -->
+  <line x1="420" y1="136" x2="472" y2="136" stroke="#4A90D9" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <polygon points="472,132 480,136 472,140" fill="#4A90D9"/>
+  <text x="486" y="140" font-size="12" fill="#8A8A8A">画布同步高亮</text>
+  <line x1="420" y1="180" x2="472" y2="180" stroke="#4A90D9" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <polygon points="472,176 480,180 472,184" fill="#4A90D9"/>
+  <text x="486" y="184" font-size="12" fill="#8A8A8A">右栏加载属性</text>
+  <text x="486" y="212" font-size="12" fill="#606060">（三联动，见 §9）</text>
+
+  <!-- 右键菜单（P2）标注 -->
+  <rect x="440" y="236" width="200" height="148" rx="4" fill="#282828" stroke="#505050" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="456" y="260" font-size="12" fill="#A0A0A0">右键菜单（P2）：</text>
+  <text x="456" y="284" font-size="12" fill="#C0C0C0">重命名</text>
+  <text x="456" y="308" font-size="12" fill="#C0C0C0">复制</text>
+  <text x="456" y="332" font-size="12" fill="#C0C0C0">删除</text>
+  <text x="456" y="356" font-size="12" fill="#C0C0C0">置前 / 置后</text>
+  <text x="456" y="380" font-size="12" fill="#606060">P1 替代：属性面板 id 编辑 + 编辑菜单动作</text>
+
+  <!-- 图注 -->
+  <text x="24" y="536" font-size="11" fill="#606060">节点 = {id, label, children, expanded}；类型图标以文本符号变通（v1.0.0 tree item 无 icon 字段，P2 可增强）。</text>
+</svg>

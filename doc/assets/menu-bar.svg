@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="420" viewBox="0 0 940 420" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <!-- 底板 -->
+  <rect x="0" y="0" width="940" height="420" rx="8" fill="#1A1A1A"/>
+  <text x="24" y="30" font-size="15" font-weight="bold" fill="#E0E0E0">菜单栏（menuBar）— 文件菜单展开态</text>
+
+  <!-- 菜单栏条 -->
+  <rect x="20" y="52" width="900" height="32" rx="4" fill="#282828" stroke="#505050" stroke-width="1"/>
+  <rect x="28" y="58" width="72" height="20" rx="3" fill="#2A3F5C"/>
+  <text x="38" y="72" font-size="13" fill="#6FA8DC">文件(F)</text>
+  <text x="110" y="72" font-size="13" fill="#E0E0E0">编辑(E)</text>
+  <text x="168" y="72" font-size="13" fill="#E0E0E0">视图(V)</text>
+  <text x="226" y="72" font-size="13" fill="#E0E0E0">帮助(H)</text>
+
+  <!-- 文件下拉菜单 -->
+  <rect x="28" y="88" width="264" rx="4" fill="#2A2A2A" stroke="#4A90D9" stroke-width="1.5"/>
+
+  <!-- 新建（悬停态） -->
+  <rect x="32" y="92" width="256" height="24" rx="3" fill="#2A3F5C"/>
+  <text x="42" y="108" font-size="12" fill="#E0E0E0">新建</text>
+  <text x="282" y="108" font-size="12" fill="#A0A0A0" text-anchor="end">Ctrl+N</text>
+  <!-- 打开 -->
+  <text x="42" y="132" font-size="12" fill="#E0E0E0">打开</text>
+  <text x="282" y="132" font-size="12" fill="#A0A0A0" text-anchor="end">Ctrl+O</text>
+  <!-- 保存（选中态） -->
+  <rect x="32" y="140" width="256" height="24" rx="3" fill="#2A3F5C"/>
+  <rect x="32" y="140" width="3" height="24" rx="1.5" fill="#4A90D9"/>
+  <text x="42" y="156" font-size="12" fill="#6FA8DC">保存</text>
+  <text x="282" y="156" font-size="12" fill="#6FA8DC" text-anchor="end">Ctrl+S</text>
+  <!-- 另存为 -->
+  <text x="42" y="180" font-size="12" fill="#E0E0E0">另存为</text>
+  <!-- 分隔线 -->
+  <line x1="36" y1="188" x2="284" y2="188" stroke="#404040" stroke-width="1"/>
+  <!-- 导入/导出 -->
+  <text x="42" y="204" font-size="12" fill="#E0E0E0">导入 JSON</text>
+  <text x="42" y="228" font-size="12" fill="#E0E0E0">导出 JSON</text>
+  <text x="42" y="252" font-size="12" fill="#E0E0E0">导出代码</text>
+  <!-- 最近文件（子菜单展开） -->
+  <rect x="32" y="260" width="256" height="24" rx="3" fill="#2A3F5C"/>
+  <text x="42" y="276" font-size="12" fill="#E0E0E0">最近文件</text>
+  <path d="M280 268 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <line x1="36" y1="292" x2="284" y2="292" stroke="#404040" stroke-width="1"/>
+  <text x="42" y="308" font-size="12" fill="#E0E0E0">退出</text>
+
+  <!-- 最近文件子菜单 -->
+  <rect x="296" y="260" width="220" rx="4" fill="#2A2A2A" stroke="#505050" stroke-width="1"/>
+  <text x="308" y="276" font-size="12" fill="#E0E0E0">login-demo.csd</text>
+  <text x="308" y="300" font-size="12" fill="#E0E0E0">hud-layout.csd</text>
+  <text x="308" y="324" font-size="12" fill="#E0E0E0">main-menu.csd</text>
+  <text x="308" y="348" font-size="12" fill="#808080">（运行时按最近 10 个填充）</text>
+
+  <!-- 编辑菜单快捷键提示（右侧信息） -->
+  <text x="560" y="96" font-size="12" fill="#8A8A8A">编辑(E)：</text>
+  <text x="560" y="118" font-size="12" fill="#C0C0C0">撤销 Ctrl+Z / 重做 Ctrl+Y / 复制 Ctrl+C</text>
+  <text x="560" y="140" font-size="12" fill="#C0C0C0">粘贴 Ctrl+V / 删除 Del</text>
+  <text x="560" y="162" font-size="12" fill="#C0C0C0">置前 / 置后 / 上移 / 下移</text>
+  <text x="560" y="188" font-size="12" fill="#8A8A8A">视图(V)：</text>
+  <text x="560" y="210" font-size="12" fill="#C0C0C0">缩放 50–200%  Ctrl+1…5</text>
+  <text x="560" y="232" font-size="12" fill="#C0C0C0">网格 Ctrl+G / 对齐 Ctrl+Shift+G</text>
+  <text x="560" y="254" font-size="12" fill="#C0C0C0">预览模式 F5</text>
+  <text x="560" y="280" font-size="12" fill="#8A8A8A">帮助(H)：</text>
+  <text x="560" y="302" font-size="12" fill="#C0C0C0">关于</text>
+
+  <!-- 图注 -->
+  <text x="560" y="342" font-size="11" fill="#606060">菜单动作全部经 RegisterAction 桥接业务层；</text>
+  <text x="560" y="360" font-size="11" fill="#606060">快捷键同时支持菜单 shortcut 属性与 Embedded 键盘捕获两条路径。</text>
+</svg>

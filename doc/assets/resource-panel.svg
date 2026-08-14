@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="540" viewBox="0 0 860 540" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+  <!-- 底板 -->
+  <rect x="0" y="0" width="860" height="540" rx="8" fill="#1A1A1A"/>
+  <text x="24" y="30" font-size="15" font-weight="bold" fill="#E0E0E0">左栏 · 资源面板（P1）— resourceProviders 挂载点管理</text>
+
+  <!-- Tab 条 -->
+  <rect x="20" y="46" width="480" height="32" rx="4" fill="#282828" stroke="#505050" stroke-width="1"/>
+  <text x="40" y="66" font-size="13" fill="#A0A0A0">工具箱</text>
+  <text x="112" y="66" font-size="13" fill="#A0A0A0">控件树</text>
+  <rect x="200" y="52" width="96" height="20" rx="3" fill="#2A3F5C"/>
+  <text x="214" y="66" font-size="13" fill="#6FA8DC">资源</text>
+  <rect x="200" y="72" width="96" height="2" fill="#4A90D9"/>
+  <text x="30" y="90" font-size="11" fill="#8A8A8A">P1</text>
+  <rect x="52" y="78" width="40" height="16" rx="3" fill="none" stroke="#B08060" stroke-width="1"/>
+  <text x="58" y="90" font-size="10" fill="#B08060">P1</text>
+
+  <!-- 列表面板 -->
+  <rect x="20" y="102" width="480" height="330" rx="4" fill="#282828" stroke="#404040" stroke-width="1"/>
+
+  <!-- 列头 -->
+  <text x="36" y="126" font-size="12" font-weight="bold" fill="#C0C0C0">名称</text>
+  <line x1="220" y1="114" x2="220" y2="418" stroke="#3A3A3A" stroke-width="1"/>
+  <text x="236" y="126" font-size="12" font-weight="bold" fill="#C0C0C0">路径</text>
+  <line x1="36" y1="134" x2="488" y2="134" stroke="#3A3A3A" stroke-width="1"/>
+
+  <!-- 行 1 -->
+  <text x="36" y="158" font-size="12" fill="#E0E0E0">ui-assets</text>
+  <text x="236" y="158" font-size="12" fill="#A0A0A0">assets/ui/</text>
+  <rect x="452" y="144" width="20" height="18" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <path d="M458 155 l3 -3 l3 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <line x1="461" y1="151" x2="461" y2="158" stroke="#A0A0A0" stroke-width="1.2"/>
+  <line x1="36" y1="170" x2="488" y2="170" stroke="#2A2A2A" stroke-width="1"/>
+
+  <!-- 行 2 -->
+  <text x="36" y="194" font-size="12" fill="#E0E0E0">fonts</text>
+  <text x="236" y="194" font-size="12" fill="#A0A0A0">assets/fonts/</text>
+  <rect x="452" y="180" width="20" height="18" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <path d="M458 191 l3 -3 l3 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
+  <line x1="461" y1="187" x2="461" y2="194" stroke="#A0A0A0" stroke-width="1.2"/>
+  <line x1="36" y1="206" x2="488" y2="206" stroke="#2A2A2A" stroke-width="1"/>
+
+  <!-- 行 3（行内编辑态，新行输入中） -->
+  <rect x="28" y="212" width="464" height="28" rx="4" fill="#2A3F5C"/>
+  <rect x="28" y="212" width="3" height="28" rx="1.5" fill="#4A90D9"/>
+  <rect x="36" y="216" width="150" height="20" rx="2" fill="#202020" stroke="#4A90D9" stroke-width="1"/>
+  <text x="42" y="230" font-size="12" fill="#A0A0A0">animations…</text>
+  <rect x="236" y="216" width="180" height="20" rx="2" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="242" y="230" font-size="12" fill="#A0A0A0">assets/animations/</text>
+  <line x1="240" y1="232" x2="410" y2="232" stroke="#4A90D9" stroke-width="1"/>
+
+  <!-- 添加按钮 -->
+  <rect x="28" y="250" width="90" height="24" rx="4" fill="#2A3F5C"/>
+  <text x="42" y="266" font-size="12" fill="#E0E0E0">+ 添加</text>
+  <rect x="122" y="250" width="90" height="24" rx="4" fill="#202020" stroke="#505050" stroke-width="1"/>
+  <text x="136" y="266" font-size="12" fill="#A0A0A0">删除行</text>
+
+  <!-- 用途说明 -->
+  <rect x="20" y="288" width="480" height="130" rx="4" fill="#202020" stroke="#404040" stroke-width="1"/>
+  <text x="36" y="312" font-size="12" font-weight="bold" fill="#E0E0E0">用途：</text>
+  <text x="36" y="334" font-size="12" fill="#C0C0C0">挂载资源目录后，资源属性可填：</text>
+  <text x="36" y="356" font-size="12" fill="#C0C0C0">· <tspan fill="#E0E0E0">provider:ui-assets</tspan>（按挂载点 id 引用）</text>
+  <text x="36" y="378" font-size="12" fill="#C0C0C0">· 相对路径（如 assets/images/logo.png）</text>
+  <text x="36" y="402" font-size="12" fill="#8A8A8A">v1.0.0 无 ResourceLoader 控件：资源机制 = 布局顶层 resourceProviders 挂载 + 内存资源 RegisterResource/AdoptResource，故资源面板为布局级配置而非画布控件。</text>
+
+  <!-- 右侧说明 -->
+  <rect x="520" y="46" width="320" height="386" rx="4" fill="#282828" stroke="#404040" stroke-width="1"/>
+  <text x="536" y="70" font-size="12" font-weight="bold" fill="#E0E0E0">说明：</text>
+  <text x="536" y="94" font-size="12" fill="#C0C0C0">· 布局级 resourceProviders 列表</text>
+  <text x="536" y="118" font-size="12" fill="#C0C0C0">（name + path 两列，行内 EditBox 编辑）</text>
+  <text x="536" y="142" font-size="12" fill="#C0C0C0">· 随 .csd 顶层持久化</text>
+  <text x="536" y="166" font-size="12" fill="#C0C0C0">· 导出布局时 provider: 引用原样保留</text>
+  <text x="536" y="206" font-size="12" font-weight="bold" fill="#E0E0E0">图片 / 字体 / 动画属性：</text>
+  <text x="536" y="230" font-size="12" fill="#C0C0C0">· image / font-resource / luotiAni</text>
+  <text x="536" y="254" font-size="12" fill="#C0C0C0">均可填 provider: 或相对路径</text>
+  <text x="536" y="294" font-size="12" font-weight="bold" fill="#E0E0E0">相关接口（04 §6）：</text>
+  <text x="536" y="318" font-size="12" fill="#C0C0C0">addResourceProvider /</text>
+  <text x="536" y="342" font-size="12" fill="#C0C0C0">updateResourceProvider /</text>
+  <text x="536" y="366" font-size="12" fill="#C0C0C0">removeResourceProvider</text>
+
+  <!-- 图注 -->
+  <text x="24" y="524" font-size="11" fill="#606060">资源面板为左栏第三个 Tab（P1）；名称列唯一约束，重名时行内红色提示。</text>
+</svg>
