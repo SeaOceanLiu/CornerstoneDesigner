@@ -437,3 +437,6 @@ Temp/
 
 # Designer project autosave backups
 *.csd.autosave
+
+# Submodule vendored dependency (local release package)
+subModules/

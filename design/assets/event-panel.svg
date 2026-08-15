@@ -1,71 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="820" height="520" viewBox="0 0 820 520" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="520" viewBox="0 0 820 520" font-family="HarmonyOS Sans SC, Microsoft YaHei, PingFang SC, sans-serif">
   <!-- 底板 -->
   <rect x="0" y="0" width="820" height="520" rx="8" fill="#1A1A1A"/>
-  <text x="24" y="30" font-size="15" font-weight="bold" fill="#E0E0E0">右栏 · 事件面板（F4）— 绑定行 + 已绑定列表</text>
+  <text x="24" y="30" font-size="20" font-weight="bold" fill="#E0E0E0">右栏 · 事件面板（F4）— 绑定行 + 已绑定列表</text>
 
   <!-- Tab 条 -->
   <rect x="20" y="46" width="340" height="32" rx="4" fill="#282828" stroke="#505050" stroke-width="1"/>
-  <text x="40" y="66" font-size="13" fill="#A0A0A0">属性</text>
+  <text x="40" y="66" font-size="20" fill="#A0A0A0">属性</text>
   <rect x="104" y="52" width="96" height="20" rx="3" fill="#2A3F5C"/>
-  <text x="116" y="66" font-size="13" fill="#6FA8DC">事件</text>
+  <text x="116" y="66" font-size="20" fill="#6FA8DC">事件</text>
   <rect x="104" y="72" width="96" height="2" fill="#4A90D9"/>
 
   <!-- 面板主体 -->
   <rect x="20" y="86" width="340" height="360" rx="4" fill="#282828" stroke="#404040" stroke-width="1"/>
 
   <!-- 绑定行 -->
-  <text x="36" y="112" font-size="11" fill="#8A8A8A">事件类型</text>
-  <text x="180" y="112" font-size="11" fill="#8A8A8A">handler 名</text>
+  <text x="36" y="112" font-size="20" fill="#808080">事件类型</text>
+  <text x="180" y="112" font-size="20" fill="#808080">handler 名</text>
   <rect x="36" y="120" width="130" height="24" rx="3" fill="#202020" stroke="#4A90D9" stroke-width="1.5"/>
-  <text x="44" y="136" font-size="12" fill="#E0E0E0">click</text>
+  <text x="44" y="136" font-size="20" fill="#E0E0E0">click</text>
   <path d="M158 126 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
   <rect x="180" y="120" width="130" height="24" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="188" y="136" font-size="12" fill="#A0A0A0">onLogin_Click</text>
+  <text x="188" y="136" font-size="20" fill="#A0A0A0">onLogin_Click</text>
   <rect x="318" y="120" width="34" height="24" rx="3" fill="#2A3F5C"/>
-  <text x="322" y="136" font-size="11" fill="#E0E0E0">建议</text>
+  <text x="322" y="136" font-size="20" fill="#E0E0E0">建议</text>
 
   <!-- 事件类型下拉（展开） -->
   <rect x="36" y="150" width="180" rx="4" fill="#2A2A2A" stroke="#505050" stroke-width="1"/>
   <rect x="40" y="154" width="172" height="22" rx="3" fill="#2A3F5C"/>
-  <text x="48" y="169" font-size="12" fill="#6FA8DC">click</text>
-  <text x="48" y="195" font-size="12" fill="#C0C0C0">value-changed</text>
-  <text x="48" y="219" font-size="12" fill="#C0C0C0">text-changed</text>
-  <text x="48" y="243" font-size="12" fill="#C0C0C0">selection-changed</text>
-  <text x="48" y="267" font-size="12" fill="#C0C0C0">check-changed</text>
-  <text x="48" y="291" font-size="12" fill="#808080">…（完整列表见 04 §3.2）</text>
+  <text x="48" y="169" font-size="20" fill="#6FA8DC">click</text>
+  <text x="48" y="195" font-size="20" fill="#E0E0E0">value-changed</text>
+  <text x="48" y="219" font-size="20" fill="#E0E0E0">text-changed</text>
+  <text x="48" y="243" font-size="20" fill="#E0E0E0">selection-changed</text>
+  <text x="48" y="267" font-size="20" fill="#E0E0E0">check-changed</text>
+  <text x="48" y="291" font-size="20" fill="#808080">…（完整列表见 04 §3.2）</text>
 
   <!-- 已绑定列表 -->
   <line x1="36" y1="310" x2="348" y2="310" stroke="#3A3A3A" stroke-width="1"/>
-  <text x="36" y="330" font-size="11" fill="#8A8A8A">已绑定</text>
+  <text x="36" y="330" font-size="20" fill="#808080">已绑定</text>
 
   <!-- 绑定项 1 -->
-  <text x="36" y="358" font-size="12" fill="#C0C0C0">loginBtn</text>
-  <text x="116" y="358" font-size="12" fill="#E0E0E0">onClick → <tspan fill="#6FA8DC">onLogin_Click</tspan></text>
-  <text x="336" y="358" font-size="11" fill="#A0A0A0" text-anchor="end">删除</text>
+  <text x="36" y="358" font-size="20" fill="#E0E0E0">loginBtn</text>
+  <text x="116" y="358" font-size="20" fill="#E0E0E0">onClick → <tspan fill="#6FA8DC">onLogin_Click</tspan></text>
+  <text x="336" y="358" font-size="20" fill="#A0A0A0" text-anchor="end">删除</text>
   <line x1="36" y1="368" x2="348" y2="368" stroke="#2A2A2A" stroke-width="1"/>
 
   <!-- 绑定项 2 -->
-  <text x="36" y="396" font-size="12" fill="#C0C0C0">userEdit</text>
-  <text x="116" y="396" font-size="12" fill="#E0E0E0">onTextChanged → <tspan fill="#6FA8DC">onUserEdit_Changed</tspan></text>
-  <text x="336" y="396" font-size="11" fill="#A0A0A0" text-anchor="end">删除</text>
+  <text x="36" y="396" font-size="20" fill="#E0E0E0">userEdit</text>
+  <text x="116" y="396" font-size="20" fill="#E0E0E0">onTextChanged → <tspan fill="#6FA8DC">onUserEdit_Changed</tspan></text>
+  <text x="336" y="396" font-size="20" fill="#A0A0A0" text-anchor="end">删除</text>
   <line x1="36" y1="406" x2="348" y2="406" stroke="#2A2A2A" stroke-width="1"/>
 
   <!-- 冲突提示（红色） -->
   <rect x="36" y="414" width="312" height="24" rx="3" fill="#3A2222"/>
-  <text x="44" y="430" font-size="11" fill="#E06060">⚠ handler 名冲突：onLogin_Click 已被使用</text>
+  <text x="44" y="430" font-size="20" fill="#E06060">⚠ handler 名冲突：onLogin_Click 已被使用</text>
 
   <!-- 右侧说明 -->
   <rect x="380" y="46" width="420" height="260" rx="4" fill="#282828" stroke="#404040" stroke-width="1"/>
-  <text x="396" y="70" font-size="12" font-weight="bold" fill="#E0E0E0">设计要点：</text>
-  <text x="396" y="94" font-size="12" fill="#C0C0C0">· 绑定行：事件类型（ComboBox）→ handler 名</text>
-  <text x="396" y="118" font-size="12" fill="#C0C0C0">（EditBox + "建议命名"按钮）</text>
-  <text x="396" y="142" font-size="12" fill="#C0C0C0">· 已绑定列表：控件 id、事件、handler，可删除</text>
-  <text x="396" y="166" font-size="12" fill="#C0C0C0">· 命名冲突 / 不合规：行内红色提示 + 阻止导出</text>
-  <text x="396" y="190" font-size="12" fill="#C0C0C0">· handler 校验：C 标识符正则 + 全局唯一</text>
-  <text x="396" y="214" font-size="12" fill="#C0C0C0">· 预览实演：所有已绑定 handler 统一注册</text>
-  <text x="396" y="238" font-size="12" fill="#C0C0C0">（RegisterAction，含占位）</text>
-  <text x="396" y="262" font-size="12" fill="#C0C0C0">· 组件引用 _comp_ 事件（P2）：原样保留</text>
+  <text x="396" y="70" font-size="20" font-weight="bold" fill="#E0E0E0">设计要点：</text>
+  <text x="396" y="94" font-size="20" fill="#E0E0E0">· 绑定行：事件类型（ComboBox）→ handler 名</text>
+  <text x="396" y="118" font-size="20" fill="#E0E0E0">（EditBox + "建议命名"按钮）</text>
+  <text x="396" y="142" font-size="20" fill="#E0E0E0">· 已绑定列表：控件 id、事件、handler，可删除</text>
+  <text x="396" y="166" font-size="20" fill="#E0E0E0">· 命名冲突 / 不合规：行内红色提示 + 阻止导出</text>
+  <text x="396" y="190" font-size="20" fill="#E0E0E0">· handler 校验：C 标识符正则 + 全局唯一</text>
+  <text x="396" y="214" font-size="20" fill="#E0E0E0">· 预览实演：所有已绑定 handler 统一注册</text>
+  <text x="396" y="238" font-size="20" fill="#E0E0E0">（RegisterAction，含占位）</text>
+  <text x="396" y="262" font-size="20" fill="#E0E0E0">· 组件引用 _comp_ 事件（P2）：原样保留</text>
 
   <!-- 图注 -->
-  <text x="24" y="500" font-size="11" fill="#606060">事件类型下拉完整列表（JSON 导出名 ↔ Binding 事件名 ↔ 负载）见 04 详细设计 §3.2。</text>
+  <text x="24" y="500" font-size="20" fill="#606060">事件类型下拉完整列表（JSON 导出名 ↔ Binding 事件名 ↔ 负载）见 04 详细设计 §3.2。</text>
 </svg>

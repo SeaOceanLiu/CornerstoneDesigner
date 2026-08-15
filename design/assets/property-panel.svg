@@ -1,123 +1,123 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="820" height="780" viewBox="0 0 820 780" font-family="Microsoft YaHei, PingFang SC, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="780" viewBox="0 0 820 780" font-family="HarmonyOS Sans SC, Microsoft YaHei, PingFang SC, sans-serif">
   <!-- 底板 -->
   <rect x="0" y="0" width="820" height="780" rx="8" fill="#1A1A1A"/>
-  <text x="24" y="30" font-size="15" font-weight="bold" fill="#E0E0E0">右栏 · 属性面板（F3）— 分组折叠 + 动态表单</text>
+  <text x="24" y="30" font-size="20" font-weight="bold" fill="#E0E0E0">右栏 · 属性面板（F3）— 分组折叠 + 动态表单</text>
 
   <!-- Tab 条 -->
   <rect x="20" y="46" width="340" height="32" rx="4" fill="#282828" stroke="#505050" stroke-width="1"/>
   <rect x="28" y="52" width="96" height="20" rx="3" fill="#2A3F5C"/>
-  <text x="40" y="66" font-size="13" fill="#6FA8DC">属性</text>
+  <text x="40" y="66" font-size="20" fill="#6FA8DC">属性</text>
   <rect x="28" y="72" width="96" height="2" fill="#4A90D9"/>
-  <text x="150" y="66" font-size="13" fill="#A0A0A0">事件</text>
+  <text x="150" y="66" font-size="20" fill="#A0A0A0">事件</text>
 
   <!-- 面板主体 -->
   <rect x="20" y="86" width="340" height="620" rx="4" fill="#282828" stroke="#404040" stroke-width="1"/>
 
   <!-- ══ 布局分组（展开） ══ -->
-  <rect x="24" y="92" width="332" height="26" rx="3" fill="#232323"/>
-  <path d="M38 105 l3.5 -3 l3.5 3" fill="none" stroke="#8A8A8A" stroke-width="1.2"/>
-  <text x="52" y="108" font-size="12" font-weight="bold" fill="#C0C0C0">布局</text>
+  <rect x="24" y="92" width="332" height="26" rx="3" fill="#2A2A2A"/>
+  <path d="M38 105 l3.5 -3 l3.5 3" fill="none" stroke="#808080" stroke-width="1.2"/>
+  <text x="52" y="108" font-size="20" font-weight="bold" fill="#E0E0E0">布局</text>
 
-  <text x="40" y="138" font-size="12" fill="#C0C0C0">x</text>
+  <text x="40" y="138" font-size="20" fill="#E0E0E0">x</text>
   <rect x="80" y="126" width="160" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="228" y="141" font-size="12" fill="#E0E0E0" text-anchor="end">320</text>
-  <text x="252" y="141" font-size="12" fill="#C0C0C0">y</text>
+  <text x="228" y="141" font-size="20" fill="#E0E0E0" text-anchor="end">320</text>
+  <text x="252" y="141" font-size="20" fill="#E0E0E0">y</text>
   <rect x="276" y="126" width="76" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="342" y="141" font-size="12" fill="#E0E0E0" text-anchor="end">240</text>
+  <text x="342" y="141" font-size="20" fill="#E0E0E0" text-anchor="end">240</text>
 
-  <text x="40" y="172" font-size="12" fill="#C0C0C0">宽</text>
+  <text x="40" y="172" font-size="20" fill="#E0E0E0">宽</text>
   <rect x="80" y="160" width="160" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="228" y="175" font-size="12" fill="#E0E0E0" text-anchor="end">140</text>
-  <text x="252" y="172" font-size="12" fill="#C0C0C0">高</text>
+  <text x="228" y="175" font-size="20" fill="#E0E0E0" text-anchor="end">140</text>
+  <text x="252" y="172" font-size="20" fill="#E0E0E0">高</text>
   <rect x="276" y="160" width="76" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="342" y="175" font-size="12" fill="#E0E0E0" text-anchor="end">40</text>
+  <text x="342" y="175" font-size="20" fill="#E0E0E0" text-anchor="end">40</text>
 
-  <text x="40" y="206" font-size="12" fill="#C0C0C0">锚点</text>
+  <text x="40" y="206" font-size="20" fill="#E0E0E0">锚点</text>
   <rect x="80" y="194" width="160" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="88" y="209" font-size="12" fill="#E0E0E0">top-left</text>
+  <text x="88" y="209" font-size="20" fill="#E0E0E0">top-left</text>
   <path d="M232 200 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
 
-  <text x="40" y="240" font-size="12" fill="#C0C0C0">布局</text>
+  <text x="40" y="240" font-size="20" fill="#E0E0E0">布局</text>
   <rect x="80" y="228" width="160" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="88" y="243" font-size="12" fill="#E0E0E0">绝对</text>
+  <text x="88" y="243" font-size="20" fill="#E0E0E0">绝对</text>
   <path d="M232 234 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
 
-  <text x="40" y="274" font-size="12" fill="#C0C0C0">margin</text>
-  <text x="88" y="274" font-size="11" fill="#8A8A8A">L</text>
+  <text x="40" y="274" font-size="20" fill="#E0E0E0">margin</text>
+  <text x="88" y="274" font-size="20" fill="#808080">L</text>
   <rect x="100" y="262" width="52" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="144" y="277" font-size="12" fill="#E0E0E0" text-anchor="end">0</text>
-  <text x="160" y="274" font-size="11" fill="#8A8A8A">T</text>
+  <text x="144" y="277" font-size="20" fill="#E0E0E0" text-anchor="end">0</text>
+  <text x="160" y="274" font-size="20" fill="#808080">T</text>
   <rect x="172" y="262" width="52" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="216" y="277" font-size="12" fill="#E0E0E0" text-anchor="end">0</text>
-  <text x="232" y="274" font-size="11" fill="#8A8A8A">R</text>
+  <text x="216" y="277" font-size="20" fill="#E0E0E0" text-anchor="end">0</text>
+  <text x="232" y="274" font-size="20" fill="#808080">R</text>
   <rect x="244" y="262" width="52" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="288" y="277" font-size="12" fill="#E0E0E0" text-anchor="end">0</text>
-  <text x="304" y="274" font-size="11" fill="#8A8A8A">B</text>
+  <text x="288" y="277" font-size="20" fill="#E0E0E0" text-anchor="end">0</text>
+  <text x="304" y="274" font-size="20" fill="#808080">B</text>
   <rect x="316" y="262" width="36" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="344" y="277" font-size="12" fill="#E0E0E0" text-anchor="end">0</text>
+  <text x="344" y="277" font-size="20" fill="#E0E0E0" text-anchor="end">0</text>
 
-  <text x="40" y="308" font-size="12" fill="#C0C0C0">scale</text>
+  <text x="40" y="308" font-size="20" fill="#E0E0E0">scale</text>
   <rect x="80" y="296" width="160" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="228" y="311" font-size="12" fill="#E0E0E0" text-anchor="end">1.0</text>
+  <text x="228" y="311" font-size="20" fill="#E0E0E0" text-anchor="end">1.0</text>
 
   <!-- ══ 外观分组（展开） ══ -->
-  <rect x="24" y="330" width="332" height="26" rx="3" fill="#232323"/>
-  <path d="M38 343 l3.5 -3 l3.5 3" fill="none" stroke="#8A8A8A" stroke-width="1.2"/>
-  <text x="52" y="346" font-size="12" font-weight="bold" fill="#C0C0C0">外观</text>
+  <rect x="24" y="330" width="332" height="26" rx="3" fill="#2A2A2A"/>
+  <path d="M38 343 l3.5 -3 l3.5 3" fill="none" stroke="#808080" stroke-width="1.2"/>
+  <text x="52" y="346" font-size="20" font-weight="bold" fill="#E0E0E0">外观</text>
 
-  <text x="40" y="376" font-size="12" fill="#C0C0C0">文本</text>
+  <text x="40" y="376" font-size="20" fill="#E0E0E0">文本</text>
   <rect x="80" y="364" width="252" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="88" y="379" font-size="12" fill="#E0E0E0">登录</text>
+  <text x="88" y="379" font-size="20" fill="#E0E0E0">登录</text>
 
-  <text x="40" y="410" font-size="12" fill="#C0C0C0">颜色</text>
+  <text x="40" y="410" font-size="20" fill="#E0E0E0">颜色</text>
   <rect x="80" y="398" width="20" height="20" rx="3" fill="#4A90D9" stroke="#505050" stroke-width="1"/>
-  <text x="108" y="413" font-size="12" fill="#E0E0E0">#4A90D9</text>
+  <text x="108" y="413" font-size="20" fill="#E0E0E0">#4A90D9</text>
   <path d="M248 409 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
 
-  <text x="40" y="444" font-size="12" fill="#C0C0C0">字号</text>
+  <text x="40" y="444" font-size="20" fill="#E0E0E0">字号</text>
   <rect x="80" y="432" width="160" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="228" y="447" font-size="12" fill="#E0E0E0" text-anchor="end">14</text>
+  <text x="228" y="447" font-size="20" fill="#E0E0E0" text-anchor="end">14</text>
 
-  <text x="40" y="478" font-size="12" fill="#C0C0C0">字体</text>
+  <text x="40" y="478" font-size="20" fill="#E0E0E0">字体</text>
   <rect x="80" y="466" width="160" height="22" rx="3" fill="#202020" stroke="#505050" stroke-width="1"/>
-  <text x="88" y="481" font-size="12" fill="#E0E0E0">HarmonyOS Sans</text>
+  <text x="88" y="481" font-size="20" fill="#E0E0E0">HarmonyOS Sans</text>
   <path d="M232 472 l4 3 l-4 3" fill="none" stroke="#A0A0A0" stroke-width="1.2"/>
 
   <!-- ══ 行为分组（展开） ══ -->
-  <rect x="24" y="502" width="332" height="26" rx="3" fill="#232323"/>
-  <path d="M38 515 l3.5 -3 l3.5 3" fill="none" stroke="#8A8A8A" stroke-width="1.2"/>
-  <text x="52" y="518" font-size="12" font-weight="bold" fill="#C0C0C0">行为</text>
+  <rect x="24" y="502" width="332" height="26" rx="3" fill="#2A2A2A"/>
+  <path d="M38 515 l3.5 -3 l3.5 3" fill="none" stroke="#808080" stroke-width="1.2"/>
+  <text x="52" y="518" font-size="20" font-weight="bold" fill="#E0E0E0">行为</text>
 
-  <text x="40" y="548" font-size="12" fill="#C0C0C0">可见</text>
+  <text x="40" y="548" font-size="20" fill="#E0E0E0">可见</text>
   <rect x="80" y="536" width="16" height="16" rx="3" fill="#4A90D9" stroke="#505050" stroke-width="1"/>
   <path d="M83.5 543 l2.5 2.5 l5 -5.5" fill="none" stroke="#FFFFFF" stroke-width="1.3"/>
 
-  <text x="40" y="582" font-size="12" fill="#C0C0C0">可用</text>
+  <text x="40" y="582" font-size="20" fill="#E0E0E0">可用</text>
   <rect x="80" y="570" width="16" height="16" rx="3" fill="#4A90D9" stroke="#505050" stroke-width="1"/>
   <path d="M83.5 577 l2.5 2.5 l5 -5.5" fill="none" stroke="#FFFFFF" stroke-width="1.3"/>
 
   <!-- 重置 -->
   <rect x="36" y="608" width="308" height="28" rx="4" fill="none" stroke="#505050" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="190" y="626" font-size="12" fill="#A0A0A0" text-anchor="middle">重置默认值</text>
+  <text x="190" y="626" font-size="20" fill="#A0A0A0" text-anchor="middle">重置默认值</text>
 
   <!-- 滚动条 -->
   <rect x="348" y="96" width="4" height="560" rx="2" fill="#3A3A3A"/>
-  <rect x="348" y="120" width="4" height="180" rx="2" fill="#555555"/>
+  <rect x="348" y="120" width="4" height="180" rx="2" fill="#333333"/>
 
   <!-- 右侧说明 -->
   <rect x="380" y="46" width="420" height="300" rx="4" fill="#282828" stroke="#404040" stroke-width="1"/>
-  <text x="396" y="70" font-size="12" font-weight="bold" fill="#E0E0E0">设计要点：</text>
-  <text x="396" y="94" font-size="12" fill="#C0C0C0">· 三组：布局 / 外观 / 行为（事件为独立 Tab）</text>
-  <text x="396" y="118" font-size="12" fill="#C0C0C0">· 布局分组暴露 UICS 布局引擎属性全集</text>
-  <text x="396" y="142" font-size="12" fill="#C0C0C0">（anchor/margin/padding/gap/layout/</text>
-  <text x="396" y="166" font-size="12" fill="#C0C0C0">columns/rows/flowWeight/matchParentRect/sizeRatio）</text>
-  <text x="396" y="190" font-size="12" fill="#C0C0C0">· 编辑控件按属性类型映射（注册表驱动）：</text>
-  <text x="396" y="214" font-size="12" fill="#C0C0C0">数值 NumericUpDown / 颜色 ColorPicker /</text>
-  <text x="396" y="238" font-size="12" fill="#C0C0C0">枚举 ComboBox / 布尔 CheckBox / 文本 EditBox</text>
-  <text x="396" y="262" font-size="12" fill="#C0C0C0">· 多选仅显示共有属性（批量编辑）</text>
-  <text x="396" y="286" font-size="12" fill="#C0C0C0">· 值变更即时回写画布 + 入 Undo 栈</text>
-  <text x="396" y="310" font-size="12" fill="#C0C0C0">· 表单重建用"隐藏复用"（避免组合控件开销）</text>
+  <text x="396" y="70" font-size="20" font-weight="bold" fill="#E0E0E0">设计要点：</text>
+  <text x="396" y="94" font-size="20" fill="#E0E0E0">· 三组：布局 / 外观 / 行为（事件为独立 Tab）</text>
+  <text x="396" y="118" font-size="20" fill="#E0E0E0">· 布局分组暴露 UICS 布局引擎属性全集</text>
+  <text x="396" y="142" font-size="20" fill="#E0E0E0">（anchor/margin/padding/gap/layout/</text>
+  <text x="396" y="166" font-size="20" fill="#E0E0E0">columns/rows/flowWeight/matchParentRect/sizeRatio）</text>
+  <text x="396" y="190" font-size="20" fill="#E0E0E0">· 编辑控件按属性类型映射（注册表驱动）：</text>
+  <text x="396" y="214" font-size="20" fill="#E0E0E0">数值 NumericUpDown / 颜色 ColorPicker /</text>
+  <text x="396" y="238" font-size="20" fill="#E0E0E0">枚举 ComboBox / 布尔 CheckBox / 文本 EditBox</text>
+  <text x="396" y="262" font-size="20" fill="#E0E0E0">· 多选仅显示共有属性（批量编辑）</text>
+  <text x="396" y="286" font-size="20" fill="#E0E0E0">· 值变更即时回写画布 + 入 Undo 栈</text>
+  <text x="396" y="310" font-size="20" fill="#E0E0E0">· 表单重建用"隐藏复用"（避免组合控件开销）</text>
 
   <!-- 图注 -->
-  <text x="24" y="764" font-size="11" fill="#606060">属性值示例对应主界面图中选中的 loginBtn；Animation 额外显示 luotiAni 资源路径 EditBox（仅托管）。</text>
+  <text x="24" y="764" font-size="20" fill="#606060">属性值示例对应主界面图中选中的 loginBtn；Animation 额外显示 luotiAni 资源路径 EditBox（仅托管）。</text>
 </svg>
