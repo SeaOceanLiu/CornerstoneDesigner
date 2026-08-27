@@ -51,7 +51,7 @@ bool App::init() {
             .WithBackend("sdl3")
             .WithResourceRoot(exeRelative("assets"))
             .WithWindow("CornerstoneDesigner", 1200, 800)
-            .WithWindowFlags(0x00000008));
+            .WithWindowFlags(UIWindowFlags::Resizable));
     if (!m_ui) {
         std::printf("[App] Create failed\n");
         return false;
