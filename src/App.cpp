@@ -50,7 +50,8 @@ bool App::init() {
         UICornerstone::UICornerstone::Config{}
             .WithBackend("sdl3")
             .WithResourceRoot(exeRelative("assets"))
-            .WithWindow("CornerstoneDesigner", 1200, 800));
+            .WithWindow("CornerstoneDesigner", 1200, 800)
+            .WithWindowFlags(0x00000008));
     if (!m_ui) {
         std::printf("[App] Create failed\n");
         return false;
