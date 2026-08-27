@@ -1,4 +1,4 @@
-# 属性表单生成器设计（基于 Schema）
+﻿# 属性表单生成器设计（基于 Schema）
 
 > 设计目标：从 UICornerstone v1.1.1 的 `declarative-ui.schema.json` 自动生成控件属性编辑表单，无需硬编码每种控件的属性列表。
 
@@ -188,15 +188,15 @@ void PropertyPanel::writeBack(const std::string& bindingKey, const Control& edit
 
 ```bash
 # 基本用法：校验布局文件
-./validate_layout.exe layouts/main_layout.json
+subModules/UICornerstone/tools/validate_layout.exe layouts/main_layout.json
 # 输出：[keys] PropertyNames.h 键集: 617 个
 #       [summary] errors=0 warns=0 -> PASS
 
 # 严格模式（WARN 也视为 ERROR）
-./validate_layout.exe --strict layouts/main_layout.json
+subModules/UICornerstone/tools/validate_layout.exe --strict layouts/main_layout.json
 
 # 指定自定义 schema（如有更新）
-./validate_layout.exe --schema=path/to/schema.json layouts/main_layout.json
+subModules/UICornerstone/tools/validate_layout.exe --schema=path/to/schema.json layouts/main_layout.json
 ```
 
 ### 5.2 Schema 验证状态
@@ -213,7 +213,7 @@ void PropertyPanel::writeBack(const std::string& bindingKey, const Control& edit
 
 1. **生成 JSON 时**：以 Schema 为准（camelCase 键名、对象数组格式）
 2. **读取/编辑 JSON 时**：自动转换 camelCase ↔ kebab-case
-3. **验证 JSON 合法性**：运行时调用 `validate_layout.exe`（如有需要）
+3. **验证 JSON 合法性**：运行时调用 `subModules/UICornerstone/tools/validate_layout.exe`（如有需要）
 4. **PropertyNames.h 为准**：当 Schema 与 PropertyNames.h 冲突时，以 PropertyNames.h 为准
 
 ## 6. 实施计划
