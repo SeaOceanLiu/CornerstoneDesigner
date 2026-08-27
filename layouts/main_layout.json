@@ -18,7 +18,13 @@
        "normal": "#404040FF"
       }
      },
-     "anchor": "LEFT_STRETCH"
+     "anchor": "LEFT_STRETCH",
+     "rect": {
+      "x": 0,
+      "y": 0,
+      "w": 240,
+      "h": 800
+     }
     },
     {
      "type": "panel",
@@ -28,7 +34,13 @@
        "normal": "#404040FF"
       }
      },
-     "anchor": "FILL"
+     "anchor": "FILL",
+     "rect": {
+      "x": 240,
+      "y": 0,
+      "w": 720,
+      "h": 800
+     }
     },
     {
      "type": "panel",
@@ -38,12 +50,24 @@
        "normal": "#404040FF"
       }
      },
-     "anchor": "RIGHT_STRETCH"
+     "anchor": "RIGHT_STRETCH",
+     "rect": {
+      "x": 960,
+      "y": 0,
+      "w": 240,
+      "h": 800
+     }
     }
    ],
    "anchor": "FILL",
    "layout": {
     "type": "anchor"
+   },
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 1200,
+    "h": 800
    }
   }
  ]

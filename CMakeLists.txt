@@ -39,9 +39,6 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${UICORNERSTONE_ROOT}/assets
             $<TARGET_FILE_DIR:CornerstoneDesigner>/assets
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/layouts
-            $<TARGET_FILE_DIR:CornerstoneDesigner>/layouts
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/layouts/main_layout.json
             $<TARGET_FILE_DIR:CornerstoneDesigner>/main_layout.json
