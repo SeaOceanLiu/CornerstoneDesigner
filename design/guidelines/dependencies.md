@@ -21,6 +21,11 @@ CornerstoneDesigner 仅直接依赖一个子模块：**UICornerstone**。UICorne
 | **子模块源码**（默认） | `git clone --recursive` + `subModules\UICornerstone\build_scripts\build.bat sdl3`，产出核心/后端 DLL |
 | **v1.0.0 发布包** | `UICornerstone_full_v1.0.0.rar`（GitHub Releases）：解压即得核心/三后端 DLL + SDL3/SFML/raylib 运行库 + `assets/` + `binding/` 源码 + `binding/CMakeLists.example.txt`（**官方独立集成样例**：`set(UICORNERSTONE_CORE_OUTPUT "")` + `add_subdirectory(binding)` + 链接 `UICornerstoneBinding`，与设计器 CMake 结构一致） |
 
+## 第三方头文件依赖（vendored）
+
+- **nlohmann/json**（v3.12.0 单头，与 UICS 子模块依赖同版）：`third_party/json/single_include/nlohmann/json.hpp`，随仓库管理，不通过子模块
+- 新增第三方单头依赖时：复制到 `third_party/` 下并在此登记版本与来源
+
 ## 更新子模块
 
 ```batch

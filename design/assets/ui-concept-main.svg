@@ -319,4 +319,28 @@
   <rect x="12" y="824" width="1176" height="30" rx="3" fill="#242424"/>
   <text x="24" y="842" font-size="20" fill="#A0A0A0">规格（01 §9.2）：menuBar 0,0 1200×28 | toolboxPanel 0,28 240×744 | leftSplitter 240,28 6×744 | canvasArea 246,28 708×744 | rightSplitter 954,28 6×744 | propertyPanel 960,28 240×744 | statusBar 0,772 1200×28</text>
   <text x="820" y="818" font-size="20" fill="#808080">（工具图标为示意，实际资源见 §12）</text>
+
+  <!-- 控件类型标注 -->
+  <rect x="1080" y="70" width="72" height="34" rx="3" fill="#1A3A5C" stroke="#505050" stroke-width="0.5" opacity="0.9"/>
+  <text x="1086" y="86" font-size="14" fill="#6FA8DC">menu-bar</text>
+  <text x="1086" y="100" font-size="12" fill="#4A80B0">JSON 静态</text>
+  <rect x="20" y="100" width="84" height="34" rx="3" fill="#1A3A5C" stroke="#505050" stroke-width="0.5" opacity="0.9"/>
+  <text x="26" y="116" font-size="14" fill="#6FA8DC">toolboxPanel</text>
+  <text x="26" y="130" font-size="12" fill="#4A80B0">JSON+命令式</text>
+  <rect x="820" y="96" width="76" height="34" rx="3" fill="#1A3A5C" stroke="#505050" stroke-width="0.5" opacity="0.9"/>
+  <text x="826" y="112" font-size="14" fill="#6FA8DC">canvasToolbar</text>
+  <text x="826" y="126" font-size="12" fill="#4A80B0">JSON 静态</text>
+  <rect x="270" y="140" width="80" height="34" rx="3" fill="#2A1A3C" stroke="#505050" stroke-width="0.5" opacity="0.9"/>
+  <text x="276" y="156" font-size="14" fill="#C090E0">viewport</text>
+  <text x="276" y="170" font-size="12" fill="#9060B0">命令式动态</text>
+  <rect x="1060" y="100" width="84" height="34" rx="3" fill="#1A3A5C" stroke="#505050" stroke-width="0.5" opacity="0.9"/>
+  <text x="1066" y="116" font-size="14" fill="#6FA8DC">propertyPanel</text>
+  <text x="1066" y="130" font-size="12" fill="#4A80B0">JSON+命令式</text>
+  <rect x="900" y="760" width="72" height="34" rx="3" fill="#1A3A5C" stroke="#505050" stroke-width="0.5" opacity="0.9"/>
+  <text x="906" y="776" font-size="14" fill="#6FA8DC">statusBar</text>
+  <text x="906" y="790" font-size="12" fill="#4A80B0">JSON 静态</text>
+  <rect x="238" y="396" width="56" height="28" rx="3" fill="#2A2A2A" stroke="#505050" stroke-width="0.5" opacity="0.9"/>
+  <text x="242" y="414" font-size="12" fill="#808080">splitter</text>
+  <rect x="952" y="396" width="56" height="28" rx="3" fill="#2A2A2A" stroke="#505050" stroke-width="0.5" opacity="0.9"/>
+  <text x="956" y="414" font-size="12" fill="#808080">splitter</text>
 </svg>
