@@ -45,6 +45,66 @@ namespace Designer {
 
 App::~App() = default;
 
+// ───────────────────────── SDL3 动态解析（窗口 API）─────────────────────────
+
+bool App::SdlApi::load() {
+#ifdef _WIN32
+    dll = LoadLibraryA("SDL3.dll");
+#else
+    dll = dlopen("SDL3.dll", RTLD_LAZY);
+#endif
+    if (!dll) return false;
+#ifdef _WIN32
+    getWindows   = reinterpret_cast<void*(*)(int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindows"));
+    setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(GetProcAddress((HMODULE)dll, "SDL_SetWindowSize"));
+    getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindowSize"));
+#else
+    getWindows   = reinterpret_cast<void*(*)(int*)>(dlsym(dll, "SDL_GetWindows"));
+    setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(dlsym(dll, "SDL_SetWindowSize"));
+    getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(dlsym(dll, "SDL_GetWindowSize"));
+#endif
+    loaded = getWindows && getWindowSize;
+    return loaded;
+}
+
+void App::SdlApi::unload() {
+#ifdef _WIN32
+    if (dll) FreeLibrary((HMODULE)dll);
+#else
+    if (dll) dlclose(dll);
+#endif
+    dll = nullptr;
+    loaded = false;
+}
+
+void* App::SdlApi::windowHandle() {
+    int count = 0;
+    void* arr = getWindows ? getWindows(&count) : nullptr;
+    if (count > 0 && arr && ((void**)arr)[0]) return ((void**)arr)[0];
+    return nullptr;
+}
+
+// 窗口尺寸变化 → root.SetRect(0,0,w,h)。
+// root 为 v-flow 布局容器（menuBar/middleArea/statusBar）：menu-bar/status-bar 挂入 v-flow
+// 时自动切换手动定位参与布局引擎重排，middleArea 内部 h-flow 三栏随 middleArea reflow。
+void App::syncRootToWindow() {
+    if (!m_sdl.loaded || !m_sdl.getWindowSize || !m_ui) return;
+    void* win = m_sdl.windowHandle();
+    if (!win) return;
+    int w = 0, h = 0;
+    m_sdl.getWindowSize(win, &w, &h);
+    if (w <= 0 || h <= 0) return;
+    if (w == m_lastWinW && h == m_lastWinH) return;
+
+    auto root = m_ui->FindControl("root");
+    if (root.IsValid()) {
+        root.SetRect(0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h));
+        std::printf("[App] window resized to %dx%d, root->SetRect\n", w, h);
+    }
+    m_lastWinW = w;
+    m_lastWinH = h;
+}
+
 bool App::init() {
     m_ui = UICornerstone::UICornerstone::Create(
         UICornerstone::UICornerstone::Config{}
@@ -60,7 +120,17 @@ bool App::init() {
         std::printf("[App] LoadLayout failed: %s\n", m_lastError.c_str());
         return false;
     }
+    m_sdl.load();
+    if (!m_sdl.loaded) {
+        std::printf("[App] SDL3.dll 未解析（窗口 resize 同步降级）\n");
+    }
     registerActions();
+
+    // 初始化基准尺寸
+    if (m_sdl.loaded && m_sdl.getWindowSize) {
+        void* win = m_sdl.windowHandle();
+        if (win) m_sdl.getWindowSize(win, &m_lastWinW, &m_lastWinH);
+    }
     return true;
 }
 
@@ -116,6 +186,7 @@ int App::run(int autoSeconds) {
 
     while (!m_ui->IsQuitRequested() && !m_exitRequested) {
         m_ui->ProcessEvents();
+        syncRootToWindow();
 
         if (autoMode && Clock::now() >= deadline) {
             std::printf("[AUTO] done, %d frames\n", frame);

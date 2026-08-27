@@ -30,10 +30,25 @@ public:
 private:
     void registerActions();
     bool loadSkeleton();
+    void syncRootToWindow();            // 检测窗口尺寸变化 → root SetRect 触发布局重排
+
+    // SDL3.dll 动态解析（UICS 未暴露窗口尺寸查询；窗口 resize 需要主动同步 root）
+    struct SdlApi {
+        bool loaded = false;
+        void* dll = nullptr;
+        void* (*getWindows)(int*) = nullptr;
+        void* (*setWindowSize)(void*, int, int) = nullptr;
+        int   (*getWindowSize)(void*, int*, int*) = nullptr;
+        bool load();
+        void unload();
+        void* windowHandle();       // SDL_GetWindows[0]
+    };
+    SdlApi m_sdl;
 
     std::unique_ptr<UICornerstone::UICornerstone> m_ui;  // 主实例（设计器自身 UI；预览为其内子视口）
     bool m_exitRequested = false;
     std::string m_lastError;
+    int m_lastWinW = 0, m_lastWinH = 0;    // 上次已同步的窗口尺寸
 };
 
 }  // namespace Designer
