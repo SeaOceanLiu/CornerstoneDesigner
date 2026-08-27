@@ -4,12 +4,6 @@
   {
    "type": "panel",
    "id": "root",
-   "rect": {
-    "x": 0,
-    "y": 0,
-    "w": 1200,
-    "h": 800
-   },
    "colors": {
     "background": {
      "normal": "#202020FF"
@@ -19,49 +13,38 @@
     {
      "type": "panel",
      "id": "toolboxPanel",
-     "rect": {
-      "x": 0,
-      "y": 0,
-      "w": 240,
-      "h": 800
-     },
      "colors": {
       "border": {
        "normal": "#404040FF"
       }
-     }
+     },
+     "anchor": "LEFT_STRETCH"
     },
     {
      "type": "panel",
      "id": "canvasArea",
-     "rect": {
-      "x": 240,
-      "y": 0,
-      "w": 720,
-      "h": 800
-     },
      "colors": {
       "border": {
        "normal": "#404040FF"
       }
-     }
+     },
+     "anchor": "FILL"
     },
     {
      "type": "panel",
      "id": "propertyPanel",
-     "rect": {
-      "x": 960,
-      "y": 0,
-      "w": 240,
-      "h": 800
-     },
      "colors": {
       "border": {
        "normal": "#404040FF"
       }
-     }
+     },
+     "anchor": "RIGHT_STRETCH"
     }
-   ]
+   ],
+   "anchor": "FILL",
+   "layout": {
+    "type": "anchor"
+   }
   }
  ]
 }
