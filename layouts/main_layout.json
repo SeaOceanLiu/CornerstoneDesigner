@@ -266,21 +266,16 @@
       "w": 1200,
       "h": 744
      },
-     "layout": {
-      "type": "h-flow",
-      "gap": 0
-     },
      "children": [
       {
        "type": "panel",
        "id": "toolboxPanel",
        "rect": {
-        "w": 240,
-        "h": 744,
         "x": 0,
-        "y": 0
+        "y": 0,
+        "w": 240,
+        "h": 744
        },
-       "flowWeight": 0,
        "colors": {
         "border": {
          "normal": "#404040FF"
@@ -291,12 +286,11 @@
        "type": "panel",
        "id": "canvasArea",
        "rect": {
-        "w": 720,
-        "h": 744,
-        "x": 0,
-        "y": 0
+        "x": 246,
+        "y": 0,
+        "w": 708,
+        "h": 744
        },
-       "flowWeight": 1,
        "colors": {
         "border": {
          "normal": "#404040FF"
@@ -307,12 +301,11 @@
        "type": "panel",
        "id": "propertyPanel",
        "rect": {
+        "x": 960,
+        "y": 0,
         "w": 240,
-        "h": 744,
-        "x": 0,
-        "y": 0
+        "h": 744
        },
-       "flowWeight": 0,
        "colors": {
         "border": {
          "normal": "#404040FF"
