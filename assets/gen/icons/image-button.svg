@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <g fill="none" stroke="#B0B0B0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="8" y="16" width="48" height="18" rx="4"/><rect x="8" y="34" width="48" height="12" rx="4" opacity="0.35"/><text x="32" y="26" font-family="Arial, sans-serif" font-weight="bold" font-size="13" fill="#B0B0B0" text-anchor="middle" dominant-baseline="central">图</text>
+  <g fill="none" stroke="#B0B0B0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8" y="8" width="20" height="48" rx="4"/>
+    <rect x="36" y="20" width="20" height="12" rx="4"/>
+    <rect x="36" y="36" width="20" height="12" rx="4" opacity="0.5"/>
+    <circle cx="17" cy="22" r="4"/>
   </g>
 </svg>
