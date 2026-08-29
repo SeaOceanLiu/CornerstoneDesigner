@@ -281,6 +281,62 @@
                                 "border": {
                                     "normal": "#404040FF"
                                 }
+                            },
+                            "children": [
+                                {
+                                    "type": "tab-control",
+                                    "id": "toolboxTabs",
+                                    "position": "top",
+                                    "fontSize": 20,
+                                    "tabs": [
+                                        {
+                                            "title": "工具箱",
+                                            "page": {
+                                                "type": "panel",
+                                                "id": "tabToolbox",
+                                                "colors": {
+                                                    "background": {
+                                                        "normal": "#282828FF"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "title": "控件树",
+                                            "page": {
+                                                "type": "panel",
+                                                "id": "tabTree",
+                                                "colors": {
+                                                    "background": {
+                                                        "normal": "#282828FF"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "title": "资源",
+                                            "page": {
+                                                "type": "panel",
+                                                "id": "tabResource",
+                                                "colors": {
+                                                    "background": {
+                                                        "normal": "#282828FF"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "anchor": "fill",
+                                    "rect": {
+                                        "x": 0,
+                                        "y": 0,
+                                        "w": 240,
+                                        "h": 744
+                                    }
+                                }
+                            ],
+                            "layout": {
+                                "type": "anchor"
                             }
                         },
                         {
