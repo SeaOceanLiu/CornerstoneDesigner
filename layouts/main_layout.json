@@ -302,7 +302,6 @@
                                                 },
                                                 "anchor": "fill",
                                                 "defaultExpand": true,
-                                                "rowHeight": 28,
                                                 "items": [
                                                     {
                                                         "id": "grpBasic",
@@ -524,11 +523,7 @@
                                                             }
                                                         ]
                                                     }
-                                                ],
-                                                "font": {
-                                                    "name": "harmonyos-sans-sc-regular",
-                                                    "size": 20
-                                                }
+                                                ]
                                             }
                                         },
                                         {
@@ -544,7 +539,6 @@
                                                 },
                                                 "anchor": "fill",
                                                 "defaultExpand": true,
-                                                "rowHeight": 28,
                                                 "items": [
                                                     {
                                                         "id": "root",
@@ -552,11 +546,7 @@
                                                         "expanded": true,
                                                         "children": []
                                                     }
-                                                ],
-                                                "font": {
-                                                    "name": "harmonyos-sans-sc-regular",
-                                                    "size": 20
-                                                }
+                                                ]
                                             }
                                         },
                                         {
@@ -572,18 +562,13 @@
                                                 },
                                                 "anchor": "fill",
                                                 "defaultExpand": true,
-                                                "rowHeight": 28,
                                                 "items": [
                                                     {
                                                         "id": "resMain",
                                                         "label": "main (assets/)",
                                                         "expanded": true
                                                     }
-                                                ],
-                                                "font": {
-                                                    "name": "harmonyos-sans-sc-regular",
-                                                    "size": 20
-                                                }
+                                                ]
                                             }
                                         }
                                     ],
