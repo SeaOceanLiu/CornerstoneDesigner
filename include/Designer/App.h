@@ -29,7 +29,6 @@ public:
 private:
     void registerActions();
     bool loadSkeleton();
-    void setupTreeViews();              // 运行时设置三个 TreeView 字体（JSON 布局未声明 font-size 键）
     void syncRootToWindow();            // 检测窗口尺寸变化 → root SetRect 触发布局重排
 
     // SDL3.dll 动态解析（UICS 未暴露窗口尺寸查询；窗口 resize 需要主动同步 root）

@@ -337,7 +337,7 @@
                                                                 "label": "复选框 CheckBox",
                                                                 "leadingControl": {
                                                                     "type": "image",
-                                                                    "image": "gen/icons/checkbox.svg"
+                                                                    "image": "gen/icons/check-box.svg"
                                                                 }
                                                             },
                                                             {
@@ -520,10 +520,38 @@
                                                                     "type": "image",
                                                                     "image": "gen/icons/context-menu.svg"
                                                                 }
+                                                            },
+                                                            {
+                                                                "id": "tImgBtn",
+                                                                "label": "图片按钮 ImageButton",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/image-button.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tPopup",
+                                                                "label": "弹层 Popup",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/popup.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tConfirm",
+                                                                "label": "确认框 ConfirmPopup",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/confirm-popup.svg"
+                                                                }
                                                             }
                                                         ]
                                                     }
-                                                ]
+                                                ],
+                                                "font": {
+                                                    "name": "harmonyos-sans-sc-regular",
+                                                    "size": 20
+                                                }
                                             }
                                         },
                                         {
@@ -546,7 +574,11 @@
                                                         "expanded": true,
                                                         "children": []
                                                     }
-                                                ]
+                                                ],
+                                                "font": {
+                                                    "name": "harmonyos-sans-sc-regular",
+                                                    "size": 20
+                                                }
                                             }
                                         },
                                         {
@@ -568,7 +600,11 @@
                                                         "label": "main (assets/)",
                                                         "expanded": true
                                                     }
-                                                ]
+                                                ],
+                                                "font": {
+                                                    "name": "harmonyos-sans-sc-regular",
+                                                    "size": 20
+                                                }
                                             }
                                         }
                                     ],

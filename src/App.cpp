@@ -88,17 +88,6 @@ void* App::SdlApi::windowHandle() {
 }
 
 // 运行时设置三个 TreeView 字体（JSON 布局未声明 font-size 键，LayoutParser 忽略，需 Binding 设置）
-void App::setupTreeViews() {
-    for (const char* id : {"tvToolbox", "tvTree", "tvResource"}) {
-        auto tv = m_ui->FindControl(id);
-        if (tv.IsValid()) {
-            tv.SetInt(PropertyNames::kFontSize, 20);   // "font-size"
-            tv.SetInt("row-height", 28);
-            std::printf("[App] setupTreeViews: %s font-size=%d\n", id, tv.GetInt(PropertyNames::kFontSize));
-        }
-    }
-}
-
 // 窗口尺寸变化 → root.SetRect(0,0,w,h)。
 // root 为 v-flow 布局容器（menuBar/middleArea/statusBar）：menu-bar/status-bar 挂入 v-flow
 // 时自动切换手动定位参与布局引擎重排；middleArea 内 h-flow + splitter(引擎模式) 由引擎
@@ -142,7 +131,6 @@ bool App::init() {
         std::printf("[App] SDL3.dll 未解析（窗口 resize 同步降级）\n");
     }
     registerActions();
-    setupTreeViews();
 
     // 初始化基准尺寸
     if (m_sdl.loaded && m_sdl.getWindowSize) {
