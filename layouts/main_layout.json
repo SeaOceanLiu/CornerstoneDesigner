@@ -311,15 +311,83 @@
                                                         "children": [
                                                             {
                                                                 "id": "tBtn",
-                                                                "label": "按钮 Button"
+                                                                "label": "按钮 Button",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/button.svg"
+                                                                }
                                                             },
                                                             {
                                                                 "id": "tLabel",
-                                                                "label": "标签 Label"
+                                                                "label": "标签 Label",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/label.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tImage",
+                                                                "label": "图片 Image",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/image.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tCheck",
+                                                                "label": "复选框 CheckBox",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/checkbox.svg"
+                                                                }
                                                             },
                                                             {
                                                                 "id": "tEdit",
-                                                                "label": "输入框 EditBox"
+                                                                "label": "输入框 EditBox",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/edit-box.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tArea",
+                                                                "label": "多行文本 TextArea",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/text-area.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tBar",
+                                                                "label": "进度条 ProgressBar",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/progress-bar.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tSlider",
+                                                                "label": "滑块 Slider",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/slider.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tScroll",
+                                                                "label": "滚动条 ScrollBar",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/scroll-bar.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tShape",
+                                                                "label": "图形 Shape",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/shape.svg"
+                                                                }
                                                             }
                                                         ]
                                                     },
@@ -330,11 +398,129 @@
                                                         "children": [
                                                             {
                                                                 "id": "tPanel",
-                                                                "label": "面板 Panel"
+                                                                "label": "面板 Panel",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/panel.svg"
+                                                                }
                                                             },
                                                             {
                                                                 "id": "tWin",
-                                                                "label": "窗口 WinFrame"
+                                                                "label": "窗口 WinFrame",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/win-frame.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tSplit",
+                                                                "label": "分割条 Splitter",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/splitter.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tTabs",
+                                                                "label": "页签 TabControl",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/tab-control.svg"
+                                                                }
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "id": "grpList",
+                                                        "label": "列表/树控件",
+                                                        "expanded": true,
+                                                        "children": [
+                                                            {
+                                                                "id": "tCombo",
+                                                                "label": "下拉框 ComboBox",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/combo-box.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tList",
+                                                                "label": "列表 ListView",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/list-view.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tTree",
+                                                                "label": "树 TreeView",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/tree-view.svg"
+                                                                }
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "id": "grpAdv",
+                                                        "label": "高级控件",
+                                                        "expanded": true,
+                                                        "children": [
+                                                            {
+                                                                "id": "tNum",
+                                                                "label": "数字框 NumericUpDown",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/numeric-up-down.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tColor",
+                                                                "label": "取色器 ColorPicker",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/color-picker.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tMenu",
+                                                                "label": "菜单 MenuBar",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/menu-bar.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tStatus",
+                                                                "label": "状态栏 StatusBar",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/status-bar.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tAni",
+                                                                "label": "动画 Animation",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/animation.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tDialog",
+                                                                "label": "弹窗 Dialog",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/dialog.svg"
+                                                                }
+                                                            },
+                                                            {
+                                                                "id": "tCtx",
+                                                                "label": "右键菜单 ContextMenu",
+                                                                "leadingControl": {
+                                                                    "type": "image",
+                                                                    "image": "gen/icons/context-menu.svg"
+                                                                }
                                                             }
                                                         ]
                                                     }
