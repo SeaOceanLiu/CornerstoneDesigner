@@ -89,8 +89,8 @@ void* App::SdlApi::windowHandle() {
 
 // 窗口尺寸变化 → root.SetRect(0,0,w,h)。
 // root 为 v-flow 布局容器（menuBar/middleArea/statusBar）：menu-bar/status-bar 挂入 v-flow
-// 时自动切换手动定位参与布局引擎重排；middleArea 内 h-flow + splitter(引擎模式) 自动重排面板，
-// 但引擎 resize 时不更新 splitter 自身位置，需手动按 ratio 同步两分隔条。
+// 时自动切换手动定位参与布局引擎重排；middleArea 内 h-flow + splitter(引擎模式) 由引擎
+// 整链重排（面板 + splitter 链式移动，无需应用侧手动同步 splitter 位置）。
 void App::syncRootToWindow() {
     if (!m_sdl.loaded || !m_sdl.getWindowSize || !m_ui) return;
     void* win = m_sdl.windowHandle();
@@ -104,19 +104,6 @@ void App::syncRootToWindow() {
     if (root.IsValid()) {
         root.SetRect(0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h));
         std::printf("[App] window resized to %dx%d, root->SetRect\n", w, h);
-    }
-
-    // 引擎已按 flowWeight 重排三栏；引擎模式 resize 时不更新 splitter 自身位置，
-    // 按面板边界推导两分隔条位置（splitter1=左面板右缘，splitter2=中面板右缘）
-    auto toolbox = m_ui->FindControl("toolboxPanel");
-    auto canvas = m_ui->FindControl("canvasArea");
-    auto property = m_ui->FindControl("propertyPanel");
-    if (toolbox.IsValid() && canvas.IsValid() && property.IsValid()) {
-        UIRect t = toolbox.GetRect(), c = canvas.GetRect(), p = property.GetRect();
-        auto s1 = m_ui->FindControl("splitter1");
-        auto s2 = m_ui->FindControl("splitter2");
-        if (s1.IsValid()) s1.SetRect(t.x + t.w, 0, 6.0f, t.h);
-        if (s2.IsValid()) s2.SetRect(c.x + c.w, 0, 6.0f, c.h);
     }
 
     m_lastWinW = w;
