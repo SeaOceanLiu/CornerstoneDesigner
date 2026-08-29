@@ -584,8 +584,8 @@
                                         {
                                             "title": "资源",
                                             "page": {
-                                                "type": "tree-view",
-                                                "id": "tvResource",
+                                                "type": "list-view",
+                                                "id": "lvResource",
                                                 "rect": {
                                                     "x": 0,
                                                     "y": 0,
@@ -593,18 +593,32 @@
                                                     "h": 700
                                                 },
                                                 "anchor": "fill",
-                                                "defaultExpand": true,
-                                                "items": [
+                                                "mode": "multi",
+                                                "rowHeight": 24,
+                                                "headerHeight": 24,
+                                                "gridlines": true,
+                                                "columns": [
                                                     {
-                                                        "id": "resMain",
-                                                        "label": "main (assets/)",
-                                                        "expanded": true
+                                                        "title": "名称",
+                                                        "width": 100,
+                                                        "sortable": true
+                                                    },
+                                                    {
+                                                        "title": "路径",
+                                                        "width": 120,
+                                                        "sortable": true
                                                     }
                                                 ],
-                                                "font": {
-                                                    "name": "harmonyos-sans-sc-regular",
-                                                    "size": 20
-                                                }
+                                                "rows": [
+                                                    {
+                                                        "id": "resMain",
+                                                        "cells": [
+                                                            "main",
+                                                            "assets/"
+                                                        ]
+                                                    }
+                                                ],
+                                                "multiSelect": false
                                             }
                                         }
                                     ],
