@@ -1,376 +1,376 @@
 ﻿{
-  "version": "1.0",
-  "controls": [
-    {
-      "type": "panel",
-      "id": "root",
-      "rect": {
-        "x": 0,
-        "y": 0,
-        "w": 1200,
-        "h": 800
-      },
-      "colors": {
-        "background": {
-          "normal": "#202020FF"
-        }
-      },
-      "children": [
+    "version": "1.0",
+    "controls": [
         {
-          "type": "menu-bar",
-          "id": "menuBar",
-          "rect": {
-            "x": 0,
-            "y": 0,
-            "w": 1200,
-            "h": 28
-          },
-          "font": {
-            "name": "HarmonyOS_Sans_SC_Regular",
-            "size": 20
-          },
-          "menus": [
-            {
-              "caption": "文件(F)",
-              "items": [
+            "type": "panel",
+            "id": "root",
+            "rect": {
+                "x": 0,
+                "y": 0,
+                "w": 1200,
+                "h": 800
+            },
+            "colors": {
+                "background": {
+                    "normal": "#202020FF"
+                }
+            },
+            "children": [
                 {
-                  "caption": "新建",
-                  "shortcut": "Ctrl+N",
-                  "events": {
-                    "onClick": "onMenuNew"
-                  }
+                    "type": "menu-bar",
+                    "id": "menuBar",
+                    "rect": {
+                        "x": 0,
+                        "y": 0,
+                        "w": 1200,
+                        "h": 28
+                    },
+                    "font": {
+                        "name": "HarmonyOS_Sans_SC_Regular",
+                        "size": 20
+                    },
+                    "menus": [
+                        {
+                            "caption": "文件(F)",
+                            "items": [
+                                {
+                                    "caption": "新建",
+                                    "shortcut": "Ctrl+N",
+                                    "events": {
+                                        "onClick": "onMenuNew"
+                                    }
+                                },
+                                {
+                                    "caption": "打开",
+                                    "shortcut": "Ctrl+O",
+                                    "events": {
+                                        "onClick": "onMenuOpen"
+                                    }
+                                },
+                                {
+                                    "caption": "保存",
+                                    "shortcut": "Ctrl+S",
+                                    "events": {
+                                        "onClick": "onMenuSave"
+                                    }
+                                },
+                                {
+                                    "caption": "另存为",
+                                    "events": {
+                                        "onClick": "onMenuSaveAs"
+                                    }
+                                },
+                                {
+                                    "type": "separator"
+                                },
+                                {
+                                    "caption": "导入 JSON",
+                                    "events": {
+                                        "onClick": "onMenuImportJson"
+                                    }
+                                },
+                                {
+                                    "caption": "导出 JSON",
+                                    "events": {
+                                        "onClick": "onMenuExportJson"
+                                    }
+                                },
+                                {
+                                    "caption": "导出代码",
+                                    "events": {
+                                        "onClick": "onMenuExportCode"
+                                    }
+                                },
+                                {
+                                    "caption": "最近文件",
+                                    "items": [
+                                        {
+                                            "caption": "（占位：运行时填充）",
+                                            "events": {
+                                                "onClick": "onMenuRecent"
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "type": "separator"
+                                },
+                                {
+                                    "caption": "退出",
+                                    "events": {
+                                        "onClick": "onMenuExit"
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "caption": "编辑(E)",
+                            "items": [
+                                {
+                                    "caption": "撤销",
+                                    "shortcut": "Ctrl+Z",
+                                    "events": {
+                                        "onClick": "onMenuUndo"
+                                    }
+                                },
+                                {
+                                    "caption": "重做",
+                                    "shortcut": "Ctrl+Y",
+                                    "events": {
+                                        "onClick": "onMenuRedo"
+                                    }
+                                },
+                                {
+                                    "type": "separator"
+                                },
+                                {
+                                    "caption": "复制",
+                                    "shortcut": "Ctrl+C",
+                                    "events": {
+                                        "onClick": "onMenuCopy"
+                                    }
+                                },
+                                {
+                                    "caption": "粘贴",
+                                    "shortcut": "Ctrl+V",
+                                    "events": {
+                                        "onClick": "onMenuPaste"
+                                    }
+                                },
+                                {
+                                    "caption": "删除",
+                                    "shortcut": "Del",
+                                    "events": {
+                                        "onClick": "onMenuDelete"
+                                    }
+                                },
+                                {
+                                    "type": "separator"
+                                },
+                                {
+                                    "caption": "置前",
+                                    "events": {
+                                        "onClick": "onMenuFront"
+                                    }
+                                },
+                                {
+                                    "caption": "置后",
+                                    "events": {
+                                        "onClick": "onMenuBack"
+                                    }
+                                },
+                                {
+                                    "caption": "上移",
+                                    "events": {
+                                        "onClick": "onMenuMoveUp"
+                                    }
+                                },
+                                {
+                                    "caption": "下移",
+                                    "events": {
+                                        "onClick": "onMenuMoveDown"
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "caption": "视图(V)",
+                            "items": [
+                                {
+                                    "caption": "缩放 25%",
+                                    "shortcut": "Ctrl+0",
+                                    "events": {
+                                        "onClick": "onMenuZoom25"
+                                    }
+                                },
+                                {
+                                    "caption": "缩放 50%",
+                                    "shortcut": "Ctrl+1",
+                                    "events": {
+                                        "onClick": "onMenuZoom50"
+                                    }
+                                },
+                                {
+                                    "caption": "缩放 75%",
+                                    "shortcut": "Ctrl+2",
+                                    "events": {
+                                        "onClick": "onMenuZoom75"
+                                    }
+                                },
+                                {
+                                    "caption": "缩放 100%",
+                                    "shortcut": "Ctrl+3",
+                                    "events": {
+                                        "onClick": "onMenuZoom100"
+                                    }
+                                },
+                                {
+                                    "caption": "缩放 150%",
+                                    "shortcut": "Ctrl+4",
+                                    "events": {
+                                        "onClick": "onMenuZoom150"
+                                    }
+                                },
+                                {
+                                    "caption": "缩放 200%",
+                                    "shortcut": "Ctrl+5",
+                                    "events": {
+                                        "onClick": "onMenuZoom200"
+                                    }
+                                },
+                                {
+                                    "type": "separator"
+                                },
+                                {
+                                    "caption": "网格",
+                                    "shortcut": "Ctrl+G",
+                                    "events": {
+                                        "onClick": "onMenuToggleGrid"
+                                    }
+                                },
+                                {
+                                    "caption": "对齐",
+                                    "shortcut": "Ctrl+Shift+G",
+                                    "events": {
+                                        "onClick": "onMenuToggleSnap"
+                                    }
+                                },
+                                {
+                                    "caption": "预览模式",
+                                    "shortcut": "F5",
+                                    "events": {
+                                        "onClick": "onMenuPreview"
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "caption": "帮助(H)",
+                            "items": [
+                                {
+                                    "caption": "关于",
+                                    "events": {
+                                        "onClick": "onMenuAbout"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
                 },
                 {
-                  "caption": "打开",
-                  "shortcut": "Ctrl+O",
-                  "events": {
-                    "onClick": "onMenuOpen"
-                  }
-                },
-                {
-                  "caption": "保存",
-                  "shortcut": "Ctrl+S",
-                  "events": {
-                    "onClick": "onMenuSave"
-                  }
-                },
-                {
-                  "caption": "另存为",
-                  "events": {
-                    "onClick": "onMenuSaveAs"
-                  }
-                },
-                {
-                  "type": "separator"
-                },
-                {
-                  "caption": "导入 JSON",
-                  "events": {
-                    "onClick": "onMenuImportJson"
-                  }
-                },
-                {
-                  "caption": "导出 JSON",
-                  "events": {
-                    "onClick": "onMenuExportJson"
-                  }
-                },
-                {
-                  "caption": "导出代码",
-                  "events": {
-                    "onClick": "onMenuExportCode"
-                  }
-                },
-                {
-                  "caption": "最近文件",
-                  "items": [
-                    {
-                      "caption": "（占位：运行时填充）",
-                      "events": {
-                        "onClick": "onMenuRecent"
-                      }
+                    "type": "panel",
+                    "id": "middleArea",
+                    "rect": {
+                        "x": 0,
+                        "y": 0,
+                        "w": 1200,
+                        "h": 744
+                    },
+                    "children": [
+                        {
+                            "type": "panel",
+                            "id": "toolboxPanel",
+                            "rect": {
+                                "x": 0,
+                                "y": 0,
+                                "w": 240,
+                                "h": 744
+                            },
+                            "flowWeight": 0,
+                            "colors": {
+                                "border": {
+                                    "normal": "#404040FF"
+                                }
+                            }
+                        },
+                        {
+                            "type": "splitter",
+                            "id": "splitter1",
+                            "orientation": "vertical",
+                            "thickness": 6,
+                            "ratio": 0.2,
+                            "minFirst": 100,
+                            "minSecond": 100
+                        },
+                        {
+                            "type": "panel",
+                            "id": "canvasArea",
+                            "rect": {
+                                "x": 0,
+                                "y": 0,
+                                "w": 720,
+                                "h": 744
+                            },
+                            "flowWeight": 1,
+                            "colors": {
+                                "border": {
+                                    "normal": "#404040FF"
+                                }
+                            }
+                        },
+                        {
+                            "type": "splitter",
+                            "id": "splitter2",
+                            "orientation": "vertical",
+                            "thickness": 6,
+                            "ratio": 0.8,
+                            "minFirst": 100,
+                            "minSecond": 100
+                        },
+                        {
+                            "type": "panel",
+                            "id": "propertyPanel",
+                            "rect": {
+                                "x": 0,
+                                "y": 0,
+                                "w": 240,
+                                "h": 744
+                            },
+                            "flowWeight": 0,
+                            "colors": {
+                                "border": {
+                                    "normal": "#404040FF"
+                                }
+                            }
+                        }
+                    ],
+                    "flowWeight": 1,
+                    "layout": {
+                        "type": "h-flow",
+                        "gap": 0
                     }
-                  ]
                 },
                 {
-                  "type": "separator"
-                },
-                {
-                  "caption": "退出",
-                  "events": {
-                    "onClick": "onMenuExit"
-                  }
+                    "type": "status-bar",
+                    "id": "statusBar",
+                    "rect": {
+                        "x": 0,
+                        "y": 0,
+                        "w": 1200,
+                        "h": 28
+                    },
+                    "fontSize": 20,
+                    "items": [
+                        {
+                            "id": "statusHint",
+                            "text": "就绪"
+                        },
+                        {
+                            "id": "statusSelection",
+                            "text": "未选中控件"
+                        },
+                        {
+                            "id": "statusRight",
+                            "text": "缩放 100%  |  控件 0  |  网格 开",
+                            "align": "right"
+                        }
+                    ]
                 }
-              ]
-            },
-            {
-              "caption": "编辑(E)",
-              "items": [
-                {
-                  "caption": "撤销",
-                  "shortcut": "Ctrl+Z",
-                  "events": {
-                    "onClick": "onMenuUndo"
-                  }
-                },
-                {
-                  "caption": "重做",
-                  "shortcut": "Ctrl+Y",
-                  "events": {
-                    "onClick": "onMenuRedo"
-                  }
-                },
-                {
-                  "type": "separator"
-                },
-                {
-                  "caption": "复制",
-                  "shortcut": "Ctrl+C",
-                  "events": {
-                    "onClick": "onMenuCopy"
-                  }
-                },
-                {
-                  "caption": "粘贴",
-                  "shortcut": "Ctrl+V",
-                  "events": {
-                    "onClick": "onMenuPaste"
-                  }
-                },
-                {
-                  "caption": "删除",
-                  "shortcut": "Del",
-                  "events": {
-                    "onClick": "onMenuDelete"
-                  }
-                },
-                {
-                  "type": "separator"
-                },
-                {
-                  "caption": "置前",
-                  "events": {
-                    "onClick": "onMenuFront"
-                  }
-                },
-                {
-                  "caption": "置后",
-                  "events": {
-                    "onClick": "onMenuBack"
-                  }
-                },
-                {
-                  "caption": "上移",
-                  "events": {
-                    "onClick": "onMenuMoveUp"
-                  }
-                },
-                {
-                  "caption": "下移",
-                  "events": {
-                    "onClick": "onMenuMoveDown"
-                  }
-                }
-              ]
-            },
-            {
-              "caption": "视图(V)",
-              "items": [
-                {
-                  "caption": "缩放 25%",
-                  "shortcut": "Ctrl+0",
-                  "events": {
-                    "onClick": "onMenuZoom25"
-                  }
-                },
-                {
-                  "caption": "缩放 50%",
-                  "shortcut": "Ctrl+1",
-                  "events": {
-                    "onClick": "onMenuZoom50"
-                  }
-                },
-                {
-                  "caption": "缩放 75%",
-                  "shortcut": "Ctrl+2",
-                  "events": {
-                    "onClick": "onMenuZoom75"
-                  }
-                },
-                {
-                  "caption": "缩放 100%",
-                  "shortcut": "Ctrl+3",
-                  "events": {
-                    "onClick": "onMenuZoom100"
-                  }
-                },
-                {
-                  "caption": "缩放 150%",
-                  "shortcut": "Ctrl+4",
-                  "events": {
-                    "onClick": "onMenuZoom150"
-                  }
-                },
-                {
-                  "caption": "缩放 200%",
-                  "shortcut": "Ctrl+5",
-                  "events": {
-                    "onClick": "onMenuZoom200"
-                  }
-                },
-                {
-                  "type": "separator"
-                },
-                {
-                  "caption": "网格",
-                  "shortcut": "Ctrl+G",
-                  "events": {
-                    "onClick": "onMenuToggleGrid"
-                  }
-                },
-                {
-                  "caption": "对齐",
-                  "shortcut": "Ctrl+Shift+G",
-                  "events": {
-                    "onClick": "onMenuToggleSnap"
-                  }
-                },
-                {
-                  "caption": "预览模式",
-                  "shortcut": "F5",
-                  "events": {
-                    "onClick": "onMenuPreview"
-                  }
-                }
-              ]
-            },
-            {
-              "caption": "帮助(H)",
-              "items": [
-                {
-                  "caption": "关于",
-                  "events": {
-                    "onClick": "onMenuAbout"
-                  }
-                }
-              ]
+            ],
+            "layout": {
+                "type": "v-flow",
+                "gap": 0
             }
-          ]
-        },
-        {
-          "type": "panel",
-          "id": "middleArea",
-          "rect": {
-            "x": 0,
-            "y": 0,
-            "w": 1200,
-            "h": 744
-          },
-          "children": [
-            {
-              "type": "panel",
-              "id": "toolboxPanel",
-              "rect": {
-                "x": 0,
-                "y": 0,
-                "w": 240,
-                "h": 744
-              },
-              "flowWeight": 0,
-              "colors": {
-                "border": {
-                  "normal": "#404040FF"
-                }
-              }
-            },
-            {
-              "type": "splitter",
-              "id": "splitter1",
-              "orientation": "vertical",
-              "thickness": 6,
-              "ratio": 0.2,
-              "minFirst": 100,
-              "minSecond": 100
-            },
-            {
-              "type": "panel",
-              "id": "canvasArea",
-              "rect": {
-                "x": 0,
-                "y": 0,
-                "w": 720,
-                "h": 744
-              },
-              "flowWeight": 1,
-              "colors": {
-                "border": {
-                  "normal": "#404040FF"
-                }
-              }
-            },
-            {
-              "type": "splitter",
-              "id": "splitter2",
-              "orientation": "vertical",
-              "thickness": 6,
-              "ratio": 0.8,
-              "minFirst": 100,
-              "minSecond": 100
-            },
-            {
-              "type": "panel",
-              "id": "propertyPanel",
-              "rect": {
-                "x": 0,
-                "y": 0,
-                "w": 240,
-                "h": 744
-              },
-              "flowWeight": 0,
-              "colors": {
-                "border": {
-                  "normal": "#404040FF"
-                }
-              }
-            }
-          ],
-          "flowWeight": 1,
-          "layout": {
-            "type": "h-flow",
-            "gap": 0
-          }
-        },
-        {
-          "type": "status-bar",
-          "id": "statusBar",
-          "rect": {
-            "x": 0,
-            "y": 0,
-            "w": 1200,
-            "h": 28
-          },
-          "fontSize": 20,
-          "items": [
-            {
-              "id": "statusHint",
-              "text": "就绪"
-            },
-            {
-              "id": "statusSelection",
-              "text": "未选中控件"
-            },
-            {
-              "id": "statusRight",
-              "text": "缩放 100%  |  控件 0  |  网格 开",
-              "align": "right"
-            }
-          ]
         }
-      ],
-      "layout": {
-        "type": "v-flow",
-        "gap": 0
-      }
-    }
-  ]
+    ]
 }
