@@ -276,21 +276,32 @@
         "w": 240,
         "h": 744
        },
+       "flowWeight": 0,
        "colors": {
         "border": {
          "normal": "#404040FF"
         }
        }
+      },
+      {
+       "type": "splitter",
+       "id": "splitter1",
+       "orientation": "vertical",
+       "thickness": 6,
+       "ratio": 0.2,
+       "minFirst": 100,
+       "minSecond": 100
       },
       {
        "type": "panel",
        "id": "canvasArea",
        "rect": {
-        "x": 246,
+        "x": 0,
         "y": 0,
-        "w": 708,
+        "w": 720,
         "h": 744
        },
+       "flowWeight": 1,
        "colors": {
         "border": {
          "normal": "#404040FF"
@@ -298,14 +309,24 @@
        }
       },
       {
+       "type": "splitter",
+       "id": "splitter2",
+       "orientation": "vertical",
+       "thickness": 6,
+       "ratio": 0.8,
+       "minFirst": 100,
+       "minSecond": 100
+      },
+      {
        "type": "panel",
        "id": "propertyPanel",
        "rect": {
-        "x": 960,
+        "x": 0,
         "y": 0,
         "w": 240,
         "h": 744
        },
+       "flowWeight": 0,
        "colors": {
         "border": {
          "normal": "#404040FF"
@@ -313,7 +334,11 @@
        }
       }
      ],
-     "flowWeight": 1
+     "flowWeight": 1,
+     "layout": {
+      "type": "h-flow",
+      "gap": 0
+     }
     },
     {
      "type": "status-bar",

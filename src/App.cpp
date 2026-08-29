@@ -89,8 +89,8 @@ void* App::SdlApi::windowHandle() {
 
 // 窗口尺寸变化 → root.SetRect(0,0,w,h)。
 // root 为 v-flow 布局容器（menuBar/middleArea/statusBar）：menu-bar/status-bar 挂入 v-flow
-// 时自动切换手动定位参与布局引擎重排；middleArea 为绝对定位（三栏+两 Splitter 命令式管理），
-// reflow 后按 ratio 重算其内部布局。
+// 时自动切换手动定位参与布局引擎重排；middleArea 内 h-flow + splitter(引擎模式) 自动重排面板，
+// 但引擎 resize 时不更新 splitter 自身位置，需手动按 ratio 同步两分隔条。
 void App::syncRootToWindow() {
     if (!m_sdl.loaded || !m_sdl.getWindowSize || !m_ui) return;
     void* win = m_sdl.windowHandle();
@@ -106,88 +106,21 @@ void App::syncRootToWindow() {
         std::printf("[App] window resized to %dx%d, root->SetRect\n", w, h);
     }
 
-    // v-flow reflow 后 middleArea 尺寸已更新，按 ratio 重算三栏 + 两 Splitter 位置
-    auto middle = m_ui->FindControl("middleArea");
-    if (middle.IsValid()) {
-        UIRect mr = middle.GetRect();
-        syncSplitterLayout(static_cast<int>(mr.w), static_cast<int>(mr.h));
+    // 引擎已按 flowWeight 重排三栏；引擎模式 resize 时不更新 splitter 自身位置，
+    // 按面板边界推导两分隔条位置（splitter1=左面板右缘，splitter2=中面板右缘）
+    auto toolbox = m_ui->FindControl("toolboxPanel");
+    auto canvas = m_ui->FindControl("canvasArea");
+    auto property = m_ui->FindControl("propertyPanel");
+    if (toolbox.IsValid() && canvas.IsValid() && property.IsValid()) {
+        UIRect t = toolbox.GetRect(), c = canvas.GetRect(), p = property.GetRect();
+        auto s1 = m_ui->FindControl("splitter1");
+        auto s2 = m_ui->FindControl("splitter2");
+        if (s1.IsValid()) s1.SetRect(t.x + t.w, 0, 6.0f, t.h);
+        if (s2.IsValid()) s2.SetRect(c.x + c.w, 0, 6.0f, c.h);
     }
 
     m_lastWinW = w;
     m_lastWinH = h;
-}
-
-// 命令式创建两个 Splitter（LayoutParser 解析 splitter JSON 节点会阻塞，故绕过 JSON）。
-// 实验发现：多 Splitter 共享同一中间面板时引擎自动管理(first/second-linked)会区域冲突，
-// 故不 SetPtr 关联——Splitter 仅作拖拽手柄 + onSplitterMoved 上报 ratio，
-// 三栏与分隔条位置全部由 syncSplitterLayout 统一维护（窗口 resize / 拖拽后重算）。
-// orientation=1 → 垂直分隔条（左右分割，toolbox|canvas 与 canvas|property）。
-void App::setupSplitters() {
-    auto toolbox = m_ui->FindControl("toolboxPanel");
-    auto canvas = m_ui->FindControl("canvasArea");
-    auto property = m_ui->FindControl("propertyPanel");
-    if (!toolbox.IsValid() || !canvas.IsValid() || !property.IsValid()) {
-        std::printf("[App] splitter: 面板未找到\n");
-        return;
-    }
-
-    auto middle = m_ui->FindControl("middleArea");
-    float h = middle.IsValid() ? middle.GetRect().h : 744.0f;
-
-    // Splitter1：toolbox | canvas
-    m_splitter1.reset(new Control(m_ui->CreateSplitter(240.0f, 0.0f, kSplitterThk, h, 1)));
-    if (m_splitter1->IsValid()) {
-        m_splitter1->SetCallback(PropertyNames::kEventKeySplitterMoved, [this](const Event& e) {
-            float r = e.GetFloatVal();
-            if (r > 0.05f && r < 0.95f) {
-                m_s1Ratio = r;
-                auto middle = m_ui->FindControl("middleArea");
-                if (middle.IsValid()) { UIRect mr = middle.GetRect(); syncSplitterLayout(static_cast<int>(mr.w), static_cast<int>(mr.h)); }
-                std::printf("[App] splitter1 moved, ratio=%.3f\n", r);
-            }
-        });
-    }
-
-    // Splitter2：canvas | property
-    m_splitter2.reset(new Control(m_ui->CreateSplitter(960.0f, 0.0f, kSplitterThk, h, 1)));
-    if (m_splitter2->IsValid()) {
-        m_splitter2->SetCallback(PropertyNames::kEventKeySplitterMoved, [this](const Event& e) {
-            float r = e.GetFloatVal();
-            if (r > 0.05f && r < 0.95f) {
-                m_s2Ratio = r;
-                auto middle = m_ui->FindControl("middleArea");
-                if (middle.IsValid()) { UIRect mr = middle.GetRect(); syncSplitterLayout(static_cast<int>(mr.w), static_cast<int>(mr.h)); }
-                std::printf("[App] splitter2 moved, ratio=%.3f\n", r);
-            }
-        });
-    }
-
-    std::printf("[App] setupSplitters done\n");
-
-    // 初始同步：按 ratio 统一布局三栏 + 两分隔条
-    if (middle.IsValid()) {
-        UIRect mr = middle.GetRect();
-        syncSplitterLayout(static_cast<int>(mr.w), static_cast<int>(mr.h));
-    }
-}
-
-// 按 m_s1Ratio/m_s2Ratio 重算三栏 + 两 Splitter 在 middleArea 内的绝对位置。
-// 宽 W、高 H；分隔条厚度 T；x1=r1*W、x2=r2*W 为两分隔条左缘。
-void App::syncSplitterLayout(int W, int H) {
-    if (W <= 0 || H <= 0) return;
-    const float T = kSplitterThk;
-    const float x1 = m_s1Ratio * W;
-    const float x2 = m_s2Ratio * W;
-
-    auto toolbox = m_ui->FindControl("toolboxPanel");
-    auto canvas = m_ui->FindControl("canvasArea");
-    auto property = m_ui->FindControl("propertyPanel");
-
-    if (toolbox.IsValid())  toolbox.SetRect(0, 0, x1, static_cast<float>(H));
-    if (m_splitter1)        m_splitter1->SetRect(x1, 0, T, static_cast<float>(H));
-    if (canvas.IsValid())   canvas.SetRect(x1 + T, 0, x2 - x1 - T, static_cast<float>(H));
-    if (m_splitter2)        m_splitter2->SetRect(x2, 0, T, static_cast<float>(H));
-    if (property.IsValid()) property.SetRect(x2 + T, 0, W - x2 - T, static_cast<float>(H));
 }
 
 bool App::init() {
@@ -210,7 +143,6 @@ bool App::init() {
         std::printf("[App] SDL3.dll 未解析（窗口 resize 同步降级）\n");
     }
     registerActions();
-    setupSplitters();
 
     // 初始化基准尺寸
     if (m_sdl.loaded && m_sdl.getWindowSize) {
