@@ -547,11 +547,7 @@
                                                             }
                                                         ]
                                                     }
-                                                ],
-                                                "font": {
-                                                    "name": "harmonyos-sans-sc-regular",
-                                                    "size": 20
-                                                }
+                                                ]
                                             }
                                         },
                                         {
@@ -574,11 +570,7 @@
                                                         "expanded": true,
                                                         "children": []
                                                     }
-                                                ],
-                                                "font": {
-                                                    "name": "harmonyos-sans-sc-regular",
-                                                    "size": 20
-                                                }
+                                                ]
                                             }
                                         },
                                         {
@@ -594,8 +586,8 @@
                                                 },
                                                 "anchor": "fill",
                                                 "mode": "multi",
-                                                "rowHeight": 24,
-                                                "headerHeight": 24,
+                                                "rowHeight": 28,
+                                                "headerHeight": 28,
                                                 "gridlines": true,
                                                 "columns": [
                                                     {
@@ -628,6 +620,10 @@
                                         "y": 0,
                                         "w": 240,
                                         "h": 744
+                                    },
+                                    "font": {
+                                        "name": "harmonyos-sans-sc-regular",
+                                        "size": 20
                                     }
                                 }
                             ],
