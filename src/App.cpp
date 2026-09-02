@@ -87,7 +87,6 @@ void* App::SdlApi::windowHandle() {
     return nullptr;
 }
 
-// 运行时设置三个 TreeView 字体（JSON 布局未声明 font-size 键，LayoutParser 忽略，需 Binding 设置）
 // 窗口尺寸变化 → root.SetRect(0,0,w,h)。
 // root 为 v-flow 布局容器（menuBar/middleArea/statusBar）：menu-bar/status-bar 挂入 v-flow
 // 时自动切换手动定位参与布局引擎重排；middleArea 内 h-flow + splitter(引擎模式) 由引擎

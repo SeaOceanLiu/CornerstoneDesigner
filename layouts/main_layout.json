@@ -610,11 +610,7 @@
                                                         ]
                                                     }
                                                 ],
-                                                "multiSelect": false,
-                                                "font": {
-                                                    "name": "harmonyos-sans-sc-regular",
-                                                    "size": 20
-                                                }
+                                                "multiSelect": false
                                             }
                                         }
                                     ],
@@ -683,7 +679,54 @@
                                 "border": {
                                     "normal": "#404040FF"
                                 }
-                            }
+                            },
+                            "layout": {
+                                "type": "anchor"
+                            },
+                            "children": [
+                                {
+                                    "type": "tab-control",
+                                    "id": "propertyTabs",
+                                    "rect": {
+                                        "x": 0,
+                                        "y": 0,
+                                        "w": 240,
+                                        "h": 744
+                                    },
+                                    "anchor": "fill",
+                                    "position": "top",
+                                    "font": {
+                                        "name": "harmonyos-sans-sc-regular",
+                                        "size": 20
+                                    },
+                                    "tabs": [
+                                        {
+                                            "title": "属性",
+                                            "page": {
+                                                "type": "panel",
+                                                "id": "tabProperty",
+                                                "colors": {
+                                                    "background": {
+                                                        "normal": "#282828FF"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "title": "事件",
+                                            "page": {
+                                                "type": "panel",
+                                                "id": "tabEvent",
+                                                "colors": {
+                                                    "background": {
+                                                        "normal": "#282828FF"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
                         }
                     ],
                     "flowWeight": 1,
