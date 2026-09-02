@@ -610,7 +610,11 @@
                                                         ]
                                                     }
                                                 ],
-                                                "multiSelect": false
+                                                "multiSelect": false,
+                                                "font": {
+                                                    "name": "harmonyos-sans-sc-regular",
+                                                    "size": 20
+                                                }
                                             }
                                         }
                                     ],
