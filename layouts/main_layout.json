@@ -654,7 +654,228 @@
                                 "border": {
                                     "normal": "#404040FF"
                                 }
-                            }
+                            },
+                            "children": [
+                                {
+                                    "type": "panel",
+                                    "id": "canvasToolbar",
+                                    "rect": {
+                                        "x": 0,
+                                        "y": 0,
+                                        "w": 708,
+                                        "h": 40
+                                    },
+                                    "colors": {
+                                        "background": {
+                                            "normal": "#282828FF"
+                                        },
+                                        "border": {
+                                            "normal": "#404040FF"
+                                        }
+                                    },
+                                    "layout": {
+                                        "type": "h-flow",
+                                        "gap": 8,
+                                        "padding": {
+                                            "left": 8,
+                                            "top": 4,
+                                            "right": 8,
+                                            "bottom": 4
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "type": "combo-box",
+                                            "id": "tb_zoom",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 104,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            },
+                                            "items": [
+                                                {
+                                                    "label": "25%",
+                                                    "value": "25%"
+                                                },
+                                                {
+                                                    "label": "50%",
+                                                    "value": "50%"
+                                                },
+                                                {
+                                                    "label": "75%",
+                                                    "value": "75%"
+                                                },
+                                                {
+                                                    "label": "100%",
+                                                    "value": "100%"
+                                                },
+                                                {
+                                                    "label": "150%",
+                                                    "value": "150%"
+                                                },
+                                                {
+                                                    "label": "200%",
+                                                    "value": "200%"
+                                                }
+                                            ],
+                                            "selectedIndex": 3
+                                        },
+                                        {
+                                            "type": "button",
+                                            "id": "tb_zoom_out",
+                                            "caption": "−",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 40,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            }
+                                        },
+                                        {
+                                            "type": "button",
+                                            "id": "tb_zoom_100",
+                                            "caption": "1:1",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 48,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            }
+                                        },
+                                        {
+                                            "type": "button",
+                                            "id": "tb_zoom_in",
+                                            "caption": "+",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 40,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            }
+                                        },
+                                        {
+                                            "type": "check-box",
+                                            "id": "tb_grid",
+                                            "caption": "网格",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 68,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            },
+                                            "checkState": "checked"
+                                        },
+                                        {
+                                            "type": "check-box",
+                                            "id": "tb_snap",
+                                            "caption": "对齐",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 68,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            },
+                                            "checkState": "checked"
+                                        },
+                                        {
+                                            "type": "combo-box",
+                                            "id": "tb_align",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 124,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            },
+                                            "items": [
+                                                {
+                                                    "label": "左对齐",
+                                                    "value": "左对齐"
+                                                },
+                                                {
+                                                    "label": "水平居中",
+                                                    "value": "水平居中"
+                                                },
+                                                {
+                                                    "label": "右对齐",
+                                                    "value": "右对齐"
+                                                },
+                                                {
+                                                    "label": "顶对齐",
+                                                    "value": "顶对齐"
+                                                },
+                                                {
+                                                    "label": "垂直居中",
+                                                    "value": "垂直居中"
+                                                },
+                                                {
+                                                    "label": "底对齐",
+                                                    "value": "底对齐"
+                                                }
+                                            ],
+                                            "selectedIndex": 0
+                                        },
+                                        {
+                                            "type": "panel",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 0,
+                                                "h": 32
+                                            },
+                                            "flowWeight": 1,
+                                            "layout": {
+                                                "type": "h-flow",
+                                                "gap": 0
+                                            },
+                                            "children": []
+                                        },
+                                        {
+                                            "type": "button",
+                                            "id": "tb_preview",
+                                            "caption": "预览",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 68,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
                         },
                         {
                             "type": "splitter",
@@ -744,7 +965,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -758,7 +979,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -776,7 +997,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 120,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -791,7 +1012,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -805,7 +1026,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -823,7 +1044,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 120,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -838,7 +1059,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -852,7 +1073,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -870,7 +1091,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 120,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -885,7 +1106,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -899,7 +1120,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -917,7 +1138,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 120,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -932,7 +1153,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -946,7 +1167,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -983,7 +1204,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 120,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1018,7 +1239,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -1032,7 +1253,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1047,7 +1268,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 120,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1062,7 +1283,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -1076,7 +1297,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1091,7 +1312,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 120,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1106,7 +1327,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -1120,7 +1341,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1135,7 +1356,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1150,7 +1371,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -1164,7 +1385,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1179,7 +1400,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 30,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1235,7 +1456,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 120,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "font": {
                                                             "name": "HarmonyOS_Sans_SC_Regular",
@@ -1294,7 +1515,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -1308,7 +1529,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 0,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "flowWeight": 1,
                                                                 "font": {
@@ -1391,7 +1612,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -1405,7 +1626,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 0,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "flowWeight": 1,
                                                                 "font": {
@@ -1422,7 +1643,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -1437,7 +1658,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 108,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1452,7 +1673,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 108,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1508,7 +1729,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -1522,7 +1743,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 60,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1536,7 +1757,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 70,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1550,7 +1771,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 70,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1564,7 +1785,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 16,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1579,7 +1800,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 30
+                                                            "h": 32
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -1594,7 +1815,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 60,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1614,7 +1835,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 70,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1634,7 +1855,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 70,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
@@ -1654,7 +1875,7 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 16,
-                                                                    "h": 30
+                                                                    "h": 32
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
