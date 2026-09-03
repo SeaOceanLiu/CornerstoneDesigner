@@ -1225,8 +1225,7 @@
                                                             "text": {
                                                                 "normal": "#606060FF"
                                                             }
-                                                        },
-                                                        "alignment": "mid-left"
+                                                        }
                                                     },
                                                     {
                                                         "type": "button",
@@ -1270,7 +1269,420 @@
                                                     "background": {
                                                         "normal": "#282828FF"
                                                     }
-                                                }
+                                                },
+                                                "rect": {
+                                                    "x": 0,
+                                                    "y": 0,
+                                                    "w": 240,
+                                                    "h": 744
+                                                },
+                                                "anchor": "fill",
+                                                "layout": {
+                                                    "type": "v-flow",
+                                                    "gap": 4,
+                                                    "padding": {
+                                                        "left": 8,
+                                                        "top": 6,
+                                                        "right": 8,
+                                                        "bottom": 6
+                                                    }
+                                                },
+                                                "children": [
+                                                    {
+                                                        "type": "panel",
+                                                        "rect": {
+                                                            "x": 0,
+                                                            "y": 0,
+                                                            "w": 224,
+                                                            "h": 30
+                                                        },
+                                                        "layout": {
+                                                            "type": "h-flow",
+                                                            "gap": 0
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "combo-box",
+                                                                "id": "ev_type",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 0,
+                                                                    "h": 30
+                                                                },
+                                                                "flowWeight": 1,
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                },
+                                                                "items": [
+                                                                    {
+                                                                        "label": "onClick",
+                                                                        "value": "onClick"
+                                                                    },
+                                                                    {
+                                                                        "label": "onValueChanged",
+                                                                        "value": "onValueChanged"
+                                                                    },
+                                                                    {
+                                                                        "label": "onTextChanged",
+                                                                        "value": "onTextChanged"
+                                                                    },
+                                                                    {
+                                                                        "label": "onSelectionChanged",
+                                                                        "value": "onSelectionChanged"
+                                                                    },
+                                                                    {
+                                                                        "label": "onCheckChanged",
+                                                                        "value": "onCheckChanged"
+                                                                    },
+                                                                    {
+                                                                        "label": "onColorChanged",
+                                                                        "value": "onColorChanged"
+                                                                    },
+                                                                    {
+                                                                        "label": "onPositionChanged",
+                                                                        "value": "onPositionChanged"
+                                                                    },
+                                                                    {
+                                                                        "label": "onConfirm",
+                                                                        "value": "onConfirm"
+                                                                    },
+                                                                    {
+                                                                        "label": "onCancel",
+                                                                        "value": "onCancel"
+                                                                    },
+                                                                    {
+                                                                        "label": "onClose",
+                                                                        "value": "onClose"
+                                                                    },
+                                                                    {
+                                                                        "label": "onEnter",
+                                                                        "value": "onEnter"
+                                                                    },
+                                                                    {
+                                                                        "label": "onSelect",
+                                                                        "value": "onSelect"
+                                                                    },
+                                                                    {
+                                                                        "label": "onExpand",
+                                                                        "value": "onExpand"
+                                                                    },
+                                                                    {
+                                                                        "label": "onCollapse",
+                                                                        "value": "onCollapse"
+                                                                    },
+                                                                    {
+                                                                        "label": "onTabChange",
+                                                                        "value": "onTabChange"
+                                                                    },
+                                                                    {
+                                                                        "label": "onSplitterMoved",
+                                                                        "value": "onSplitterMoved"
+                                                                    }
+                                                                ],
+                                                                "selectedIndex": 0
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "panel",
+                                                        "rect": {
+                                                            "x": 0,
+                                                            "y": 0,
+                                                            "w": 224,
+                                                            "h": 30
+                                                        },
+                                                        "layout": {
+                                                            "type": "h-flow",
+                                                            "gap": 0
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "edit-box",
+                                                                "id": "ev_handler",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 0,
+                                                                    "h": 30
+                                                                },
+                                                                "flowWeight": 1,
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                },
+                                                                "placeholder": "handler 名"
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "panel",
+                                                        "rect": {
+                                                            "x": 0,
+                                                            "y": 0,
+                                                            "w": 224,
+                                                            "h": 30
+                                                        },
+                                                        "layout": {
+                                                            "type": "h-flow",
+                                                            "gap": 4
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "button",
+                                                                "id": "ev_suggest",
+                                                                "caption": "建议命名",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 108,
+                                                                    "h": 30
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                }
+                                                            },
+                                                            {
+                                                                "type": "button",
+                                                                "id": "ev_add",
+                                                                "caption": "添加绑定",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 108,
+                                                                    "h": 30
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                }
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "label",
+                                                        "id": "ev_err",
+                                                        "caption": "",
+                                                        "rect": {
+                                                            "x": 0,
+                                                            "y": 0,
+                                                            "w": 224,
+                                                            "h": 20
+                                                        },
+                                                        "font": {
+                                                            "name": "HarmonyOS_Sans_SC_Regular",
+                                                            "size": 16
+                                                        },
+                                                        "colors": {
+                                                            "text": {
+                                                                "normal": "#E06060FF"
+                                                            }
+                                                        },
+                                                        "visible": false
+                                                    },
+                                                    {
+                                                        "type": "label",
+                                                        "id": "grpBound",
+                                                        "caption": "已绑定",
+                                                        "rect": {
+                                                            "x": 0,
+                                                            "y": 0,
+                                                            "w": 224,
+                                                            "h": 22
+                                                        },
+                                                        "font": {
+                                                            "name": "HarmonyOS_Sans_SC_Regular",
+                                                            "size": 18
+                                                        },
+                                                        "colors": {
+                                                            "text": {
+                                                                "normal": "#808080FF"
+                                                            }
+                                                        }
+                                                    },
+                                                    {
+                                                        "type": "panel",
+                                                        "rect": {
+                                                            "x": 0,
+                                                            "y": 0,
+                                                            "w": 224,
+                                                            "h": 30
+                                                        },
+                                                        "layout": {
+                                                            "type": "h-flow",
+                                                            "gap": 4
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "label",
+                                                                "caption": "控件",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 60,
+                                                                    "h": 30
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                }
+                                                            },
+                                                            {
+                                                                "type": "label",
+                                                                "caption": "事件",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 70,
+                                                                    "h": 30
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                }
+                                                            },
+                                                            {
+                                                                "type": "label",
+                                                                "caption": "handler",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 70,
+                                                                    "h": 30
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                }
+                                                            },
+                                                            {
+                                                                "type": "label",
+                                                                "caption": "",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 16,
+                                                                    "h": 30
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                }
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "panel",
+                                                        "rect": {
+                                                            "x": 0,
+                                                            "y": 0,
+                                                            "w": 224,
+                                                            "h": 30
+                                                        },
+                                                        "layout": {
+                                                            "type": "h-flow",
+                                                            "gap": 4
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "label",
+                                                                "id": "bd_ctrl",
+                                                                "caption": "btn1",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 60,
+                                                                    "h": 30
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                },
+                                                                "colors": {
+                                                                    "text": {
+                                                                        "normal": "#A0A0A0FF"
+                                                                    }
+                                                                }
+                                                            },
+                                                            {
+                                                                "type": "label",
+                                                                "id": "bd_ev",
+                                                                "caption": "onClick",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 70,
+                                                                    "h": 30
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                },
+                                                                "colors": {
+                                                                    "text": {
+                                                                        "normal": "#A0A0A0FF"
+                                                                    }
+                                                                }
+                                                            },
+                                                            {
+                                                                "type": "label",
+                                                                "id": "bd_handler",
+                                                                "caption": "onBtn1_Click",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 70,
+                                                                    "h": 30
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                },
+                                                                "colors": {
+                                                                    "text": {
+                                                                        "normal": "#A0A0A0FF"
+                                                                    }
+                                                                }
+                                                            },
+                                                            {
+                                                                "type": "button",
+                                                                "id": "bd_del",
+                                                                "caption": "×",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 16,
+                                                                    "h": 30
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 16
+                                                                }
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "label",
+                                                        "caption": "（列表后续由 EventManager 命令式填充）",
+                                                        "rect": {
+                                                            "x": 0,
+                                                            "y": 0,
+                                                            "w": 224,
+                                                            "h": 20
+                                                        },
+                                                        "font": {
+                                                            "name": "HarmonyOS_Sans_SC_Regular",
+                                                            "size": 16
+                                                        },
+                                                        "colors": {
+                                                            "text": {
+                                                                "normal": "#606060FF"
+                                                            }
+                                                        }
+                                                    }
+                                                ]
                                             }
                                         }
                                     ]
