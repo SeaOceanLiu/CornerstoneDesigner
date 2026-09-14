@@ -5,6 +5,8 @@
 
 #include "Designer/App.h"
 
+#include "Designer/CanvasPane.h"
+
 #include "UICornerstone.h"
 #include "Control.h"
 #include "Event.h"
@@ -130,6 +132,8 @@ bool App::init() {
         std::printf("[App] SDL3.dll 未解析（窗口 resize 同步降级）\n");
     }
     registerActions();
+    setupCanvas();
+    bindToolbar();
 
     // 初始化基准尺寸
     if (m_sdl.loaded && m_sdl.getWindowSize) {
@@ -177,6 +181,82 @@ void App::registerActions() {
     }
 }
 
+void App::setupCanvas() {
+    static constexpr float kToolbarH = 40.0f;
+    auto area = m_ui->FindControl("canvasArea");
+    if (!area.IsValid()) {
+        std::printf("[App] canvasArea not found\n");
+        return;
+    }
+    m_canvas = std::make_unique<CanvasPane>();
+    if (!m_canvas->Create(*m_ui, area, kToolbarH)) {
+        std::printf("[App] CanvasPane.Create failed\n");
+        m_canvas.reset();
+        return;
+    }
+    m_canvas->SetClickHandler([this](const std::string& id, float cx, float cy) {
+        (void)cx; (void)cy;
+        std::printf("[App] canvas click node=%s\n", id.c_str());
+    });
+}
+
+void App::bindToolbar() {
+    if (!m_canvas) return;
+
+    auto gridCtl = m_ui->FindControl("tb_grid");
+    if (gridCtl.IsValid()) {
+        gridCtl.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
+            m_canvas->SetGridVisible(e.GetCheckState() != 0);
+        });
+    }
+
+    auto snapCtl = m_ui->FindControl("tb_snap");
+    if (snapCtl.IsValid()) {
+        snapCtl.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
+            m_canvas->SetSnapEnabled(e.GetCheckState() != 0);
+        });
+    }
+
+    auto zoomCtl = m_ui->FindControl("tb_zoom");
+    if (zoomCtl.IsValid()) {
+        zoomCtl.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event& e) {
+            static const float kZooms[] = { 0.25f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
+            int idx = e.GetSelectedIndex();
+            if (idx >= 0 && idx < 6) m_canvas->SetZoom(kZooms[idx]);
+        });
+    }
+
+    auto zoomIn = m_ui->FindControl("tb_zoom_in");
+    if (zoomIn.IsValid()) {
+        zoomIn.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+            float z = m_canvas->GetZoom();
+            m_canvas->SetZoom(z < 2.0f ? z + 0.25f : 2.0f);
+        });
+    }
+
+    auto zoomOut = m_ui->FindControl("tb_zoom_out");
+    if (zoomOut.IsValid()) {
+        zoomOut.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+            float z = m_canvas->GetZoom();
+            m_canvas->SetZoom(z > 0.25f ? z - 0.25f : 0.25f);
+        });
+    }
+
+    auto zoom100 = m_ui->FindControl("tb_zoom_100");
+    if (zoom100.IsValid()) {
+        zoom100.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+            m_canvas->SetZoom(1.0f);
+        });
+    }
+
+    auto preview = m_ui->FindControl("tb_preview");
+    if (preview.IsValid()) {
+        preview.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+            std::printf("[App] preview toggle not implemented yet\n");
+        });
+    }
+}
+
 int App::run(int autoSeconds) {
     std::chrono::steady_clock::time_point deadline;
     bool autoMode = autoSeconds > 0;
@@ -191,20 +271,25 @@ int App::run(int autoSeconds) {
 
     while (!m_ui->IsQuitRequested() && !m_exitRequested) {
         m_ui->ProcessEvents();
+        if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
         syncRootToWindow();
+
+        auto now = Clock::now();
+        double delta = std::chrono::duration<double>(now - last).count();
+        last = now;
 
         if (autoMode && Clock::now() >= deadline) {
             std::printf("[AUTO] done, %d frames\n", frame);
             break;
         }
 
-        auto now = Clock::now();
-        double delta = std::chrono::duration<double>(now - last).count();
-        last = now;
-
         m_ui->Update(delta);
+        if (m_canvas) m_canvas->UpdateViewport((float)delta);
+        // 布局引擎在 Update 中重排，须在其后读取 canvasArea 矩形做稳定检测
+        if (m_canvas) m_canvas->TickLayout((float)delta);
         m_ui->Clear();
         m_ui->Render();
+        if (m_canvas) m_canvas->RenderViewport();
         m_ui->Present();
 
         if (frame == 0) {

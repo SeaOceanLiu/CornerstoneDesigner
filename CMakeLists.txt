@@ -19,9 +19,13 @@ add_subdirectory(${UICORNERSTONE_ROOT}/binding ${CMAKE_BINARY_DIR}/binding)
 add_executable(CornerstoneDesigner
     src/main.cpp
     src/App.cpp
+    src/ControlModel.cpp
+    src/CanvasPane.cpp
 )
 
-target_include_directories(CornerstoneDesigner PRIVATE include)
+target_include_directories(CornerstoneDesigner PRIVATE
+    include
+    third_party/json/single_include)
 target_link_libraries(CornerstoneDesigner PRIVATE UICornerstoneBinding)
 
 # 运行依赖 POST_BUILD 拷贝（参照 UICS binding/CMakeLists.txt 模式）：

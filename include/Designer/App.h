@@ -10,8 +10,11 @@
 namespace UICornerstone {
 class UICornerstone;
 }
+class Control;
 
 namespace Designer {
+
+class CanvasPane;
 
 class App {
 public:
@@ -30,6 +33,8 @@ private:
     void registerActions();
     bool loadSkeleton();
     void syncRootToWindow();            // 检测窗口尺寸变化 → root SetRect 触发布局重排
+    void setupCanvas();                 // canvasArea → CanvasPane（子视口 + 网格覆盖层）
+    void bindToolbar();                 // 画布工具栏控件 → CanvasPane 交互接线
 
     // SDL3.dll 动态解析（UICS 未暴露窗口尺寸查询；窗口 resize 需要主动同步 root）
     struct SdlApi {
@@ -45,6 +50,7 @@ private:
     SdlApi m_sdl;
 
     std::unique_ptr<UICornerstone::UICornerstone> m_ui;  // 主实例（设计器自身 UI；预览为其内子视口）
+    std::unique_ptr<CanvasPane> m_canvas;                // 中央画布（子视口 + 网格覆盖层）
     bool m_exitRequested = false;
     std::string m_lastError;
     int m_lastWinW = 0, m_lastWinH = 0;    // 上次已同步的窗口尺寸
