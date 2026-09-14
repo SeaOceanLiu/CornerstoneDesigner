@@ -134,15 +134,18 @@ namespace Designer {
 CanvasPane::CanvasPane() = default;
 CanvasPane::~CanvasPane() = default;
 
-bool CanvasPane::Create(UICornerstone::UICornerstone& ui, Control canvasArea, float toolbarH) {
+bool CanvasPane::Create(UICornerstone::UICornerstone& ui, Control canvasArea, float toolbarH,
+                        const std::string& resourceRoot) {
     m_ui = &ui;
     m_canvasArea = canvasArea;
     m_toolbarH = toolbarH;
+    m_resourceRoot = resourceRoot;
     if (!m_canvasArea.IsValid() || !m_ui) return false;
 
     // 顺序关键：先注册瓦片资源（触发 owner 内存 provider 创建并挂载），
     // 再创建子视口（视口初始化时继承 owner 的 provider 指针）。
     registerGridTile();
+    registerFonts();       // 视口内 Label/Button 的字体解析依赖内存 provider
     refreshLayout();
     createGridImage();
     return true;
@@ -232,6 +235,56 @@ void CanvasPane::rebuildGridTile() {
     if (!m_viewport) return;
     registerGridTile();
     createGridImage();
+}
+
+// 字体注册：视口实例的 provider 继承自 owner 的内存 provider（未命中不做文件系统
+// 回退），placed 控件的字体文件须显式注册才能解析。
+void CanvasPane::registerFonts() {
+    if (!m_ui || m_resourceRoot.empty()) return;
+    static const char* kFonts[] = {
+        "fonts/HarmonyOS_Sans_SC_Regular.ttf",
+        "fonts/HarmonyOS_Sans_SC_Thin.ttf",
+        "fonts/Asul-Bold.ttf",
+        "fonts/MapleMono-NF-CN-Regular.ttf",
+        "fonts/Muyao-Softbrush.ttf",
+        "fonts/Quando-Regular.ttf",
+    };
+    for (const char* rel : kFonts) {
+        const std::string full = m_resourceRoot + "/" + rel;
+        FILE* f = fopen(full.c_str(), "rb");
+        if (!f) continue;   // 缺失字体跳过（引擎回落内置默认）
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        if (size > 0) {
+            std::vector<unsigned char> buf((size_t)size);
+            size_t rd = fread(buf.data(), 1, (size_t)size, f);
+            if (rd == (size_t)size)
+                m_ui->RegisterResource(rel, buf.data(), buf.size());
+        }
+        fclose(f);
+    }
+}
+
+// 放置控件默认样式：白纸上可见（浅色面 + 深色字 + 描边）。
+// 编程创建的控件不带主题样式：Button 默认面色透明（露出视口深底）、Hover 蓝（引擎缺省）。
+void CanvasPane::styleControl(const std::string& toolboxId, Control ctl) {
+    const UIStateColor face{ UIColor{0xFA, 0xFA, 0xFA, 255}, UIColor{0xE8, 0xF0, 0xFE, 255},
+                             UIColor{0xD8, 0xD8, 0xD8, 255}, UIColor{0xF0, 0xF0, 0xF0, 255} };
+    const UIStateColor border{ UIColor{0xB0, 0xB0, 0xB0, 255}, UIColor{0x4A, 0x90, 0xD9, 255},
+                               UIColor{0x4A, 0x90, 0xD9, 255}, UIColor{0xC0, 0xC0, 0xC0, 255} };
+    const UIStateColor text{ UIColor{0x33, 0x33, 0x33, 255}, UIColor{0x33, 0x33, 0x33, 255},
+                             UIColor{0x33, 0x33, 0x33, 255}, UIColor{0x99, 0x99, 0x99, 255} };
+    if (toolboxId == "tBtn") {
+        ctl.SetStateColor(PropertyNames::kBackground, face);
+        ctl.SetStateColor(PropertyNames::kBorder, border);
+        ctl.SetStateColor(PropertyNames::kText, text);
+    } else if (toolboxId == "tLabel" || toolboxId == "tCheck" ||
+               toolboxId == "tNum" || toolboxId == "tCombo") {
+        ctl.SetStateColor(PropertyNames::kText, text);
+        if (toolboxId == "tCheck")
+            ctl.SetStateColor(PropertyNames::kBorder, border);
+    }
 }
 
 void CanvasPane::TickLayout(float deltaSeconds) {
@@ -367,28 +420,29 @@ static std::string controlTypeOf(const std::string& tb) {
 Control CanvasPane::createViewportControl(const std::string& tb, float x, float y,
                                           float w, float h, ControlModel& model) const {
     const std::string cap = model.props.extended.value("caption", "");
-    if (tb == "tBtn")    return m_viewport->CreateButton(cap, x, y, w, h);
-    if (tb == "tLabel")  return m_viewport->CreateLabel(cap, 14.0f, x, y, w, h);
-    if (tb == "tCheck")  return m_viewport->CreateCheckBox(cap, x, y, w, h);
-    if (tb == "tEdit")   return m_viewport->CreateEditBox(x, y, w, h);
-    if (tb == "tArea")   return m_viewport->CreateTextArea(x, y, w, h);
-    if (tb == "tBar")    return m_viewport->CreateProgressBar(x, y, w, h);
-    if (tb == "tSlider") return m_viewport->CreateSlider(x, y, w, h, 0.0f, 100.0f, 50.0f);
-    if (tb == "tScroll") return m_viewport->CreateScrollBar(x, y, w, h, 0);
-    if (tb == "tShape")  return m_viewport->CreateShape(x, y, w, h);
-    if (tb == "tNum")    return m_viewport->CreateNumericUpDown(x, y, w, h);
-    if (tb == "tColor")  return m_viewport->CreateColorPicker(x, y, w, h, "#3478F6");
-    if (tb == "tCombo")  return m_viewport->CreateComboBox(x, y, w, h);
-    if (tb == "tList")   return m_viewport->CreateListView(x, y, w, h);
-    if (tb == "tTree")   return m_viewport->CreateTreeView(x, y, w, h);
-    if (tb == "tSplit")  return m_viewport->CreateSplitter(x, y, w, h, 0);
-    if (tb == "tMenu")   return m_viewport->CreateMenuBar(x, y, w, h);
-    if (tb == "tWin" || tb == "tDialog")
-        return m_viewport->CreateWinFrame(cap, x, y, w, h);
-    if (tb == "tImage" || tb == "tImgBtn")
-        return m_viewport->CreateImage("provider:dc_canvas_grid", x, y, w, h);
-    // 占位类型（tabs/status/ctx/ani/popup/confirm 等）：Panel 承载
-    return m_viewport->CreatePanel(x, y, w, h);
+    Control ctl;
+    if (tb == "tBtn")    ctl = m_viewport->CreateButton(cap, x, y, w, h);
+    else if (tb == "tLabel")  ctl = m_viewport->CreateLabel(cap, 14.0f, x, y, w, h);
+    else if (tb == "tCheck")  ctl = m_viewport->CreateCheckBox(cap, x, y, w, h);
+    else if (tb == "tEdit")   ctl = m_viewport->CreateEditBox(x, y, w, h);
+    else if (tb == "tArea")   ctl = m_viewport->CreateTextArea(x, y, w, h);
+    else if (tb == "tBar")    ctl = m_viewport->CreateProgressBar(x, y, w, h);
+    else if (tb == "tSlider") ctl = m_viewport->CreateSlider(x, y, w, h, 0.0f, 100.0f, 50.0f);
+    else if (tb == "tScroll") ctl = m_viewport->CreateScrollBar(x, y, w, h, 0);
+    else if (tb == "tShape")  ctl = m_viewport->CreateShape(x, y, w, h);
+    else if (tb == "tNum")    ctl = m_viewport->CreateNumericUpDown(x, y, w, h);
+    else if (tb == "tColor")  ctl = m_viewport->CreateColorPicker(x, y, w, h, "#3478F6");
+    else if (tb == "tCombo")  ctl = m_viewport->CreateComboBox(x, y, w, h);
+    else if (tb == "tList")   ctl = m_viewport->CreateListView(x, y, w, h);
+    else if (tb == "tTree")   ctl = m_viewport->CreateTreeView(x, y, w, h);
+    else if (tb == "tSplit")  ctl = m_viewport->CreateSplitter(x, y, w, h, 0);
+    else if (tb == "tMenu")   ctl = m_viewport->CreateMenuBar(x, y, w, h);
+    else if (tb == "tWin" || tb == "tDialog")
+        ctl = m_viewport->CreateWinFrame(cap, x, y, w, h);
+    else if (tb == "tImage" || tb == "tImgBtn")
+        ctl = m_viewport->CreateImage("provider:dc_canvas_grid", x, y, w, h);
+    else ctl = m_viewport->CreatePanel(x, y, w, h);   // 占位类型
+    return ctl;
 }
 
 void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) {
@@ -416,6 +470,7 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
     Control ctl = createViewportControl(toolboxId, x * m_zoom, y * m_zoom,
                                         w * m_zoom, h * m_zoom, *model);
     if (!ctl.IsValid()) return;
+    styleControl(toolboxId, ctl);   // 编程创建无主题样式：显式浅色面/深字/描边
 
     m_items.push_back({ std::move(model), ctl });
     std::printf("[Canvas] placed %s id=%s at (%.0f,%.0f)\n",

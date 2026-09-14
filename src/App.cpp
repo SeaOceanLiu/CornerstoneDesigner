@@ -204,7 +204,7 @@ void App::setupCanvas() {
         return;
     }
     m_canvas = std::make_unique<CanvasPane>();
-    if (!m_canvas->Create(*m_ui, area, kToolbarH)) {
+    if (!m_canvas->Create(*m_ui, area, kToolbarH, exeRelative("assets"))) {
         std::printf("[App] CanvasPane.Create failed\n");
         m_canvas.reset();
         return;

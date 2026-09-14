@@ -41,7 +41,9 @@ public:
 
     // 创建：须在主布局 LoadLayout 后调用（canvasArea 已存在）。
     // toolbarH：canvasArea 顶部工具栏高度，子视口从该位置下方开始。
-    bool Create(UICornerstone::UICornerstone& ui, Control canvasArea, float toolbarH);
+    // resourceRoot：assets 资源根（用于把字体等资源注册进内存 provider，供视口内控件解析）。
+    bool Create(UICornerstone::UICornerstone& ui, Control canvasArea, float toolbarH,
+                const std::string& resourceRoot);
 
     void Destroy();
 
@@ -100,6 +102,8 @@ private:
     void registerGridTile();       // 生成瓦片 PNG → RegisterResource（含首次 provider 触发）
     void createGridImage();        // 在子视口内创建网格 Image（scale-type=tile）
     void rebuildGridTile();        // registerGridTile + createGridImage（缩放档变化）
+    void registerFonts();          // 字体注册进内存 provider（视口内 Label 解析字体必需）
+    void styleControl(const std::string& toolboxId, Control ctl);   // 放置控件默认样式（白纸上可见）
 
     void tickInput();              // 交互轮询：放置/选中/拖动
     void placeControl(const std::string& toolboxId, float cx, float cy);
@@ -111,6 +115,8 @@ private:
     void selectItem(const std::string& id);
     void ensureSelBox();
     void updateSelBox();
+
+    std::string m_resourceRoot;    // assets 资源根（字体注册用）
 
     std::vector<PlacedControl> m_items;
     std::string m_selectedId;
