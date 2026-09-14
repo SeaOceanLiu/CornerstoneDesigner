@@ -63,13 +63,24 @@ bool App::SdlApi::load() {
     getWindows   = reinterpret_cast<void*(*)(int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindows"));
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(GetProcAddress((HMODULE)dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindowSize"));
+    getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(GetProcAddress((HMODULE)dll, "SDL_GetMouseState"));
 #else
     getWindows   = reinterpret_cast<void*(*)(int*)>(dlsym(dll, "SDL_GetWindows"));
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(dlsym(dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(dlsym(dll, "SDL_GetWindowSize"));
+    getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(dlsym(dll, "SDL_GetMouseState"));
 #endif
     loaded = getWindows && getWindowSize;
     return loaded;
+}
+
+// 左键状态 + 窗口内坐标（SDL_GetMouseState 相对当前焦点窗口，与引擎事件坐标同系）
+bool App::SdlApi::pollMouse(float& x, float& y) {
+    if (!getMouseState) return false;
+    float mx = 0, my = 0;
+    unsigned buttons = getMouseState(&mx, &my);
+    x = mx; y = my;
+    return (buttons & 0x01u) != 0;   // SDL_BUTTON_LMASK
 }
 
 void App::SdlApi::unload() {
@@ -134,6 +145,10 @@ bool App::init() {
     registerActions();
     setupCanvas();
     bindToolbar();
+    if (m_canvas) {
+        m_canvas->SetMouseSource([this](float& x, float& y) { return m_sdl.pollMouse(x, y); });
+        m_canvas->SetToolboxTree(m_ui->FindControl("tvToolbox"));
+    }
 
     // 初始化基准尺寸
     if (m_sdl.loaded && m_sdl.getWindowSize) {
@@ -284,7 +299,10 @@ int App::run(int autoSeconds) {
         }
 
         m_ui->Update(delta);
-        if (m_canvas) m_canvas->UpdateViewport((float)delta);
+        if (m_canvas) {
+            m_canvas->TickInput();                    // 画布交互（放置/选中/拖动）
+            m_canvas->UpdateViewport((float)delta);
+        }
         // 布局引擎在 Update 中重排，须在其后读取 canvasArea 矩形做稳定检测
         if (m_canvas) m_canvas->TickLayout((float)delta);
         m_ui->Clear();

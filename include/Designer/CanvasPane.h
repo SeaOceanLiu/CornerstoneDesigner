@@ -9,9 +9,12 @@
 // 事件回退（UICornerstone v1.1.1）：子视口内未被消费的事件回退 owner 树，
 // splitter 拖拽等 owner 交互不受影响。主循环须显式驱动子视口
 // ProcessEvents/Update/Render（见 App::run）。
+// 交互：双击工具箱项 → 视口内放置控件；点击控件选中（选中框=Shape 多图元）、
+// 拖动移动（网格吸附）；鼠标源由 App 注入（SDL 轮询）。
 
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
@@ -45,11 +48,20 @@ public:
     // 布局轮询（App 每帧调用）：canvasArea 矩形变化时同步视口与网格 rect（零纹理重建）。
     void TickLayout(float deltaSeconds);
 
+    // 交互轮询（App 每帧调用）：放置/选中/拖动（鼠标源由 App 注入）。
+    void TickInput();
+
     // 子视口驱动（App 主循环调用；v1.1.1 事件回退要求驱动其事件循环）
     void ProcessViewportEvents();
     void UpdateViewport(float deltaSeconds);
     void RenderViewport();
     UICornerstone::UICornerstone* Viewport() const { return m_viewport.get(); }
+
+    // 工具箱联动：双击工具箱项 → 视口内放置对应控件
+    void SetToolboxTree(Control tree);
+    // 鼠标源（App 注入 SDL 轮询；返回左键是否按下，填充窗口坐标）
+    using MouseSourceFn = std::function<bool(float&, float&)>;
+    void SetMouseSource(MouseSourceFn src) { m_mouseSource = std::move(src); }
 
     // 缩放档（0.25~2.0）。改变 z → 重建网格瓦片（小纹理）。
     void SetZoom(float zoom);
@@ -78,10 +90,43 @@ public:
     void SetClickHandler(ClickHandler handler) { m_clickHandler = std::move(handler); }
 
 private:
-    void refreshLayout();          // 同步视口 + 网格 Image rect（零重建）
-    void rebuildGridTile();        // 重建小瓦片纹理 + 重建视口内网格 Image
+    // 画布内容（被设计控件，z 序 = vector 序）
+    struct PlacedControl {
+        std::unique_ptr<ControlModel> model;
+        Control ctl;
+    };
+
+    void refreshLayout();          // 同步视口与网格 Image rect（零重建）
     void registerGridTile();       // 生成瓦片 PNG → RegisterResource（含首次 provider 触发）
     void createGridImage();        // 在子视口内创建网格 Image（scale-type=tile）
+    void rebuildGridTile();        // registerGridTile + createGridImage（缩放档变化）
+
+    void tickInput();              // 交互轮询：放置/选中/拖动
+    void placeControl(const std::string& toolboxId, float cx, float cy);
+    Control createViewportControl(const std::string& toolboxId, float x, float y,
+                                  float w, float h, ControlModel& model) const;
+    bool hitTest(float cx, float cy, std::string& outId) const;
+    ControlModel* findModel(const std::string& id);
+    PlacedControl* placedById(const std::string& id);
+    void selectItem(const std::string& id);
+    void ensureSelBox();
+    void updateSelBox();
+
+    std::vector<PlacedControl> m_items;
+    std::string m_selectedId;
+    Control m_selBox;              // 选中框（视口内 Shape 多图元）
+
+    // 交互状态
+    bool  m_mouseWasDown = false;
+    bool  m_dragging = false;
+    float m_dragOffX = 0, m_dragOffY = 0;
+    std::string m_dragId;
+    Control m_dragCtl;
+    Control m_toolboxTree;
+    std::string m_lastToolId;
+    std::chrono::steady_clock::time_point m_lastToolTime;
+    int   m_seq = 0;
+    MouseSourceFn m_mouseSource;
 
     float m_seenX = 0, m_seenY = 0, m_seenW = 0, m_seenH = 0;   // 观测缓存
 

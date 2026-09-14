@@ -43,9 +43,11 @@ private:
         void* (*getWindows)(int*) = nullptr;
         void* (*setWindowSize)(void*, int, int) = nullptr;
         int   (*getWindowSize)(void*, int*, int*) = nullptr;
+        unsigned (*getMouseState)(float*, float*) = nullptr;   // SDL_GetMouseState
         bool load();
         void unload();
         void* windowHandle();       // SDL_GetWindows[0]
+        bool pollMouse(float& x, float& y);   // 返回左键是否按下；填充窗口坐标
     };
     SdlApi m_sdl;
 

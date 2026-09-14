@@ -15,6 +15,7 @@
 
 #include "UICornerstone.h"
 #include "Control.h"
+#include "Event.h"
 #include "PropertyNames.h"
 
 #include <cmath>
@@ -301,6 +302,291 @@ SRect CanvasPane::CanvasRect() const {
 SRect CanvasPane::ViewportRect() const {
     if (!m_viewport) return SRect{ 0, 0, 0, 0 };
     return SRect{ m_areaX, m_areaY + m_toolbarH, m_contentW, m_contentH };
+}
+
+// ── 交互：放置 / 选中 / 拖动 ──
+
+// 工具箱 id → 规格（默认逻辑尺寸 / 缺省标题 / id 前缀）。
+static bool controlSpec(const std::string& tb, float& w, float& h,
+                        const char*& caption, const char*& prefix) {
+    struct Spec { const char* id; float w, h; const char* cap; const char* pfx; };
+    static const Spec kSpecs[] = {
+        { "tBtn",    120, 32,  "按钮",        "btn" },
+        { "tLabel",  120, 24,  "标签",        "label" },
+        { "tImage",  120, 80,  "图片",        "image" },
+        { "tCheck",  120, 24,  "复选框",      "check" },
+        { "tEdit",   140, 28,  "输入框",      "edit" },
+        { "tArea",   180, 90,  "文本域",      "area" },
+        { "tBar",    160, 18,  "进度条",      "bar" },
+        { "tSlider", 140, 24,  "滑块",        "slider" },
+        { "tScroll", 140, 16,  "滚动条",      "scroll" },
+        { "tShape",  80,  80,  "形状",        "shape" },
+        { "tPanel",  200, 150, "面板",        "panel" },
+        { "tWin",    240, 160, "窗口",        "win" },
+        { "tSplit",  6,   140, "分割器",      "split" },
+        { "tTabs",   200, 150, "选项卡(占位)", "tabs" },
+        { "tCombo",  140, 28,  "下拉框",      "combo" },
+        { "tList",   160, 120, "列表",        "list" },
+        { "tTree",   160, 120, "树",          "tree" },
+        { "tNum",    110, 28,  "数字输入",    "num" },
+        { "tColor",  80,  32,  "颜色",        "color" },
+        { "tMenu",   220, 28,  "菜单",        "menu" },
+        { "tStatus", 220, 28,  "状态栏(占位)", "status" },
+        { "tAni",    120, 120, "动画(占位)",  "ani" },
+        { "tDialog", 240, 150, "对话框(占位)", "dlg" },
+        { "tCtx",    140, 80,  "右键菜单(占位)","ctx" },
+        { "tImgBtn", 48,  48,  "图片按钮",    "imgbtn" },
+        { "tPopup",  160, 100, "弹窗(占位)",  "popup" },
+        { "tConfirm", 200, 100, "确认框(占位)", "confirm" },
+    };
+    for (const auto& s : kSpecs) {
+        if (tb == s.id) { w = s.w; h = s.h; caption = s.cap; prefix = s.pfx; return true; }
+    }
+    return false;
+}
+
+// 工具箱 id → 引擎控件类型串（与布局 JSON type 一致）。
+static std::string controlTypeOf(const std::string& tb) {
+    static const std::pair<const char*, const char*> kMap[] = {
+        { "tBtn", "button" },   { "tLabel", "label" },   { "tImage", "image" },
+        { "tCheck", "check-box" }, { "tEdit", "edit-box" }, { "tArea", "text-area" },
+        { "tBar", "progress-bar" }, { "tSlider", "slider" }, { "tScroll", "scroll-bar" },
+        { "tShape", "shape" },  { "tPanel", "panel" },   { "tWin", "win-frame" },
+        { "tSplit", "splitter" }, { "tTabs", "tab-control" }, { "tCombo", "combo-box" },
+        { "tList", "list-view" }, { "tTree", "tree-view" }, { "tNum", "numeric-up-down" },
+        { "tColor", "color-picker" }, { "tMenu", "menu-bar" }, { "tStatus", "status-bar" },
+        { "tAni", "animation" }, { "tDialog", "dialog" }, { "tCtx", "context-menu" },
+        { "tImgBtn", "image-button" }, { "tPopup", "popup" }, { "tConfirm", "confirm-popup" },
+    };
+    for (const auto& m : kMap)
+        if (tb == m.first) return m.second;
+    return "panel";
+}
+
+// 视口内按工具箱 id 创建控件（坐标为视口局部物理像素）。
+Control CanvasPane::createViewportControl(const std::string& tb, float x, float y,
+                                          float w, float h, ControlModel& model) const {
+    const std::string cap = model.props.extended.value("caption", "");
+    if (tb == "tBtn")    return m_viewport->CreateButton(cap, x, y, w, h);
+    if (tb == "tLabel")  return m_viewport->CreateLabel(cap, 14.0f, x, y, w, h);
+    if (tb == "tCheck")  return m_viewport->CreateCheckBox(cap, x, y, w, h);
+    if (tb == "tEdit")   return m_viewport->CreateEditBox(x, y, w, h);
+    if (tb == "tArea")   return m_viewport->CreateTextArea(x, y, w, h);
+    if (tb == "tBar")    return m_viewport->CreateProgressBar(x, y, w, h);
+    if (tb == "tSlider") return m_viewport->CreateSlider(x, y, w, h, 0.0f, 100.0f, 50.0f);
+    if (tb == "tScroll") return m_viewport->CreateScrollBar(x, y, w, h, 0);
+    if (tb == "tShape")  return m_viewport->CreateShape(x, y, w, h);
+    if (tb == "tNum")    return m_viewport->CreateNumericUpDown(x, y, w, h);
+    if (tb == "tColor")  return m_viewport->CreateColorPicker(x, y, w, h, "#3478F6");
+    if (tb == "tCombo")  return m_viewport->CreateComboBox(x, y, w, h);
+    if (tb == "tList")   return m_viewport->CreateListView(x, y, w, h);
+    if (tb == "tTree")   return m_viewport->CreateTreeView(x, y, w, h);
+    if (tb == "tSplit")  return m_viewport->CreateSplitter(x, y, w, h, 0);
+    if (tb == "tMenu")   return m_viewport->CreateMenuBar(x, y, w, h);
+    if (tb == "tWin" || tb == "tDialog")
+        return m_viewport->CreateWinFrame(cap, x, y, w, h);
+    if (tb == "tImage" || tb == "tImgBtn")
+        return m_viewport->CreateImage("provider:dc_canvas_grid", x, y, w, h);
+    // 占位类型（tabs/status/ctx/ani/popup/confirm 等）：Panel 承载
+    return m_viewport->CreatePanel(x, y, w, h);
+}
+
+void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) {
+    if (!m_viewport) return;
+    float w = 120, h = 32;
+    const char* caption = "";
+    const char* prefix = "ctl";
+    if (!controlSpec(toolboxId, w, h, caption, prefix)) return;
+
+    // 瀑布偏移避免完全重叠
+    float casc = (float)(m_seq % 8) * 16.0f;
+    float x = cx - w / 2 + casc;
+    float y = cy - h / 2 + casc;
+    if (m_snapEnabled) {
+        x = std::round(x / m_gridCell) * m_gridCell;
+        y = std::round(y / m_gridCell) * m_gridCell;
+    }
+
+    auto model = std::make_unique<ControlModel>();
+    model->props.type = controlTypeOf(toolboxId);
+    model->props.id = std::string(prefix) + "_" + std::to_string(++m_seq);
+    model->props.rect = { x, y, w, h };
+    model->props.extended["caption"] = caption;
+
+    Control ctl = createViewportControl(toolboxId, x * m_zoom, y * m_zoom,
+                                        w * m_zoom, h * m_zoom, *model);
+    if (!ctl.IsValid()) return;
+
+    m_items.push_back({ std::move(model), ctl });
+    std::printf("[Canvas] placed %s id=%s at (%.0f,%.0f)\n",
+                m_items.back().model->props.type.c_str(),
+                m_items.back().model->props.id.c_str(), x, y);
+
+    // 选中新控件；选中框需重新置顶
+    m_selectedId.clear();
+    if (m_selBox.IsValid()) { m_selBox.Destroy(); m_selBox = Control(); }
+    selectItem(m_items.back().model->props.id);
+}
+
+bool CanvasPane::hitTest(float cx, float cy, std::string& outId) const {
+    for (auto it = m_items.rbegin(); it != m_items.rend(); ++it) {
+        const SRect& r = it->model->props.rect;
+        if (cx >= r.x && cx < r.x + r.w && cy >= r.y && cy < r.y + r.h) {
+            outId = it->model->props.id;
+            return true;
+        }
+    }
+    return false;
+}
+
+ControlModel* CanvasPane::findModel(const std::string& id) {
+    for (auto& it : m_items)
+        if (it.model->props.id == id) return it.model.get();
+    return nullptr;
+}
+
+void CanvasPane::selectItem(const std::string& id) {
+    if (m_selectedId == id) { updateSelBox(); return; }
+    m_selectedId = id;
+    ensureSelBox();
+    updateSelBox();
+    if (m_clickHandler) m_clickHandler(id, 0, 0);
+}
+
+void CanvasPane::ensureSelBox() {
+    if (m_selBox.IsValid() || !m_viewport) return;
+    m_selBox = m_viewport->CreateShape(0, 0, m_contentW, m_contentH);
+}
+
+void CanvasPane::updateSelBox() {
+    if (!m_selBox.IsValid()) return;
+    const ControlModel* m = findModel(m_selectedId);
+    if (!m) {
+        m_selBox.SetBool(PropertyNames::kVisible, false);
+        return;
+    }
+    m_selBox.SetBool(PropertyNames::kVisible, true);
+    m_selBox.SetEnum(PropertyNames::kScaleType, PropertyNames::kScaleTypeStretch);
+
+    // 选中框：逻辑 rect × zoom 外扩 2px；8 向控点 6×6
+    const float pad = 2.0f, hs = 6.0f;
+    const float x = m->props.rect.x * m_zoom - pad;
+    const float y = m->props.rect.y * m_zoom - pad;
+    const float w = m->props.rect.w * m_zoom + pad * 2;
+    const float h = m->props.rect.h * m_zoom + pad * 2;
+
+    m_ui->ShapeClearPrimitives(m_selBox);
+    int ib = m_ui->ShapeAddPrimitive(m_selBox, "rect", x, y, w, h);
+    m_ui->ShapeSetPrimitiveColor(m_selBox, ib, PropertyNames::kStroke,
+                                 UIColor{0x4A, 0x90, 0xD9, 255});
+    m_ui->ShapeSetPrimitiveFloat(m_selBox, ib, PropertyNames::kLineWidthProp, 1.5f);
+    auto handle = [&](float hx, float hy) {
+        int ih = m_ui->ShapeAddPrimitive(m_selBox, "filled-rect", hx - hs / 2, hy - hs / 2, hs, hs);
+        m_ui->ShapeSetPrimitiveColor(m_selBox, ih, PropertyNames::kFill, UIColor{255, 255, 255, 255});
+        m_ui->ShapeSetPrimitiveColor(m_selBox, ih, PropertyNames::kStroke,
+                                     UIColor{0x4A, 0x90, 0xD9, 255});
+        m_ui->ShapeSetPrimitiveFloat(m_selBox, ih, PropertyNames::kLineWidthProp, 1.0f);
+    };
+    const float x2 = x + w, y2 = y + h;
+    handle(x, y);  handle(x2, y);  handle(x, y2);  handle(x2, y2);
+    handle(x + w / 2, y);  handle(x + w / 2, y2);
+    handle(x, y + h / 2);  handle(x2, y + h / 2);
+}
+
+void CanvasPane::tickInput() {
+    if (!m_viewport || !m_mouseSource) return;
+    float wx = 0, wy = 0;
+    bool down = m_mouseSource(wx, wy);
+
+    // 视口区域判定（窗口坐标；工具栏/分割器/面板均在区域外，不参与画布交互）
+    const float vx0 = m_areaX, vy0 = m_areaY + m_toolbarH;
+    const bool inVp = (wx >= vx0 && wx < vx0 + m_contentW &&
+                       wy >= vy0 && wy < vy0 + m_contentH);
+
+    float cx = 0, cy = 0;
+    ScreenToCanvas(wx, wy, cx, cy);
+
+    const bool downEdge = down && !m_mouseWasDown;
+    const bool upEdge = !down && m_mouseWasDown;
+
+    // 拖动已选中控件
+    if (!m_dragId.empty()) {
+        ControlModel* m = findModel(m_dragId);
+        if (!m) { m_dragId.clear(); m_mouseWasDown = down; return; }
+        if (down) {
+            float nx = cx - m_dragOffX, ny = cy - m_dragOffY;
+            if (m_snapEnabled) {
+                nx = std::round(nx / m_gridCell) * m_gridCell;
+                ny = std::round(ny / m_gridCell) * m_gridCell;
+            }
+            m->props.rect.x = nx;
+            m->props.rect.y = ny;
+            if (m_dragCtl.IsValid())
+                m_dragCtl.SetRect(nx * m_zoom, ny * m_zoom,
+                                  m->props.rect.w * m_zoom, m->props.rect.h * m_zoom);
+            updateSelBox();
+        } else {
+            m_dragId.clear();   // 松开结束拖动
+        }
+        m_mouseWasDown = down;
+        return;
+    }
+
+    // 按下沿：命中检测 → 选中并开始拖动 / 取消选中
+    if (downEdge && inVp) {
+        std::string hit;
+        if (hitTest(cx, cy, hit)) {
+            selectItem(hit);
+            if (ControlModel* m = findModel(hit)) {
+                m_dragOffX = cx - m->props.rect.x;
+                m_dragOffY = cy - m->props.rect.y;
+                m_dragId = hit;
+                if (PlacedControl* pc = placedById(hit))
+                    m_dragCtl = pc->ctl;
+            }
+        } else {
+            selectItem("");
+        }
+        m_mouseWasDown = down;
+        return;
+    }
+
+    if (upEdge) {
+        // 松开且未开始拖动：无操作
+    }
+    m_mouseWasDown = down;
+}
+
+CanvasPane::PlacedControl* CanvasPane::placedById(const std::string& id) {
+    for (auto& it : m_items)
+        if (it.model->props.id == id) return &it;
+    return nullptr;
+}
+
+void CanvasPane::SetToolboxTree(Control tree) {
+    m_toolboxTree = tree;
+    if (!m_toolboxTree.IsValid()) return;
+    m_toolboxTree.SetCallback(PropertyNames::kEventSelect, [this](const Event& e) {
+        const std::string id = e.GetNodeId();
+        if (id.empty()) return;
+        const auto now = std::chrono::steady_clock::now();
+        if (id == m_lastToolId) {
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - m_lastToolTime).count();
+            m_lastToolId.clear();
+            if (ms < 500) {
+                // 双击：画布中央放置（逻辑坐标）
+                placeControl(id, m_contentW / (2 * m_zoom), m_contentH / (2 * m_zoom));
+                return;
+            }
+        }
+        m_lastToolId = id;
+        m_lastToolTime = now;
+    });
+}
+
+void CanvasPane::TickInput() {
+    tickInput();
 }
 
 }  // namespace Designer
