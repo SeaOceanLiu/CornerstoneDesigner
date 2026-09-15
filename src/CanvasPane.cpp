@@ -774,7 +774,8 @@ void CanvasPane::rebuildDynamicRows() {
     for (auto it = commonProps.begin(); it != commonProps.end(); ++it)
         if (!merged.contains(it.key())) merged[it.key()] = it.value();
 
-    // 跳过：布局/资源/嵌套复杂对象/事件类（画布几何走固定行，其余后续迭代）
+    // 跳过：布局/资源/嵌套复杂对象/事件类（画布几何走固定行，其余后续迭代）；
+    // caption/enabled/visible 固定外观区已有，不重复生成
     static const char* kSkip[] = {
         "type", "id", "name", "rect", "scale", "margin", "layout", "anchor",
         "events", "contextMenu", "actors", "luotiAni", "captionLabel",
@@ -782,12 +783,15 @@ void CanvasPane::rebuildDynamicRows() {
         "font", "colors", "matchParentRect", "playing", "debugDraw",
         "enableExpand", "offset", "shadow", "size", "style", "alignment",
         "checkState", "verticalAlign", "popup", "position",
+        "caption", "enabled", "visible",
+        "borderVisible", "fontFile", "fontResource",   // 资源路径/调试类
     };
 
     m_schemaTarget = pc->ctl;
     m_schemaType = m->props.type;
     int rows = 0;
-    for (auto it = merged.begin(); it != merged.end() && rows < 4; ++it) {
+    std::string genKeys;
+    for (auto it = merged.begin(); it != merged.end() && rows < 5; ++it) {
         const std::string key = it.key();
         bool skip = false;
         for (const char* s : kSkip)
@@ -845,8 +849,10 @@ void CanvasPane::rebuildDynamicRows() {
             m_dynamicRows.push_back(cb);
         }
         ++rows;
+        genKeys += " " + key;
     }
-    std::printf("[CanvasPane] dynamic rows for '%s': %d\n", m_schemaType.c_str(), rows);
+    std::printf("[CanvasPane] dynamic rows for '%s': %d (%s)\n",
+                m_schemaType.c_str(), rows, genKeys.c_str());
 }
 
 void CanvasPane::ensureSelBox() {
