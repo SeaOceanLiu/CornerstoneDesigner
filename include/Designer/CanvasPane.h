@@ -64,6 +64,11 @@ public:
     // 鼠标源（App 注入 SDL 轮询；返回左键是否按下，填充窗口坐标）
     using MouseSourceFn = std::function<bool(float&, float&)>;
     void SetMouseSource(MouseSourceFn src) { m_mouseSource = std::move(src); }
+    using KeySourceFn = std::function<bool()>;   // 返回 Delete 键按下沿（每帧轮询一次）
+    void SetKeySource(KeySourceFn src) { m_keySource = std::move(src); }
+
+    // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
+    void deleteSelected();
     // 属性面板联动（App 注入；选中回填面板，面板变更回写控件）
     void SetPropertyControls(Control x, Control y, Control w, Control h, Control caption);
 
@@ -140,6 +145,7 @@ private:
     std::chrono::steady_clock::time_point m_lastToolTime;
     int   m_seq = 0;
     MouseSourceFn m_mouseSource;
+    KeySourceFn   m_keySource;
 
     float m_seenX = 0, m_seenY = 0, m_seenW = 0, m_seenH = 0;   // 观测缓存
 

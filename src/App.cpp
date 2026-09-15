@@ -65,11 +65,13 @@ bool App::SdlApi::load() {
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(GetProcAddress((HMODULE)dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindowSize"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(GetProcAddress((HMODULE)dll, "SDL_GetMouseState"));
+    getKeyboardState = reinterpret_cast<const unsigned char*(*)(int*)>(GetProcAddress((HMODULE)dll, "SDL_GetKeyboardState"));
 #else
     getWindows   = reinterpret_cast<void*(*)(int*)>(dlsym(dll, "SDL_GetWindows"));
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(dlsym(dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(dlsym(dll, "SDL_GetWindowSize"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(dlsym(dll, "SDL_GetMouseState"));
+    getKeyboardState = reinterpret_cast<const unsigned char*(*)(int*)>(dlsym(dll, "SDL_GetKeyboardState"));
 #endif
     loaded = getWindows && getWindowSize;
     return loaded;
@@ -82,6 +84,19 @@ bool App::SdlApi::pollMouse(float& x, float& y) {
     unsigned buttons = getMouseState(&mx, &my);
     x = mx; y = my;
     return (buttons & 0x01u) != 0;   // SDL_BUTTON_LMASK
+}
+
+// Delete 键按下沿（SDL_SCANCODE_DELETE = 76；SDL_GetKeyboardState 返回常驻数组，直接索引）
+bool App::SdlApi::pollDeleteKey() {
+    static bool wasDown = false;
+    if (!getKeyboardState) return false;
+    int numkeys = 0;
+    const unsigned char* state = getKeyboardState(&numkeys);
+    if (!state || numkeys <= 76) return false;
+    const bool down = state[76] != 0;
+    const bool edge = down && !wasDown;
+    wasDown = down;
+    return edge;
 }
 
 void App::SdlApi::unload() {
@@ -148,6 +163,7 @@ bool App::init() {
     bindToolbar();
     if (m_canvas) {
         m_canvas->SetMouseSource([this](float& x, float& y) { return m_sdl.pollMouse(x, y); });
+        m_canvas->SetKeySource([this] { return m_sdl.pollDeleteKey(); });
         m_canvas->SetToolboxTree(m_ui->FindControl("tvToolbox"));
         m_canvas->SetPropertyControls(m_ui->FindControl("prop_x"),
                                       m_ui->FindControl("prop_y"),

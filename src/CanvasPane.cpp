@@ -613,6 +613,9 @@ void CanvasPane::updateSelBox() {
 }
 
 void CanvasPane::tickInput() {
+    // Delete 键：删除选中控件（键源每帧轮询一次，返回按下沿）
+    if (m_keySource && m_keySource()) deleteSelected();
+
     if (!m_viewport || !m_mouseSource) return;
     float wx = 0, wy = 0;
     bool down = m_mouseSource(wx, wy);
@@ -680,6 +683,22 @@ CanvasPane::PlacedControl* CanvasPane::placedById(const std::string& id) {
     for (auto& it : m_items)
         if (it.model->props.id == id) return &it;
     return nullptr;
+}
+
+// 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
+void CanvasPane::deleteSelected() {
+    if (m_selectedId.empty()) return;
+    if (PlacedControl* pc = placedById(m_selectedId)) {
+        if (pc->ctl.IsValid()) pc->ctl.Destroy();   // 视口内销毁（悬挂检测保护后续访问）
+        for (auto it = m_items.begin(); it != m_items.end(); ++it) {
+            if (it->model->props.id == m_selectedId) { m_items.erase(it); break; }
+        }
+    }
+    if (m_dragId == m_selectedId) {   // 拖动中删除：清理拖动状态
+        m_dragId.clear();
+        m_dragCtl = Control();
+    }
+    selectItem("");   // 取消选中 → 属性面板清零 + 选中框隐藏
 }
 
 void CanvasPane::SetToolboxTree(Control tree) {
