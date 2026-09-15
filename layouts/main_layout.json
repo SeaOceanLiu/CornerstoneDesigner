@@ -1438,10 +1438,6 @@
                                                             "w": 224,
                                                             "h": 288
                                                         },
-                                                        "layout": {
-                                                            "type": "v-flow",
-                                                            "gap": 4
-                                                        },
                                                         "colors": {
                                                             "border": {
                                                                 "normal": "#404040FF"

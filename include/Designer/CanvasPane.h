@@ -165,11 +165,15 @@ private:
     void onColorPicked(unsigned char r, unsigned char g, unsigned char b);
 
     // Schema 驱动动态属性区
-    Control m_propDynamic;                       // propDynamic 容器（v-flow）
+    Control m_propDynamic;                       // propDynamic 容器（absolute 自管布局）
+    Control m_dynScroll;                         // 容器底部滚动条（position-changed 驱动）
     std::unique_ptr<nlohmann::json> m_schema;    // 引擎 declarative-ui.schema.json
-    std::vector<Control> m_dynamicRows;          // 已生成的行控件（销毁用）
+    std::vector<Control> m_dynamicRows;          // 已生成的行控件（销毁/滚动偏移用）
+    std::vector<float>   m_dynamicRowY;          // 各行未滚动时的 baseY（与 rows 对齐）
+    float m_dynScrollMax = 0;                    // 滚动范围（内容高-视野高，<0 归零）
     Control m_schemaTarget;                      // 当前行集对应的目标控件
     std::string m_schemaType;
+    void applyDynScroll(float value);            // 滚动 → 行偏移+超界隐藏
 
     // 交互状态
     bool  m_mouseWasDown = false;

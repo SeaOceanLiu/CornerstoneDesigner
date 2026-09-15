@@ -747,24 +747,31 @@ void CanvasPane::SetDynamicPropsContainer(Control box) {
     if (m_propDynamic.IsValid()) rebuildDynamicRows();
 }
 
-// 选中控件 → 按 schema 类型重建动态属性行（label 行 + 编辑控件行）。
+// 选中控件 → 按 schema 类型生成动态属性行（label 行 + 编辑控件行）。
 // 支持 string(EditBox)/number·integer(NUD)/boolean(CheckBox)；嵌套对象、枚举、
 // 布局资源类（rect/actors/luotiAni…）首版跳过。
+// 布局自管（absolute）：Panel::addControl 不触发 v-flow reflow（仅 Bench 会），
+// 初始叠放根因——行 y 手动累加；底部 ScrollBar 做"窗口滚动"（超界行隐藏，
+// 等效裁剪——引擎 panel 无裁剪能力）。
 void CanvasPane::rebuildDynamicRows() {
     for (Control& c : m_dynamicRows)
         if (c.IsValid()) c.Destroy();
     m_dynamicRows.clear();
+    m_dynamicRowY.clear();
     m_schemaTarget = Control();
 
     if (!m_propDynamic.IsValid()) return;
     const ControlModel* m = findModel(m_selectedId);
-    if (!m) return;   // 未选中：动态区留空
+    if (!m) {   // 未选中：动态区留空（滚动条一并隐藏）
+        if (m_dynScroll.IsValid()) m_dynScroll.SetBool(PropertyNames::kVisible, false);
+        return;
+    }
     const PlacedControl* pc = placedById(m->props.id);
     if (!pc || !pc->ctl.IsValid()) return;
     if (!m_schema) return;
 
     const auto& defs = (*m_schema)["$defs"];
-    if (!defs.contains(m->props.type)) return;   // schema 无此类型（image-button 等）
+    if (!defs.contains(m->props.type)) return;
     const nlohmann::json& def = defs[m->props.type];
     if (!def.contains("properties")) return;
 
@@ -774,8 +781,7 @@ void CanvasPane::rebuildDynamicRows() {
     for (auto it = commonProps.begin(); it != commonProps.end(); ++it)
         if (!merged.contains(it.key())) merged[it.key()] = it.value();
 
-    // 跳过：布局/资源/嵌套复杂对象/事件类（画布几何走固定行，其余后续迭代）；
-    // caption/enabled/visible 固定外观区已有，不重复生成
+    // 跳过：布局/资源/嵌套复杂对象/事件类；caption/enabled/visible 固定区已有
     static const char* kSkip[] = {
         "type", "id", "name", "rect", "scale", "margin", "layout", "anchor",
         "events", "contextMenu", "actors", "luotiAni", "captionLabel",
@@ -784,14 +790,32 @@ void CanvasPane::rebuildDynamicRows() {
         "enableExpand", "offset", "shadow", "size", "style", "alignment",
         "checkState", "verticalAlign", "popup", "position",
         "caption", "enabled", "visible",
-        "borderVisible", "fontFile", "fontResource",   // 资源路径/调试类
+        "borderVisible", "fontFile", "fontResource",
     };
+
+    const float viewH = 288.0f, barH = 14.0f;
+    const float viewRowsH = viewH - barH;
+
+    // 滚动条：首次创建常驻（position-changed → applyDynScroll）
+    if (!m_dynScroll.IsValid()) {
+        m_dynScroll = m_ui->CreateScrollBar(0, viewH - barH, 216.0f, barH, 1);
+        m_dynScroll.SetFloat(PropertyNames::kRangeMin, 0.0f);
+        m_dynScroll.SetFloat(PropertyNames::kPageSize, viewRowsH);
+        m_dynScroll.SetFloat(PropertyNames::kStepSize, 24.0f);
+        m_dynScroll.SetCallback(PropertyNames::kEventPositionChanged,
+                                [this](const Event& e) { applyDynScroll(e.GetValueChanged()); });
+        m_propDynamic.AddChild(m_dynScroll);
+    }
+    m_dynScroll.SetBool(PropertyNames::kVisible, true);
 
     m_schemaTarget = pc->ctl;
     m_schemaType = m->props.type;
+    const bool textIsCaption = (m_schemaType == "label" || m_schemaType == "button" ||
+                                m_schemaType == "check-box" || m_schemaType == "image-button");
+    float y = 2.0f;
     int rows = 0;
     std::string genKeys;
-    for (auto it = merged.begin(); it != merged.end() && rows < 5; ++it) {
+    for (auto it = merged.begin(); it != merged.end(); ++it) {
         const std::string key = it.key();
         bool skip = false;
         for (const char* s : kSkip)
@@ -801,17 +825,23 @@ void CanvasPane::rebuildDynamicRows() {
         const std::string t = spec.value("type", "");
         if (t != "string" && t != "number" && t != "integer" && t != "boolean") continue;
 
-        const std::string prop = jsonKeyToProp(key);
-        const float rowW = 216.0f;
+        // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
+        std::string prop = jsonKeyToProp(key);
+        if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
+        const float rowW = 208.0f;
 
         // 键名 label 行
-        Control lb = m_ui->CreateLabel(key, 13.0f, 0, 0, rowW, 20.0f);
+        Control lb = m_ui->CreateLabel(key, 13.0f, 0, 0, rowW, 18.0f);
         lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
+        lb.SetRect(2.0f, y, rowW, 18.0f);
         m_propDynamic.AddChild(lb);
         m_dynamicRows.push_back(lb);
+        m_dynamicRowY.push_back(y);
+        y += 18.0f;
 
         if (t == "string") {
-            Control eb = m_ui->CreateEditBox(0, 0, rowW, 28.0f);
+            Control eb = m_ui->CreateEditBox(0, 0, rowW, 26.0f);
+            eb.SetRect(2.0f, y, rowW, 26.0f);
             const std::string v = m_schemaTarget.GetString(prop.c_str());
             eb.SetString(PropertyNames::kTextContent, v);
             eb.SetCallback(PropertyNames::kEventTextChanged,
@@ -821,12 +851,16 @@ void CanvasPane::rebuildDynamicRows() {
                            });
             m_propDynamic.AddChild(eb);
             m_dynamicRows.push_back(eb);
+            m_dynamicRowY.push_back(y);
+            y += 26.0f;
         } else if (t == "number" || t == "integer") {
-            Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, 28.0f);
-            // integer 走 Int 属性（如 font-size → setIntProperty），number 走 Float
+            Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, 26.0f);
+            nud.SetRect(2.0f, y, rowW, 26.0f);
             const bool isInt = (t == "integer");
-            const float v = isInt ? (float)m_schemaTarget.GetInt(prop.c_str())
-                                  : m_schemaTarget.GetFloat(prop.c_str());
+            float v = isInt ? (float)m_schemaTarget.GetInt(prop.c_str())
+                            : m_schemaTarget.GetFloat(prop.c_str());
+            if (v <= 0 && (prop == "font-size" || prop == "caption-size"))
+                v = m->props.extended.value("font-size", 0.0f);
             if (v > 0) nud.SetFloat(PropertyNames::kValue, v);
             nud.SetCallback(PropertyNames::kEventValueChanged,
                             [this, prop, isInt](const Event& e) {
@@ -837,8 +871,11 @@ void CanvasPane::rebuildDynamicRows() {
                             });
             m_propDynamic.AddChild(nud);
             m_dynamicRows.push_back(nud);
-        } else {   // boolean
-            Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, 28.0f);
+            m_dynamicRowY.push_back(y);
+            y += 26.0f;
+        } else {
+            Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, 24.0f);
+            cb.SetRect(2.0f, y, rowW, 24.0f);
             cb.SetCallback(PropertyNames::kEventClick, [this, prop](const Event&) {
                 if (m_schemaTarget.IsValid()) {
                     const bool cur = m_schemaTarget.GetBool(prop.c_str());
@@ -847,12 +884,35 @@ void CanvasPane::rebuildDynamicRows() {
             });
             m_propDynamic.AddChild(cb);
             m_dynamicRows.push_back(cb);
+            m_dynamicRowY.push_back(y);
+            y += 24.0f;
         }
+        y += 4.0f;
         ++rows;
         genKeys += " " + key;
     }
+
+    m_dynScrollMax = (y + 2.0f) - viewRowsH;
+    if (m_dynScrollMax < 0) m_dynScrollMax = 0;
+    m_dynScroll.SetFloat(PropertyNames::kRangeMax, m_dynScrollMax > 0 ? m_dynScrollMax : 1.0f);
+    m_dynScroll.SetFloat(PropertyNames::kValue, 0.0f);
+    m_dynScroll.SetBool(PropertyNames::kVisible, m_dynScrollMax > 0);
+    applyDynScroll(0.0f);
     std::printf("[CanvasPane] dynamic rows for '%s': %d (%s)\n",
                 m_schemaType.c_str(), rows, genKeys.c_str());
+}
+
+// 滚动 → 行偏移 + 超界行隐藏（panel 无裁剪，窗口式滚动）。
+void CanvasPane::applyDynScroll(float value) {
+    const float viewRowsH = 288.0f - 14.0f;
+    for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
+        if (!m_dynamicRows[i].IsValid() || i >= m_dynamicRowY.size()) continue;
+        const float vy = m_dynamicRowY[i] - value;
+        const UIRect r = m_dynamicRows[i].GetRect();
+        m_dynamicRows[i].SetRect(r.x, vy, r.w, r.h);
+        m_dynamicRows[i].SetBool(PropertyNames::kVisible,
+                                 vy > -26.0f && vy < viewRowsH);
+    }
 }
 
 void CanvasPane::ensureSelBox() {
