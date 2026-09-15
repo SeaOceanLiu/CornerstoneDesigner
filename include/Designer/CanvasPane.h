@@ -65,6 +65,8 @@ public:
     void SetMouseSource(MouseSourceFn src) { m_mouseSource = std::move(src); }
     using KeySourceFn = std::function<bool()>;   // 返回 Delete 键按下沿（每帧轮询一次）
     void SetKeySource(KeySourceFn src) { m_keySource = std::move(src); }
+    using CursorSinkFn = std::function<void(int)>;   // 0=默认 1=移动 2=NWSE 3=NESW 4=NS 5=EW
+    void SetCursorSink(CursorSinkFn sink) { m_cursorSink = std::move(sink); }
 
     // 右侧控件树（tvTree）：画布控件增删/选中双向同步。
     void SetCanvasTree(Control tree);
@@ -172,6 +174,8 @@ private:
     int   m_seq = 0;
     MouseSourceFn m_mouseSource;
     KeySourceFn   m_keySource;
+    CursorSinkFn  m_cursorSink;
+    int    m_lastCursorKind = 0;
 
     float m_seenX = 0, m_seenY = 0, m_seenW = 0, m_seenH = 0;   // 观测缓存
 

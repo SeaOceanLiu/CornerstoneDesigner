@@ -132,6 +132,9 @@ constexpr int kMaxTilePx = 512;                // 瓦片尺寸上限（防缩放
 
 namespace Designer {
 
+// 手柄索引 → 光标形态（0=默认 1=移动 2=NWSE 3=NESW 4=NS 5=EW）；定义见 hitHandle 前
+static int handleCursorKind(int hi);
+
 CanvasPane::CanvasPane() = default;
 CanvasPane::~CanvasPane() = default;
 
@@ -306,6 +309,14 @@ void CanvasPane::SetZoom(float zoom) {
     if (zoom == m_zoom) return;
     m_zoom = zoom;
     rebuildGridTile();
+    // 已放置控件 rect 是 ×zoom 的像素值：缩放后全部重设，并同步选中框/属性面板
+    for (auto& it : m_items) {
+        if (!it.ctl.IsValid()) continue;
+        const SRect& r = it.model->props.rect;
+        it.ctl.SetRect(r.x * m_zoom, r.y * m_zoom, r.w * m_zoom, r.h * m_zoom);
+    }
+    updateSelBox();
+    if (!m_selectedId.empty()) fillPropertyPanel();
 }
 
 void CanvasPane::SetGridCellSize(float px) {
@@ -691,6 +702,19 @@ void CanvasPane::tickInput() {
     float cx = 0, cy = 0;
     ScreenToCanvas(wx, wy, cx, cy);
 
+    // 光标反馈：resize/拖动中 → move；悬停手柄 → 对应双向箭头；其余默认箭头。
+    // kind 变化才下发，避免每帧 SetCursor。
+    int cursorKind = 0;
+    if (!m_resizeId.empty()) cursorKind = handleCursorKind(static_cast<int>(m_resizeHandle));
+    else if (!m_dragId.empty()) cursorKind = 1;
+    else if (!m_selectedId.empty() && inVp) {
+        if (const int hi = hitHandle(cx, cy); hi >= 0) cursorKind = handleCursorKind(hi);
+    }
+    if (cursorKind != m_lastCursorKind) {
+        m_lastCursorKind = cursorKind;
+        if (m_cursorSink) m_cursorSink(cursorKind);
+    }
+
     const bool downEdge = down && !m_mouseWasDown;
     const bool upEdge = !down && m_mouseWasDown;
 
@@ -768,6 +792,18 @@ void CanvasPane::tickInput() {
         // 松开且未开始拖动：无操作
     }
     m_mouseWasDown = down;
+}
+
+// 手柄索引 → 光标形态（0=默认 1=移动 2=NWSE 3=NESW 4=NS 5=EW）。
+// Handle: TL=0 TR=1 BL=2 BR=3 T=4 B=5 L=6 R=7
+static int handleCursorKind(int hi) {
+    switch (hi) {
+    case 0: case 3: return 2;   // TL/BR → NWSE 双箭头
+    case 1: case 2: return 3;   // TR/BL → NESW 双箭头
+    case 4: case 5: return 4;   // T/B  → NS 双箭头
+    case 6: case 7: return 5;   // L/R  → EW 双箭头
+    default: return 0;
+    }
 }
 
 // 手柄命中：鼠标（逻辑坐标）→ 视口像素，与手柄中心距离判定（容差 6px）。
