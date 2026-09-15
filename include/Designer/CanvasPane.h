@@ -20,6 +20,8 @@
 #include <string>
 
 #include "Control.h"
+#include "ControlModel.h"
+#include "UICornerstoneAPI.h"
 
 class Event;
 
@@ -28,9 +30,6 @@ class UICornerstone;
 }
 
 namespace Designer {
-
-struct ControlModel;
-struct SRect;
 
 class CanvasPane {
 public:
@@ -76,7 +75,8 @@ public:
     // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
     void deleteSelected();
     // 属性面板联动（App 注入；选中回填面板，面板变更回写控件）
-    void SetPropertyControls(Control x, Control y, Control w, Control h, Control caption);
+    void SetPropertyControls(Control x, Control y, Control w, Control h,
+                             Control caption, Control color);
 
     // 缩放档（0.25~2.0）。改变 z → 重建网格瓦片（小纹理）。
     void SetZoom(float zoom);
@@ -102,6 +102,8 @@ public:
 
     // 放置控件查询：按 id 取逻辑 rect（供 App/探针使用）。
     bool GetPlacedRect(const std::string& id, SRect& out) const;
+    // 放置控件查询：按 id 取当前背景色（供 App/探针使用）；未找到返回 false。
+    bool GetPlacedColor(const std::string& id, UIColor& out) const;
 
     // 画布控件点击（画布坐标）。
     using ClickHandler = std::function<void(const std::string& id, float cx, float cy)>;
@@ -139,6 +141,10 @@ private:
     Control m_selBox;              // 选中框（视口内 Shape 多图元）
     bool  m_propSync = false;      // 属性面板回填中（抑制回写）
     Control m_propX, m_propY, m_propW, m_propH, m_propCaption;
+    Control m_propColor;           // 颜色（color-changed 事件回调：onOK 确认触发）
+    std::string m_lastColorHex;    // 上次回填/已应用的颜色（echo 抑制）
+    static void colorChangedThunk(UIControlHandle, const UIEventData*, void* userData);
+    void onColorPicked(unsigned char r, unsigned char g, unsigned char b);
 
     // 交互状态
     bool  m_mouseWasDown = false;
@@ -146,6 +152,18 @@ private:
     float m_dragOffX = 0, m_dragOffY = 0;
     std::string m_dragId;
     Control m_dragCtl;
+
+    // 手柄 resize：8 向控点（视口像素坐标缓存，updateSelBox 时更新）
+    enum class Handle { TL, TR, BL, BR, T, B, L, R };
+    static constexpr int kHandleCount = 8;
+    std::pair<float, float> m_handlePts[kHandleCount]{};
+    std::string m_resizeId;
+    Handle m_resizeHandle = Handle::TL;
+    float  m_resizeStartX = 0, m_resizeStartY = 0;   // 按下时鼠标（逻辑坐标）
+    SRect  m_resizeStartRect{};                      // 按下时控件逻辑 rect
+    Control m_resizeCtl;
+    int   hitHandle(float cx, float cy) const;       // 命中手柄返回 0..7，否则 -1
+    void  applyResize(ControlModel* m, float cx, float cy);
     Control m_toolboxTree;
     Control m_canvasTree;          // 控件树（主实例 tvTree）
     bool    m_treeSync = false;    // 编程式树操作中（抑制 select 回调回环）

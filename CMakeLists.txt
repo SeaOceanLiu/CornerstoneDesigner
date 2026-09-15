@@ -25,7 +25,8 @@ add_executable(CornerstoneDesigner
 
 target_include_directories(CornerstoneDesigner PRIVATE
     include
-    third_party/json/single_include)
+    third_party/json/single_include
+    ${UICORNERSTONE_ROOT}/binding/src)   # DynamicApi.h（fnSetCallback 等 C ABI 动态解析）
 target_link_libraries(CornerstoneDesigner PRIVATE UICornerstoneBinding)
 
 # 运行依赖 POST_BUILD 拷贝（参照 UICS binding/CMakeLists.txt 模式）：

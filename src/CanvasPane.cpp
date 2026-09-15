@@ -15,6 +15,7 @@
 
 #include "UICornerstone.h"
 #include "Control.h"
+#include "DynamicApi.h"
 #include "Event.h"
 #include "PropertyNames.h"
 
@@ -361,6 +362,17 @@ bool CanvasPane::GetPlacedRect(const std::string& id, SRect& out) const {
     return false;
 }
 
+bool CanvasPane::GetPlacedColor(const std::string& id, UIColor& out) const {
+    for (const auto& it : m_items) {
+        if (it.model && it.model->props.id == id) {
+            if (!it.ctl.IsValid()) return false;
+            out = it.ctl.GetColor(PropertyNames::kBackground);
+            return true;
+        }
+    }
+    return false;
+}
+
 // 视口窗口区域（内容区绝对坐标，含工具栏）。
 SRect CanvasPane::ViewportRect() const {
     if (!m_viewport) return SRect{ 0, 0, 0, 0 };
@@ -528,6 +540,7 @@ void CanvasPane::selectItem(const std::string& id) {
 void CanvasPane::fillPropertyPanel() {
     if (!m_propX.IsValid()) return;
     const ControlModel* m = findModel(m_selectedId);
+    const PlacedControl* pc = m ? placedById(m->props.id) : nullptr;
     m_propSync = true;
     m_propX.SetFloat(PropertyNames::kValue, m ? m->props.rect.x : 0);
     m_propY.SetFloat(PropertyNames::kValue, m ? m->props.rect.y : 0);
@@ -535,20 +548,32 @@ void CanvasPane::fillPropertyPanel() {
     m_propH.SetFloat(PropertyNames::kValue, m ? m->props.rect.h : 0);
     m_propCaption.SetString(PropertyNames::kTextContent,
                             m ? m->props.extended.value("caption", "") : "");
+    // 颜色回填：读控件背景色（normal 态），失败用缺省；SetString 走 ColorPicker
+    // 的 hex 写入口（setColor），记录 hex 供回调 echo 抑制
+    UIColor cc{0x4A, 0x90, 0xD9, 255};
+    if (pc && pc->ctl.IsValid())
+        cc = pc->ctl.GetColor(PropertyNames::kBackground);
+    if (m_propColor.IsValid()) {
+        char hex[8];
+        std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", cc.r, cc.g, cc.b);
+        m_propColor.SetString(PropertyNames::kColor, hex);
+        m_lastColorHex = hex;
+    }
     m_propSync = false;
 }
 
 // 模型 rect → 视口控件 rect（× zoom）+ 选中框同步。
 void CanvasPane::applyModelRect(ControlModel* m) {
-    if (!m) return;
-    if (PlacedControl* pc = placedById(m->props.id))
+    if (!m) return;    if (PlacedControl* pc = placedById(m->props.id))
         pc->ctl.SetRect(m->props.rect.x * m_zoom, m->props.rect.y * m_zoom,
                         m->props.rect.w * m_zoom, m->props.rect.h * m_zoom);
     updateSelBox();
 }
 
-void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h, Control caption) {
-    m_propX = x; m_propY = y; m_propW = w; m_propH = h; m_propCaption = caption;
+void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
+                                     Control caption, Control color) {
+    m_propX = x; m_propY = y; m_propW = w; m_propH = h;
+    m_propCaption = caption; m_propColor = color;
     // NUD 事件载荷为 Float（GetValueChanged）；lambda 按值捕获（不可悬空）
     auto bindRect = [this](Control nud, int which) {
         nud.SetCallback(PropertyNames::kEventValueChanged, [this, which](const Event& e) {
@@ -575,6 +600,33 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
         if (PlacedControl* pc = placedById(m->props.id))
             pc->ctl.SetString(PropertyNames::kCaption, e.GetTextChanged());
     });
+    // 颜色：ColorPicker 读值无属性接口，经 C ABI 订阅 color-changed（onOK 确认时
+    // 触发，Color 载荷写 evt->data.color）；Binding Event 未暴露取色，直接用 thunk。
+    if (m_propColor.IsValid() && m_ui)
+        UICornerstone::Dyn::API().fnSetCallback(
+            m_ui->Handle(), m_propColor.Handle(), PropertyNames::kEventColorChanged,
+            &CanvasPane::colorChangedThunk, this);
+}
+
+// ColorPicker color-changed C 回调（onOK 确认）。
+void CanvasPane::colorChangedThunk(UIControlHandle, const UIEventData* evt, void* userData) {
+    if (!evt || !userData) return;
+    static_cast<CanvasPane*>(userData)->onColorPicked(
+        evt->data.color.r, evt->data.color.g, evt->data.color.b);
+}
+
+// 用户确认颜色 → 写选中控件背景色（normal 态）+ 模型记录。
+void CanvasPane::onColorPicked(unsigned char r, unsigned char g, unsigned char b) {
+    if (m_selectedId.empty()) return;
+    ControlModel* m = findModel(m_selectedId);
+    PlacedControl* pc = placedById(m_selectedId);
+    if (!m || !pc || !pc->ctl.IsValid()) return;
+    const UIColor c{ r, g, b, 255 };
+    char hex[8];
+    std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", r, g, b);
+    m_lastColorHex = hex;
+    pc->ctl.SetColor(PropertyNames::kBackground, c);
+    m->props.extended["color"] = hex;
 }
 
 void CanvasPane::ensureSelBox() {
@@ -612,9 +664,15 @@ void CanvasPane::updateSelBox() {
         m_ui->ShapeSetPrimitiveFloat(m_selBox, ih, PropertyNames::kLineWidthProp, 1.0f);
     };
     const float x2 = x + w, y2 = y + h;
-    handle(x, y);  handle(x2, y);  handle(x, y2);  handle(x2, y2);
-    handle(x + w / 2, y);  handle(x + w / 2, y2);
-    handle(x, y + h / 2);  handle(x2, y + h / 2);
+    // 顺序与 Handle 枚举一致：TL TR BL BR T B L R（缓存供命中检测）
+    const float pts[kHandleCount][2] = {
+        {x, y},      {x2, y},      {x, y2},      {x2, y2},
+        {x + w / 2, y}, {x + w / 2, y2}, {x, y + h / 2}, {x2, y + h / 2},
+    };
+    for (int i = 0; i < kHandleCount; ++i) {
+        m_handlePts[i] = { pts[i][0], pts[i][1] };
+        handle(pts[i][0], pts[i][1]);
+    }
 }
 
 void CanvasPane::tickInput() {
@@ -636,6 +694,20 @@ void CanvasPane::tickInput() {
     const bool downEdge = down && !m_mouseWasDown;
     const bool upEdge = !down && m_mouseWasDown;
 
+    // 手柄 resize 拖动
+    if (!m_resizeId.empty()) {
+        ControlModel* m = findModel(m_resizeId);
+        if (!m) { m_resizeId.clear(); m_resizeCtl = Control(); m_mouseWasDown = down; return; }
+        if (down) {
+            applyResize(m, cx, cy);
+        } else {
+            m_resizeId.clear();
+            m_resizeCtl = Control();
+        }
+        m_mouseWasDown = down;
+        return;
+    }
+
     // 拖动已选中控件
     if (!m_dragId.empty()) {
         ControlModel* m = findModel(m_dragId);
@@ -652,6 +724,7 @@ void CanvasPane::tickInput() {
                 m_dragCtl.SetRect(nx * m_zoom, ny * m_zoom,
                                   m->props.rect.w * m_zoom, m->props.rect.h * m_zoom);
             updateSelBox();
+            fillPropertyPanel();   // 拖动中同步属性面板（m_propSync 抑制回写）
         } else {
             m_dragId.clear();   // 松开结束拖动
         }
@@ -659,8 +732,21 @@ void CanvasPane::tickInput() {
         return;
     }
 
-    // 按下沿：命中检测 → 选中并开始拖动 / 取消选中
+    // 按下沿：手柄命中 → resize；控件命中 → 选中并拖动；空白 → 取消选中
     if (downEdge && inVp) {
+        if (const int hi = hitHandle(cx, cy); hi >= 0 && !m_selectedId.empty()) {
+            if (ControlModel* m = findModel(m_selectedId)) {
+                m_resizeId = m_selectedId;
+                m_resizeHandle = static_cast<Handle>(hi);
+                m_resizeStartX = cx;
+                m_resizeStartY = cy;
+                m_resizeStartRect = m->props.rect;
+                if (PlacedControl* pc = placedById(m_selectedId))
+                    m_resizeCtl = pc->ctl;
+                m_mouseWasDown = down;
+                return;
+            }
+        }
         std::string hit;
         if (hitTest(cx, cy, hit)) {
             selectItem(hit);
@@ -682,6 +768,59 @@ void CanvasPane::tickInput() {
         // 松开且未开始拖动：无操作
     }
     m_mouseWasDown = down;
+}
+
+// 手柄命中：鼠标（逻辑坐标）→ 视口像素，与手柄中心距离判定（容差 6px）。
+int CanvasPane::hitHandle(float cx, float cy) const {
+    const float mx = cx * m_zoom, my = cy * m_zoom;
+    for (int i = 0; i < kHandleCount; ++i) {
+        const float dx = mx - m_handlePts[i].first;
+        const float dy = my - m_handlePts[i].second;
+        if (dx * dx + dy * dy <= 36.0f) return i;
+    }
+    return -1;
+}
+
+// 手柄 resize：以按下时 rect/鼠标为基准，按方向更新逻辑 rect（网格吸附+最小 8），
+// 同步视口控件、选中框与属性面板。
+void CanvasPane::applyResize(ControlModel* m, float cx, float cy) {
+    float dx = cx - m_resizeStartX;
+    float dy = cy - m_resizeStartY;
+    const SRect& s = m_resizeStartRect;
+    SRect r = s;
+    switch (m_resizeHandle) {
+    case Handle::TL: r.x = s.x + dx; r.y = s.y + dy; r.w = s.w - dx; r.h = s.h - dy; break;
+    case Handle::TR: r.y = s.y + dy; r.w = s.w + dx; r.h = s.h - dy; break;
+    case Handle::BL: r.x = s.x + dx; r.w = s.w - dx; r.h = s.h + dy; break;
+    case Handle::BR: r.w = s.w + dx; r.h = s.h + dy; break;
+    case Handle::T:  r.y = s.y + dy; r.h = s.h - dy; break;
+    case Handle::B:  r.h = s.h + dy; break;
+    case Handle::L:  r.x = s.x + dx; r.w = s.w - dx; break;
+    case Handle::R:  r.w = s.w + dx; break;
+    }
+    if (m_snapEnabled) {
+        const float g = m_gridCell;
+        r.x = std::round(r.x / g) * g;
+        r.y = std::round(r.y / g) * g;
+        r.w = std::round(r.w / g) * g;
+        r.h = std::round(r.h / g) * g;
+    }
+    // 最小尺寸 8：限制后保持对侧边/角不动
+    const float minS = 8.0f;
+    if (r.w < minS) r.w = minS;
+    if (r.h < minS) r.h = minS;
+    const bool fixRight = (m_resizeHandle == Handle::TL || m_resizeHandle == Handle::BL ||
+                           m_resizeHandle == Handle::L);
+    const bool fixBottom = (m_resizeHandle == Handle::TL || m_resizeHandle == Handle::TR ||
+                            m_resizeHandle == Handle::T);
+    if (fixRight)   r.x = s.x + s.w - r.w;
+    if (fixBottom)  r.y = s.y + s.h - r.h;
+
+    m->props.rect = r;
+    if (m_resizeCtl.IsValid())
+        m_resizeCtl.SetRect(r.x * m_zoom, r.y * m_zoom, r.w * m_zoom, r.h * m_zoom);
+    updateSelBox();
+    fillPropertyPanel();
 }
 
 CanvasPane::PlacedControl* CanvasPane::placedById(const std::string& id) {
@@ -738,6 +877,10 @@ void CanvasPane::deleteSelected() {
     if (m_dragId == m_selectedId) {   // 拖动中删除：清理拖动状态
         m_dragId.clear();
         m_dragCtl = Control();
+    }
+    if (m_resizeId == m_selectedId) {   // resize 中删除：清理 resize 状态
+        m_resizeId.clear();
+        m_resizeCtl = Control();
     }
     syncTreeRemove(m_selectedId);
     selectItem("");   // 取消选中 → 属性面板清零 + 选中框隐藏
