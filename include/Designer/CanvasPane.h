@@ -67,6 +67,12 @@ public:
     using KeySourceFn = std::function<bool()>;   // 返回 Delete 键按下沿（每帧轮询一次）
     void SetKeySource(KeySourceFn src) { m_keySource = std::move(src); }
 
+    // 右侧控件树（tvTree）：画布控件增删/选中双向同步。
+    void SetCanvasTree(Control tree);
+    void syncTreeAdd(const std::string& id, const std::string& label);
+    void syncTreeRemove(const std::string& id);
+    void syncTreeSelection();
+
     // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
     void deleteSelected();
     // 属性面板联动（App 注入；选中回填面板，面板变更回写控件）
@@ -141,6 +147,8 @@ private:
     std::string m_dragId;
     Control m_dragCtl;
     Control m_toolboxTree;
+    Control m_canvasTree;          // 控件树（主实例 tvTree）
+    bool    m_treeSync = false;    // 编程式树操作中（抑制 select 回调回环）
     std::string m_lastToolId;
     std::chrono::steady_clock::time_point m_lastToolTime;
     int   m_seq = 0;

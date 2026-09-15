@@ -487,6 +487,10 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
                 m_items.back().model->props.type.c_str(),
                 m_items.back().model->props.id.c_str(), x, y);
 
+    // 控件树同步：新增节点（标签 = 默认标题 + id）
+    syncTreeAdd(m_items.back().model->props.id,
+                std::string(caption) + " " + m_items.back().model->props.id);
+
     // 选中新控件；选中框需重新置顶
     m_selectedId.clear();
     if (m_selBox.IsValid()) { m_selBox.Destroy(); m_selBox = Control(); }
@@ -516,6 +520,7 @@ void CanvasPane::selectItem(const std::string& id) {
     ensureSelBox();
     updateSelBox();
     fillPropertyPanel();
+    syncTreeSelection();
     if (m_clickHandler) m_clickHandler(id, 0, 0);
 }
 
@@ -685,6 +690,42 @@ CanvasPane::PlacedControl* CanvasPane::placedById(const std::string& id) {
     return nullptr;
 }
 
+// 右侧控件树：select 事件 → 选中画布控件（m_treeSync 抑制编程式回环）。
+void CanvasPane::SetCanvasTree(Control tree) {
+    m_canvasTree = tree;
+    if (!m_canvasTree.IsValid()) return;
+    m_canvasTree.SetCallback(PropertyNames::kEventSelect, [this](const Event& e) {
+        if (m_treeSync) return;
+        const std::string id = e.GetNodeId();
+        if (id.empty() || !findModel(id)) return;   // 空选/未知节点忽略
+        selectItem(id);
+    });
+}
+
+// 画布控件增删/选中 → 树同步（编程式，触发 select 回调被 m_treeSync 抑制）。
+// tvTree 在主实例，经 m_ui 成员方法操作。
+void CanvasPane::syncTreeAdd(const std::string& id, const std::string& label) {
+    if (!m_canvasTree.IsValid() || !m_ui) return;
+    m_treeSync = true;
+    m_ui->TreeViewAddNode(m_canvasTree, "", id, label);
+    m_treeSync = false;
+}
+
+void CanvasPane::syncTreeRemove(const std::string& id) {
+    if (!m_canvasTree.IsValid() || !m_ui) return;
+    m_treeSync = true;
+    m_ui->TreeViewRemoveNode(m_canvasTree, id);
+    m_treeSync = false;
+}
+
+void CanvasPane::syncTreeSelection() {
+    if (!m_canvasTree.IsValid() || !m_ui) return;
+    m_treeSync = true;
+    if (m_selectedId.empty()) m_ui->TreeViewClearSelection(m_canvasTree);
+    else m_ui->TreeViewSelectNode(m_canvasTree, m_selectedId);
+    m_treeSync = false;
+}
+
 // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
 void CanvasPane::deleteSelected() {
     if (m_selectedId.empty()) return;
@@ -698,6 +739,7 @@ void CanvasPane::deleteSelected() {
         m_dragId.clear();
         m_dragCtl = Control();
     }
+    syncTreeRemove(m_selectedId);
     selectItem("");   // 取消选中 → 属性面板清零 + 选中框隐藏
 }
 
