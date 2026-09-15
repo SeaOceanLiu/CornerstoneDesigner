@@ -6,6 +6,7 @@
 #include "Designer/App.h"
 
 #include "Designer/CanvasPane.h"
+#include "Designer/ControlModel.h"
 
 #include "UICornerstone.h"
 #include "Control.h"
@@ -148,6 +149,11 @@ bool App::init() {
     if (m_canvas) {
         m_canvas->SetMouseSource([this](float& x, float& y) { return m_sdl.pollMouse(x, y); });
         m_canvas->SetToolboxTree(m_ui->FindControl("tvToolbox"));
+        m_canvas->SetPropertyControls(m_ui->FindControl("prop_x"),
+                                      m_ui->FindControl("prop_y"),
+                                      m_ui->FindControl("prop_w"),
+                                      m_ui->FindControl("prop_h"),
+                                      m_ui->FindControl("prop_caption"));
     }
 
     // 初始化基准尺寸

@@ -64,6 +64,8 @@ public:
     // 鼠标源（App 注入 SDL 轮询；返回左键是否按下，填充窗口坐标）
     using MouseSourceFn = std::function<bool(float&, float&)>;
     void SetMouseSource(MouseSourceFn src) { m_mouseSource = std::move(src); }
+    // 属性面板联动（App 注入；选中回填面板，面板变更回写控件）
+    void SetPropertyControls(Control x, Control y, Control w, Control h, Control caption);
 
     // 缩放档（0.25~2.0）。改变 z → 重建网格瓦片（小纹理）。
     void SetZoom(float zoom);
@@ -86,6 +88,9 @@ public:
     // 画布尺寸（画布逻辑坐标）与纸面窗口区域。
     SRect CanvasRect() const;
     SRect ViewportRect() const;
+
+    // 放置控件查询：按 id 取逻辑 rect（供 App/探针使用）。
+    bool GetPlacedRect(const std::string& id, SRect& out) const;
 
     // 画布控件点击（画布坐标）。
     using ClickHandler = std::function<void(const std::string& id, float cx, float cy)>;
@@ -115,12 +120,14 @@ private:
     void selectItem(const std::string& id);
     void ensureSelBox();
     void updateSelBox();
-
-    std::string m_resourceRoot;    // assets 资源根（字体注册用）
+    void fillPropertyPanel();      // 选中变化 → 属性面板回填
+    void applyModelRect(ControlModel* m);   // 模型 rect → 视口控件 rect + 选中框
 
     std::vector<PlacedControl> m_items;
     std::string m_selectedId;
     Control m_selBox;              // 选中框（视口内 Shape 多图元）
+    bool  m_propSync = false;      // 属性面板回填中（抑制回写）
+    Control m_propX, m_propY, m_propW, m_propH, m_propCaption;
 
     // 交互状态
     bool  m_mouseWasDown = false;
@@ -145,6 +152,7 @@ private:
     float m_areaX = 0, m_areaY = 0;
     float m_contentW = 0, m_contentH = 0;
     float m_toolbarH = 40.0f;
+    std::string m_resourceRoot;    // assets 资源根（字体注册用）
 
     float m_zoom = 1.0f;
     bool  m_gridVisible = true;

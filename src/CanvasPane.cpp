@@ -351,6 +351,16 @@ SRect CanvasPane::CanvasRect() const {
     return SRect{ 0, 0, m_contentW / m_zoom, m_contentH / m_zoom };
 }
 
+bool CanvasPane::GetPlacedRect(const std::string& id, SRect& out) const {
+    for (const auto& it : m_items) {
+        if (it.model && it.model->props.id == id) {
+            out = it.model->props.rect;
+            return true;
+        }
+    }
+    return false;
+}
+
 // 视口窗口区域（内容区绝对坐标，含工具栏）。
 SRect CanvasPane::ViewportRect() const {
     if (!m_viewport) return SRect{ 0, 0, 0, 0 };
@@ -505,7 +515,61 @@ void CanvasPane::selectItem(const std::string& id) {
     m_selectedId = id;
     ensureSelBox();
     updateSelBox();
+    fillPropertyPanel();
     if (m_clickHandler) m_clickHandler(id, 0, 0);
+}
+
+// 选中变化 → 属性面板回填（m_propSync 抑制回写）；未选中清零。
+void CanvasPane::fillPropertyPanel() {
+    if (!m_propX.IsValid()) return;
+    const ControlModel* m = findModel(m_selectedId);
+    m_propSync = true;
+    m_propX.SetFloat(PropertyNames::kValue, m ? m->props.rect.x : 0);
+    m_propY.SetFloat(PropertyNames::kValue, m ? m->props.rect.y : 0);
+    m_propW.SetFloat(PropertyNames::kValue, m ? m->props.rect.w : 0);
+    m_propH.SetFloat(PropertyNames::kValue, m ? m->props.rect.h : 0);
+    m_propCaption.SetString(PropertyNames::kTextContent,
+                            m ? m->props.extended.value("caption", "") : "");
+    m_propSync = false;
+}
+
+// 模型 rect → 视口控件 rect（× zoom）+ 选中框同步。
+void CanvasPane::applyModelRect(ControlModel* m) {
+    if (!m) return;
+    if (PlacedControl* pc = placedById(m->props.id))
+        pc->ctl.SetRect(m->props.rect.x * m_zoom, m->props.rect.y * m_zoom,
+                        m->props.rect.w * m_zoom, m->props.rect.h * m_zoom);
+    updateSelBox();
+}
+
+void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h, Control caption) {
+    m_propX = x; m_propY = y; m_propW = w; m_propH = h; m_propCaption = caption;
+    // NUD 事件载荷为 Float（GetValueChanged）；lambda 按值捕获（不可悬空）
+    auto bindRect = [this](Control nud, int which) {
+        nud.SetCallback(PropertyNames::kEventValueChanged, [this, which](const Event& e) {
+            if (m_propSync) return;
+            ControlModel* m = findModel(m_selectedId);
+            if (!m) return;
+            const float v = e.GetValueChanged();
+            if (which == 0) m->props.rect.x = v;
+            else if (which == 1) m->props.rect.y = v;
+            else if (which == 2) m->props.rect.w = v;
+            else m->props.rect.h = v;
+            applyModelRect(m);
+        });
+    };
+    bindRect(m_propX, 0);
+    bindRect(m_propY, 1);
+    bindRect(m_propW, 2);
+    bindRect(m_propH, 3);
+    m_propCaption.SetCallback(PropertyNames::kEventTextChanged, [this](const Event& e) {
+        if (m_propSync) return;
+        ControlModel* m = findModel(m_selectedId);
+        if (!m) return;
+        m->props.extended["caption"] = e.GetTextChanged();
+        if (PlacedControl* pc = placedById(m->props.id))
+            pc->ctl.SetString(PropertyNames::kCaption, e.GetTextChanged());
+    });
 }
 
 void CanvasPane::ensureSelBox() {
