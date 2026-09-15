@@ -235,10 +235,16 @@ void CanvasPane::createGridImage() {
 }
 
 // 重建网格瓦片（缩放档/gridCell 变化）。
+// 不销毁重建 m_grid（新建 Image 会挂到视口顶层，不透明瓦片盖住已放置控件——
+// "缩放后控件消失"根因）：覆盖注册同名资源后经 "image-resource" 属性触发重载，
+// 控件对象不动、z 序保持原位。
 void CanvasPane::rebuildGridTile() {
     if (!m_viewport) return;
     registerGridTile();
-    createGridImage();
+    if (m_grid.IsValid())
+        m_grid.SetString(PropertyNames::kImageResource, "provider:dc_canvas_grid");
+    else
+        createGridImage();   // 首次：创建（此时位于底层，先于放置控件）
 }
 
 // 字体注册：视口实例的 provider 继承自 owner 的内存 provider（未命中不做文件系统
@@ -367,6 +373,18 @@ bool CanvasPane::GetPlacedRect(const std::string& id, SRect& out) const {
     for (const auto& it : m_items) {
         if (it.model && it.model->props.id == id) {
             out = it.model->props.rect;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CanvasPane::GetPlacedViewRect(const std::string& id, SRect& out) const {
+    for (const auto& it : m_items) {
+        if (it.model && it.model->props.id == id) {
+            if (!it.ctl.IsValid()) return false;
+            const UIRect r = it.ctl.GetRect();
+            out = SRect{ r.x, r.y, r.w, r.h };
             return true;
         }
     }
@@ -703,16 +721,18 @@ void CanvasPane::tickInput() {
     ScreenToCanvas(wx, wy, cx, cy);
 
     // 光标反馈：resize/拖动中 → move；悬停手柄 → 对应双向箭头；其余默认箭头。
-    // kind 变化才下发，避免每帧 SetCursor。
-    int cursorKind = 0;
-    if (!m_resizeId.empty()) cursorKind = handleCursorKind(static_cast<int>(m_resizeHandle));
-    else if (!m_dragId.empty()) cursorKind = 1;
-    else if (!m_selectedId.empty() && inVp) {
-        if (const int hi = hitHandle(cx, cy); hi >= 0) cursorKind = handleCursorKind(hi);
-    }
-    if (cursorKind != m_lastCursorKind) {
+    // 每帧无条件下发：引擎控件 hover 时经 Cursor::setCurrent 恢复自身光标
+    //（如 Label 的 pointer），仅变化时下发一次会被引擎覆盖。
+    // 仅画布视口内下发——区域外（splitter/工具栏等）光标归引擎管理，不干扰。
+    if (inVp && m_cursorSink) {
+        int cursorKind = 0;
+        if (!m_resizeId.empty()) cursorKind = handleCursorKind(static_cast<int>(m_resizeHandle));
+        else if (!m_dragId.empty()) cursorKind = 1;
+        else if (!m_selectedId.empty()) {
+            if (const int hi = hitHandle(cx, cy); hi >= 0) cursorKind = handleCursorKind(hi);
+        }
         m_lastCursorKind = cursorKind;
-        if (m_cursorSink) m_cursorSink(cursorKind);
+        m_cursorSink(cursorKind);
     }
 
     const bool downEdge = down && !m_mouseWasDown;

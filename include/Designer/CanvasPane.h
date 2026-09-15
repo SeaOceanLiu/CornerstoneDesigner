@@ -104,6 +104,8 @@ public:
 
     // 放置控件查询：按 id 取逻辑 rect（供 App/探针使用）。
     bool GetPlacedRect(const std::string& id, SRect& out) const;
+    // 放置控件查询：按 id 取视口像素 rect（逻辑 × zoom，供 App/探针使用）。
+    bool GetPlacedViewRect(const std::string& id, SRect& out) const;
     // 放置控件查询：按 id 取当前背景色（供 App/探针使用）；未找到返回 false。
     bool GetPlacedColor(const std::string& id, UIColor& out) const;
 
