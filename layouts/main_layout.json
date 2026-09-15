@@ -1430,23 +1430,24 @@
                                                         }
                                                     },
                                                     {
-                                                        "type": "label",
-                                                        "caption": "（各控件特有属性，选中后动态生成）",
+                                                        "type": "panel",
+                                                        "id": "propDynamic",
                                                         "rect": {
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 224,
-                                                            "h": 26
+                                                            "h": 240
                                                         },
-                                                        "font": {
-                                                            "name": "HarmonyOS_Sans_SC_Regular",
-                                                            "size": 16
+                                                        "layout": {
+                                                            "type": "v-flow",
+                                                            "gap": 4
                                                         },
                                                         "colors": {
-                                                            "text": {
-                                                                "normal": "#606060FF"
+                                                            "border": {
+                                                                "normal": "#404040FF"
                                                             }
-                                                        }
+                                                        },
+                                                        "borderVisible": true
                                                     },
                                                     {
                                                         "type": "button",

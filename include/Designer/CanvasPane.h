@@ -18,6 +18,9 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include "Control.h"
 #include "ControlModel.h"
@@ -80,6 +83,13 @@ public:
     void SetPropertyControls(Control x, Control y, Control w, Control h,
                              Control caption, Control color);
 
+    // ── Schema 驱动动态属性区 ──
+    // 加载引擎 declarative-ui.schema.json（$defs 按控件类型提供属性清单+类型）。
+    bool LoadSchema(const std::string& path);
+    // propDynamic 容器（主实例 v-flow panel）接线；选中控件时按 schema 重建行。
+    void SetDynamicPropsContainer(Control box);
+    void rebuildDynamicRows();
+
     // 缩放档（0.25~2.0）。改变 z → 重建网格瓦片（小纹理）。
     void SetZoom(float zoom);
     float GetZoom() const { return m_zoom; }
@@ -108,6 +118,8 @@ public:
     bool GetPlacedViewRect(const std::string& id, SRect& out) const;
     // 放置控件查询：按 id 取当前像素字号（供 App/探针使用）；未找到返回 false。
     bool GetPlacedFontPx(const std::string& id, float& out) const;
+    // 放置控件写入：按 id 设置像素字号（writeFontPx 双路）；未找到返回 false。
+    bool SetPlacedFontPx(const std::string& id, float px);
     // 放置控件查询：按 id 取当前背景色（供 App/探针使用）；未找到返回 false。
     bool GetPlacedColor(const std::string& id, UIColor& out) const;
 
@@ -151,6 +163,13 @@ private:
     std::string m_lastColorHex;    // 上次回填/已应用的颜色（echo 抑制）
     static void colorChangedThunk(UIControlHandle, const UIEventData*, void* userData);
     void onColorPicked(unsigned char r, unsigned char g, unsigned char b);
+
+    // Schema 驱动动态属性区
+    Control m_propDynamic;                       // propDynamic 容器（v-flow）
+    std::unique_ptr<nlohmann::json> m_schema;    // 引擎 declarative-ui.schema.json
+    std::vector<Control> m_dynamicRows;          // 已生成的行控件（销毁用）
+    Control m_schemaTarget;                      // 当前行集对应的目标控件
+    std::string m_schemaType;
 
     // 交互状态
     bool  m_mouseWasDown = false;

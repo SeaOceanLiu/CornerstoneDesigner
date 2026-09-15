@@ -138,13 +138,13 @@ static int handleCursorKind(int hi);
 // 控件文本字号（px）：Label/EditBox 等用 font-size，Button 用 caption-size；
 // 两路都写（不支持的返回 0 无害）；读失败（0）回落 16（引擎缺省字号）。
 static float readFontPx(const Control& ctl) {
-    float v = ctl.GetFloat(PropertyNames::kFontSize);
-    if (v <= 0) v = ctl.GetFloat(PropertyNames::kCaptionSize);
+    float v = (float)ctl.GetInt(PropertyNames::kFontSize);   // Label/EditBox 等
+    if (v <= 0) v = ctl.GetFloat(PropertyNames::kCaptionSize);   // Button
     return v > 0 ? v : 16.0f;
 }
 static void writeFontPx(Control& ctl, float px) {
-    ctl.SetFloat(PropertyNames::kFontSize, px);
-    ctl.SetFloat(PropertyNames::kCaptionSize, px);
+    ctl.SetInt(PropertyNames::kFontSize, (int)px);        // Label/EditBox 等（setIntProperty）
+    ctl.SetFloat(PropertyNames::kCaptionSize, px);        // Button（setFloatProperty）
 }
 
 CanvasPane::CanvasPane() = default;
@@ -415,6 +415,17 @@ bool CanvasPane::GetPlacedFontPx(const std::string& id, float& out) const {
     return false;
 }
 
+bool CanvasPane::SetPlacedFontPx(const std::string& id, float px) {
+    for (auto& it : m_items) {
+        if (it.model && it.model->props.id == id) {
+            if (!it.ctl.IsValid()) return false;
+            writeFontPx(it.ctl, px);
+            return true;
+        }
+    }
+    return false;
+}
+
 bool CanvasPane::GetPlacedColor(const std::string& id, UIColor& out) const {
     for (const auto& it : m_items) {
         if (it.model && it.model->props.id == id) {
@@ -589,6 +600,7 @@ void CanvasPane::selectItem(const std::string& id) {
     updateSelBox();
     fillPropertyPanel();
     syncTreeSelection();
+    rebuildDynamicRows();
     if (m_clickHandler) m_clickHandler(id, 0, 0);
 }
 
@@ -683,6 +695,158 @@ void CanvasPane::onColorPicked(unsigned char r, unsigned char g, unsigned char b
     m_lastColorHex = hex;
     pc->ctl.SetColor(PropertyNames::kBackground, c);
     m->props.extended["color"] = hex;
+}
+
+// ── Schema 驱动动态属性区 ──
+
+// JSON 键（camelCase）→ 运行时属性名（kebab-case）；特例覆盖引擎简写命名。
+static std::string jsonKeyToProp(const std::string& key) {
+    static const std::pair<const char*, const char*> kSpecial[] = {
+        { "checkColor", "check" },       { "crossColor", "cross" },
+        { "indeterminateColor", "indeterminate" }, { "boxBorderColor", "box-border" },
+    };
+    for (const auto& s : kSpecial)
+        if (key == s.first) return s.second;
+    std::string out;
+    for (char c : key) {
+        if (std::isupper(static_cast<unsigned char>(c))) {
+            out += '-';
+            out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        } else {
+            out += c;
+        }
+    }
+    return out;
+}
+
+bool CanvasPane::LoadSchema(const std::string& path) {
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) {
+        std::printf("[CanvasPane] schema not found: %s\n", path.c_str());
+        return false;
+    }
+    std::string text;
+    char buf[4096];
+    size_t n = 0;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
+    fclose(f);
+    try {
+        m_schema = std::make_unique<nlohmann::json>(nlohmann::json::parse(text));
+        std::printf("[CanvasPane] schema loaded (%zu defs)\n",
+                    (*m_schema)["$defs"].size());
+        return true;
+    } catch (const std::exception& e) {
+        std::printf("[CanvasPane] schema parse failed: %s\n", e.what());
+        m_schema.reset();
+        return false;
+    }
+}
+
+void CanvasPane::SetDynamicPropsContainer(Control box) {
+    m_propDynamic = box;
+    if (m_propDynamic.IsValid()) rebuildDynamicRows();
+}
+
+// 选中控件 → 按 schema 类型重建动态属性行（label 行 + 编辑控件行）。
+// 支持 string(EditBox)/number·integer(NUD)/boolean(CheckBox)；嵌套对象、枚举、
+// 布局资源类（rect/actors/luotiAni…）首版跳过。
+void CanvasPane::rebuildDynamicRows() {
+    for (Control& c : m_dynamicRows)
+        if (c.IsValid()) c.Destroy();
+    m_dynamicRows.clear();
+    m_schemaTarget = Control();
+
+    if (!m_propDynamic.IsValid()) return;
+    const ControlModel* m = findModel(m_selectedId);
+    if (!m) return;   // 未选中：动态区留空
+    const PlacedControl* pc = placedById(m->props.id);
+    if (!pc || !pc->ctl.IsValid()) return;
+    if (!m_schema) return;
+
+    const auto& defs = (*m_schema)["$defs"];
+    if (!defs.contains(m->props.type)) return;   // schema 无此类型（image-button 等）
+    const nlohmann::json& def = defs[m->props.type];
+    if (!def.contains("properties")) return;
+
+    // 合并 common（allOf $ref）与类型自有属性
+    nlohmann::json merged = def["properties"];
+    const auto& commonProps = defs["common"]["properties"];
+    for (auto it = commonProps.begin(); it != commonProps.end(); ++it)
+        if (!merged.contains(it.key())) merged[it.key()] = it.value();
+
+    // 跳过：布局/资源/嵌套复杂对象/事件类（画布几何走固定行，其余后续迭代）
+    static const char* kSkip[] = {
+        "type", "id", "name", "rect", "scale", "margin", "layout", "anchor",
+        "events", "contextMenu", "actors", "luotiAni", "captionLabel",
+        "file", "image", "imageResource", "resourceId", "providerName",
+        "font", "colors", "matchParentRect", "playing", "debugDraw",
+        "enableExpand", "offset", "shadow", "size", "style", "alignment",
+        "checkState", "verticalAlign", "popup", "position",
+    };
+
+    m_schemaTarget = pc->ctl;
+    m_schemaType = m->props.type;
+    int rows = 0;
+    for (auto it = merged.begin(); it != merged.end() && rows < 4; ++it) {
+        const std::string key = it.key();
+        bool skip = false;
+        for (const char* s : kSkip)
+            if (key == s) { skip = true; break; }
+        if (skip) continue;
+        const nlohmann::json& spec = it.value();
+        const std::string t = spec.value("type", "");
+        if (t != "string" && t != "number" && t != "integer" && t != "boolean") continue;
+
+        const std::string prop = jsonKeyToProp(key);
+        const float rowW = 216.0f;
+
+        // 键名 label 行
+        Control lb = m_ui->CreateLabel(key, 13.0f, 0, 0, rowW, 20.0f);
+        lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
+        m_propDynamic.AddChild(lb);
+        m_dynamicRows.push_back(lb);
+
+        if (t == "string") {
+            Control eb = m_ui->CreateEditBox(0, 0, rowW, 28.0f);
+            const std::string v = m_schemaTarget.GetString(prop.c_str());
+            eb.SetString(PropertyNames::kTextContent, v);
+            eb.SetCallback(PropertyNames::kEventTextChanged,
+                           [this, prop](const Event& e) {
+                               if (m_schemaTarget.IsValid())
+                                   m_schemaTarget.SetString(prop.c_str(), e.GetTextChanged());
+                           });
+            m_propDynamic.AddChild(eb);
+            m_dynamicRows.push_back(eb);
+        } else if (t == "number" || t == "integer") {
+            Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, 28.0f);
+            // integer 走 Int 属性（如 font-size → setIntProperty），number 走 Float
+            const bool isInt = (t == "integer");
+            const float v = isInt ? (float)m_schemaTarget.GetInt(prop.c_str())
+                                  : m_schemaTarget.GetFloat(prop.c_str());
+            if (v > 0) nud.SetFloat(PropertyNames::kValue, v);
+            nud.SetCallback(PropertyNames::kEventValueChanged,
+                            [this, prop, isInt](const Event& e) {
+                                if (!m_schemaTarget.IsValid()) return;
+                                if (isInt) m_schemaTarget.SetInt(prop.c_str(),
+                                                                 (int)e.GetValueChanged());
+                                else m_schemaTarget.SetFloat(prop.c_str(), e.GetValueChanged());
+                            });
+            m_propDynamic.AddChild(nud);
+            m_dynamicRows.push_back(nud);
+        } else {   // boolean
+            Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, 28.0f);
+            cb.SetCallback(PropertyNames::kEventClick, [this, prop](const Event&) {
+                if (m_schemaTarget.IsValid()) {
+                    const bool cur = m_schemaTarget.GetBool(prop.c_str());
+                    m_schemaTarget.SetBool(prop.c_str(), !cur);
+                }
+            });
+            m_propDynamic.AddChild(cb);
+            m_dynamicRows.push_back(cb);
+        }
+        ++rows;
+    }
+    std::printf("[CanvasPane] dynamic rows for '%s': %d\n", m_schemaType.c_str(), rows);
 }
 
 void CanvasPane::ensureSelBox() {

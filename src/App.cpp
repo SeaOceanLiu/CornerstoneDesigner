@@ -187,6 +187,8 @@ bool App::init() {
         m_canvas->SetKeySource([this] { return m_sdl.pollDeleteKey(); });
         // m_canvas->SetCursorSink([this](int kind) { m_sdl.applyCursor(kind); });   // EXP-OFF
         m_canvas->SetCanvasTree(m_ui->FindControl("tvTree"));
+        m_canvas->LoadSchema(exeRelative("schema/declarative-ui.schema.json"));
+        m_canvas->SetDynamicPropsContainer(m_ui->FindControl("propDynamic"));
         m_canvas->SetToolboxTree(m_ui->FindControl("tvToolbox"));
         m_canvas->SetPropertyControls(m_ui->FindControl("prop_x"),
                                       m_ui->FindControl("prop_y"),

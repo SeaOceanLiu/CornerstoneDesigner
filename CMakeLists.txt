@@ -50,5 +50,10 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/layouts/main_layout.json
             $<TARGET_FILE_DIR:CornerstoneDesigner>/main_layout.json
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_FILE_DIR:CornerstoneDesigner>/schema
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${UICORNERSTONE_ROOT}/docs/schema/declarative-ui.schema.json
+            $<TARGET_FILE_DIR:CornerstoneDesigner>/schema/declarative-ui.schema.json
     )
 endif()
