@@ -1,4 +1,4 @@
-// CanvasPane.cpp
+﻿// CanvasPane.cpp
 // CornerstoneDesigner
 //
 // 中央画布实现（纸面+网格在子视口内部，tile 平铺）：
@@ -134,6 +134,18 @@ namespace Designer {
 
 // 手柄索引 → 光标形态（0=默认 1=移动 2=NWSE 3=NESW 4=NS 5=EW）；定义见 hitHandle 前
 static int handleCursorKind(int hi);
+
+// 控件文本字号（px）：Label/EditBox 等用 font-size，Button 用 caption-size；
+// 两路都写（不支持的返回 0 无害）；读失败（0）回落 16（引擎缺省字号）。
+static float readFontPx(const Control& ctl) {
+    float v = ctl.GetFloat(PropertyNames::kFontSize);
+    if (v <= 0) v = ctl.GetFloat(PropertyNames::kCaptionSize);
+    return v > 0 ? v : 16.0f;
+}
+static void writeFontPx(Control& ctl, float px) {
+    ctl.SetFloat(PropertyNames::kFontSize, px);
+    ctl.SetFloat(PropertyNames::kCaptionSize, px);
+}
 
 CanvasPane::CanvasPane() = default;
 CanvasPane::~CanvasPane() = default;
@@ -315,11 +327,12 @@ void CanvasPane::SetZoom(float zoom) {
     if (zoom == m_zoom) return;
     m_zoom = zoom;
     rebuildGridTile();
-    // 已放置控件 rect 是 ×zoom 的像素值：缩放后全部重设，并同步选中框/属性面板
+    // 已放置控件 rect 是 ×zoom 的像素值：缩放后全部重设（rect+字号），并同步选中框/属性面板
     for (auto& it : m_items) {
         if (!it.ctl.IsValid()) continue;
         const SRect& r = it.model->props.rect;
         it.ctl.SetRect(r.x * m_zoom, r.y * m_zoom, r.w * m_zoom, r.h * m_zoom);
+        writeFontPx(it.ctl, it.model->props.extended.value("font-size", 16.0f) * m_zoom);
     }
     updateSelBox();
     if (!m_selectedId.empty()) fillPropertyPanel();
@@ -385,6 +398,17 @@ bool CanvasPane::GetPlacedViewRect(const std::string& id, SRect& out) const {
             if (!it.ctl.IsValid()) return false;
             const UIRect r = it.ctl.GetRect();
             out = SRect{ r.x, r.y, r.w, r.h };
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CanvasPane::GetPlacedFontPx(const std::string& id, float& out) const {
+    for (const auto& it : m_items) {
+        if (it.model && it.model->props.id == id) {
+            if (!it.ctl.IsValid()) return false;
+            out = readFontPx(it.ctl);
             return true;
         }
     }
@@ -527,6 +551,9 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
     std::printf("[Canvas] placed %s id=%s at (%.0f,%.0f)\n",
                 m_items.back().model->props.type.c_str(),
                 m_items.back().model->props.id.c_str(), x, y);
+
+    // 记录逻辑基础字号（当时 zoom 下的像素字号 ÷ zoom），供缩放同步
+    m_items.back().model->props.extended["font-size"] = readFontPx(ctl) / m_zoom;
 
     // 控件树同步：新增节点（标签 = 默认标题 + id）
     syncTreeAdd(m_items.back().model->props.id,
@@ -721,9 +748,9 @@ void CanvasPane::tickInput() {
     ScreenToCanvas(wx, wy, cx, cy);
 
     // 光标反馈：resize/拖动中 → move；悬停手柄 → 对应双向箭头；其余默认箭头。
-    // 每帧无条件下发：引擎控件 hover 时经 Cursor::setCurrent 恢复自身光标
-    //（如 Label 的 pointer），仅变化时下发一次会被引擎覆盖。
-    // 仅画布视口内下发——区域外（splitter/工具栏等）光标归引擎管理，不干扰。
+    // 引擎控件 hover 会经 Cursor::setCurrent 覆盖外部 SetCursor → 激活期（非默认
+    // 形态）须每帧下发；退出激活只发一次恢复，平时不碰（引擎区域光标自管理，
+    // 且每帧 SDL_SetCursor 开销显著）。仅画布视口内生效。
     if (inVp && m_cursorSink) {
         int cursorKind = 0;
         if (!m_resizeId.empty()) cursorKind = handleCursorKind(static_cast<int>(m_resizeHandle));
@@ -731,8 +758,8 @@ void CanvasPane::tickInput() {
         else if (!m_selectedId.empty()) {
             if (const int hi = hitHandle(cx, cy); hi >= 0) cursorKind = handleCursorKind(hi);
         }
+        if (cursorKind != 0 || m_lastCursorKind != 0) m_cursorSink(cursorKind);
         m_lastCursorKind = cursorKind;
-        m_cursorSink(cursorKind);
     }
 
     const bool downEdge = down && !m_mouseWasDown;
