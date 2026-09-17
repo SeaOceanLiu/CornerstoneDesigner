@@ -881,6 +881,7 @@ void CanvasPane::rebuildDynamicRows() {
         } else {
             Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, 24.0f);
             cb.SetRect(2.0f, y, rowW, 24.0f);
+            cb.SetBool(PropertyNames::kTriState, false);   // bool 属性两态（引擎缺省三态循环）
             // CheckBox 不发 click，发 check-changed（intVal=CheckState 枚举）
             cb.SetCallback(PropertyNames::kEventCheckChanged,
                            [this, prop](const Event& e) {
