@@ -301,10 +301,14 @@ void CanvasPane::styleControl(const std::string& toolboxId, Control ctl) {
                                UIColor{0x4A, 0x90, 0xD9, 255}, UIColor{0xC0, 0xC0, 0xC0, 255} };
     const UIStateColor text{ UIColor{0x33, 0x33, 0x33, 255}, UIColor{0x33, 0x33, 0x33, 255},
                              UIColor{0x33, 0x33, 0x33, 255}, UIColor{0x99, 0x99, 0x99, 255} };
+    // 阴影色显式设置：引擎缺省纯白（ConstDef DEFAULT_TEXT_SHADOW_*），浅色面上不可见
+    const UIStateColor shadow{ UIColor{0, 0, 0, 90}, UIColor{0, 0, 0, 90},
+                               UIColor{0, 0, 0, 110}, UIColor{0, 0, 0, 40} };
     if (toolboxId == "tBtn") {
         ctl.SetStateColor(PropertyNames::kBackground, face);
         ctl.SetStateColor(PropertyNames::kBorder, border);
         ctl.SetStateColor(PropertyNames::kText, text);
+        ctl.SetStateColor(PropertyNames::kTextShadow, shadow);
     } else if (toolboxId == "tLabel" || toolboxId == "tCheck" ||
                toolboxId == "tNum" || toolboxId == "tCombo") {
         ctl.SetStateColor(PropertyNames::kText, text);
