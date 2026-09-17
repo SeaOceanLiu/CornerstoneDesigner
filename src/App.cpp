@@ -330,22 +330,36 @@ int App::run(int autoSeconds) {
 
     using Clock = std::chrono::steady_clock;
     auto last = Clock::now();
+    auto frameStart = last;
     int frame = 0;
 
     while (!m_ui->IsQuitRequested() && !m_exitRequested) {
+        frameStart = Clock::now();
         m_ui->ProcessEvents();
+        const auto t1 = Clock::now();
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
+        const auto t2 = Clock::now();
         syncRootToWindow();
+        const auto t3 = Clock::now();
 
         auto now = Clock::now();
         double delta = std::chrono::duration<double>(now - last).count();
         last = now;
+
+        if (autoMode && frame % 3 == 0) {
+            const auto ms = [](auto a, auto b) {
+                return std::chrono::duration<double, std::milli>(b - a).count();
+            };
+            std::printf("[FPS] f=%d procEvt=%.1f vpEvt=%.1f sync=%.1f loop=%.1f\n",
+                        frame, ms(frameStart, t1), ms(t1, t2), ms(t2, t3), ms(frameStart, now));
+        }
 
         if (autoMode && Clock::now() >= deadline) {
             std::printf("[AUTO] done, %d frames\n", frame);
             break;
         }
 
+        const auto t4 = Clock::now();
         m_ui->Update(delta);
         if (m_canvas) {
             m_canvas->TickInput();                    // 画布交互（放置/选中/拖动）
@@ -357,6 +371,14 @@ int App::run(int autoSeconds) {
         m_ui->Render();
         if (m_canvas) m_canvas->RenderViewport();
         m_ui->Present();
+        const auto t5 = Clock::now();
+
+        if (autoMode && frame % 3 == 0) {
+            const auto ms = [](auto a, auto b) {
+                return std::chrono::duration<double, std::milli>(b - a).count();
+            };
+            std::printf("[FPS2] f=%d update2present=%.1fms\n", frame, ms(t4, t5));
+        }
 
         if (frame == 0) {
             std::printf("[App] skeleton running (1200x800)\n");

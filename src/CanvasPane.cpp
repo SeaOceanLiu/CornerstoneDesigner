@@ -782,15 +782,16 @@ void CanvasPane::rebuildDynamicRows() {
         if (!merged.contains(it.key())) merged[it.key()] = it.value();
 
     // 跳过：布局/资源/嵌套复杂对象/事件类；caption/enabled/visible 固定区已有
+    // （schema 键名已统一 kebab——skip 名单同步 kebab）
     static const char* kSkip[] = {
         "type", "id", "name", "rect", "scale", "margin", "layout", "anchor",
-        "events", "contextMenu", "actors", "luotiAni", "captionLabel",
-        "file", "image", "imageResource", "resourceId", "providerName",
-        "font", "colors", "matchParentRect", "playing", "debugDraw",
-        "enableExpand", "offset", "shadow", "size", "style", "alignment",
-        "checkState", "verticalAlign", "popup", "position",
+        "events", "context-menu", "actors", "luotiAni", "caption-label",
+        "file", "image", "image-resource", "resourceId", "providerName",
+        "font", "colors", "match-parent-rect", "playing", "debug-draw",
+        "expand", "offset", "shadow", "size", "style", "alignment",
+        "check-state", "vertical-align", "popup", "position",
         "caption", "enabled", "visible",
-        "borderVisible", "fontFile", "fontResource",
+        "border-visible", "font-file", "font-resource",   // 资源路径/调试类
     };
 
     const float viewH = 288.0f, barH = 14.0f;
