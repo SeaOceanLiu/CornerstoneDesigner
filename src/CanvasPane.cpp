@@ -859,18 +859,21 @@ void CanvasPane::rebuildDynamicRows() {
         } else if (t == "number" || t == "integer") {
             Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, 26.0f);
             nud.SetRect(2.0f, y, rowW, 26.0f);
-            const bool isInt = (t == "integer");
-            float v = isInt ? (float)m_schemaTarget.GetInt(prop.c_str())
-                            : m_schemaTarget.GetFloat(prop.c_str());
+            // 同名键的 Int/Float 分发按控件而异（Label font-size 在 setIntProperty、
+            // Button caption-size/font-size 在 setFloatProperty）——双读双写，
+            // 命中的生效、失败的无害，消灭整类类型失配问题；
+            // 读全失败（0）→ 放置记录的 font-size 兜底
+            float v = (float)m_schemaTarget.GetInt(prop.c_str());
+            if (v <= 0) v = m_schemaTarget.GetFloat(prop.c_str());
             if (v <= 0 && (prop == "font-size" || prop == "caption-size"))
                 v = m->props.extended.value("font-size", 0.0f);
             if (v > 0) nud.SetFloat(PropertyNames::kValue, v);
             nud.SetCallback(PropertyNames::kEventValueChanged,
-                            [this, prop, isInt](const Event& e) {
+                            [this, prop](const Event& e) {
                                 if (!m_schemaTarget.IsValid()) return;
-                                if (isInt) m_schemaTarget.SetInt(prop.c_str(),
-                                                                 (int)e.GetValueChanged());
-                                else m_schemaTarget.SetFloat(prop.c_str(), e.GetValueChanged());
+                                m_schemaTarget.SetInt(prop.c_str(),
+                                                      (int)e.GetValueChanged());
+                                m_schemaTarget.SetFloat(prop.c_str(), e.GetValueChanged());
                             });
             m_propDynamic.AddChild(nud);
             m_dynamicRows.push_back(nud);
