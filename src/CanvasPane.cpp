@@ -670,19 +670,12 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
         if (PlacedControl* pc = placedById(m->props.id))
             pc->ctl.SetString(PropertyNames::kCaption, e.GetTextChanged());
     });
-    // 颜色：ColorPicker 读值无属性接口，经 C ABI 订阅 color-changed（onOK 确认时
-    // 触发，Color 载荷写 evt->data.color）；Binding Event 未暴露取色，直接用 thunk。
-    if (m_propColor.IsValid() && m_ui)
-        UICornerstone::Dyn::API().fnSetCallback(
-            m_ui->Handle(), m_propColor.Handle(), PropertyNames::kEventColorChanged,
-            &CanvasPane::colorChangedThunk, this);
-}
-
-// ColorPicker color-changed C 回调（onOK 确认）。
-void CanvasPane::colorChangedThunk(UIControlHandle, const UIEventData* evt, void* userData) {
-    if (!evt || !userData) return;
-    static_cast<CanvasPane*>(userData)->onColorPicked(
-        evt->data.color.r, evt->data.color.g, evt->data.color.b);
+    // 颜色：ColorPicker 经 color-changed（onOK 确认触发，Binding Event
+    // GetChangedColor 取 UIColor 载荷）
+    m_propColor.SetCallback(PropertyNames::kEventColorChanged, [this](const Event& e) {
+        const UIColor c = e.GetChangedColor();
+        onColorPicked(c.r, c.g, c.b);
+    });
 }
 
 // 用户确认颜色 → 写选中控件背景色（normal 态）+ 模型记录。
@@ -884,11 +877,11 @@ void CanvasPane::rebuildDynamicRows() {
         } else {
             Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, 24.0f);
             cb.SetRect(2.0f, y, rowW, 24.0f);
-            cb.SetCallback(PropertyNames::kEventClick, [this, prop](const Event&) {
-                if (m_schemaTarget.IsValid()) {
-                    const bool cur = m_schemaTarget.GetBool(prop.c_str());
-                    m_schemaTarget.SetBool(prop.c_str(), !cur);
-                }
+            // CheckBox 不发 click，发 check-changed（intVal=CheckState 枚举）
+            cb.SetCallback(PropertyNames::kEventCheckChanged,
+                           [this, prop](const Event& e) {
+                if (m_schemaTarget.IsValid())
+                    m_schemaTarget.SetBool(prop.c_str(), e.GetCheckState() != 0);
             });
             m_propDynamic.AddChild(cb);
             m_dynamicRows.push_back(cb);

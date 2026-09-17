@@ -1,4 +1,4 @@
-// CanvasPane.h
+﻿// CanvasPane.h
 // CornerstoneDesigner
 //
 // 中央画布：canvasArea 内工具栏下方创建**子视口**（承载被设计布局内容）。
@@ -162,7 +162,6 @@ private:
     Control m_propX, m_propY, m_propW, m_propH, m_propCaption;
     Control m_propColor;           // 颜色（color-changed 事件回调：onOK 确认触发）
     std::string m_lastColorHex;    // 上次回填/已应用的颜色（echo 抑制）
-    static void colorChangedThunk(UIControlHandle, const UIEventData*, void* userData);
     void onColorPicked(unsigned char r, unsigned char g, unsigned char b);
 
     // Schema 驱动动态属性区
