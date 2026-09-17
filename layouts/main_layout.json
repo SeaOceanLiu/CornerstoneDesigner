@@ -260,6 +260,7 @@
                 {
                     "type": "panel",
                     "id": "middleArea",
+                    "flow-weight": 1,
                     "rect": {
                         "x": 0,
                         "y": 0,
@@ -638,11 +639,14 @@
                             "thickness": 6,
                             "ratio": 0.2,
                             "minFirst": 100,
-                            "minSecond": 100
+                            "minSecond": 100,
+                            "first-linked": "toolboxPanel",
+                            "second-linked": "canvasArea"
                         },
                         {
                             "type": "panel",
                             "id": "canvasArea",
+                            "flow-weight": 1,
                             "rect": {
                                 "x": 0,
                                 "y": 0,
@@ -884,7 +888,9 @@
                             "thickness": 6,
                             "ratio": 0.8,
                             "minFirst": 100,
-                            "minSecond": 100
+                            "minSecond": 100,
+                            "first-linked": "canvasArea",
+                            "second-linked": "propertyPanel"
                         },
                         {
                             "type": "panel",

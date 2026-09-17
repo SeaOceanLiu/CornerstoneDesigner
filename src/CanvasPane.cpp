@@ -333,8 +333,10 @@ void CanvasPane::SetZoom(float zoom) {
     // 画布缩放交给引擎（画布语义）：控件逻辑 rect 不变，drawRect/字号由
     // refreshScaleWith 链自动跟随（override 防 resize recompute 重置）
     if (m_viewport) m_viewport->SetInstanceScale(m_zoom, m_zoom);
-    rebuildGridTile();   // 瓦片纹理按新物理密度重建 + grid rect 抵消
-    updateSelBox();      // 图元逻辑直绘（常量÷zoom 保视觉恒定）
+    rebuildGridTile();   // 瓦片纹理按新物理密度重建 + image-resource 重载
+    if (m_grid.IsValid())
+        m_grid.SetRect(0, 0, m_contentW / m_zoom, m_contentH / m_zoom);   // rect 抵消（铺满）
+    updateSelBox();      // 图元逻辑直绘（常量÷zoom 保视觉恒定）+ Shape 本体 rect
 }
 
 void CanvasPane::SetGridCellSize(float px) {
@@ -832,6 +834,8 @@ void CanvasPane::rebuildDynamicRows() {
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
+        // common 属性对特定控件无效：button 文本字号是 caption-size（font-size 分发缺失）
+        if (key == "font-size" && m_schemaType == "button") continue;
         const float rowW = 208.0f;
 
         // 键名 label 行
