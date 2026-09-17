@@ -114,9 +114,10 @@ public:
 
     // 放置控件查询：按 id 取逻辑 rect（供 App/探针使用）。
     bool GetPlacedRect(const std::string& id, SRect& out) const;
-    // 放置控件查询：按 id 取视口像素 rect（逻辑 × zoom，供 App/探针使用）。
+    // 放置控件查询：按 id 取控件 rect（引擎 getRect=逻辑值，bench scale 不改 rect；
+    // 与 GetPlacedRect 等价，供迁移回归比对）；未找到返回 false。
     bool GetPlacedViewRect(const std::string& id, SRect& out) const;
-    // 放置控件查询：按 id 取当前像素字号（供 App/探针使用）；未找到返回 false。
+    // 放置控件查询：按 id 取当前逻辑字号（供 App/探针使用）；未找到返回 false。
     bool GetPlacedFontPx(const std::string& id, float& out) const;
     // 放置控件写入：按 id 设置像素字号（writeFontPx 双路）；未找到返回 false。
     bool SetPlacedFontPx(const std::string& id, float px);

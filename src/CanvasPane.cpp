@@ -209,9 +209,10 @@ void CanvasPane::refreshLayout() {
         m_viewport->SetViewport(m_areaX, m_areaY + top, m_contentW, m_contentH);
     }
 
-    // 网格 Image 铺满视口内容区（视口局部坐标 (0,0)）。
+    // 网格 Image 铺满视口内容区（视口局部逻辑坐标；bench scale=zoom 下
+    // rect÷zoom 抵消，drawRect=物理尺寸——覆盖层不被内容缩放连带）。
     if (m_grid.IsValid()) {
-        m_grid.SetRect(0, 0, m_contentW, m_contentH);
+        m_grid.SetRect(0, 0, m_contentW / m_zoom, m_contentH / m_zoom);
     }
 }
 
@@ -237,7 +238,10 @@ void CanvasPane::registerGridTile() {
 void CanvasPane::createGridImage() {
     if (!m_viewport || !m_ui) return;
     if (m_grid.IsValid()) { m_grid.Destroy(); m_grid = Control(); }
-    m_grid = m_viewport->CreateImage("provider:dc_canvas_grid", 0, 0, m_contentW, m_contentH);
+    // rect=逻辑尺寸（bench scale=zoom 下÷zoom 抵消，drawRect 铺满视口物理区）；
+    // 瓦片纹理按 cellPx=gridCell×zoom 物理密度生成（tile 几何平铺不缩放纹理）
+    m_grid = m_viewport->CreateImage("provider:dc_canvas_grid", 0, 0,
+                                     m_contentW / m_zoom, m_contentH / m_zoom);
     if (!m_grid.IsValid()) {
         std::printf("[CanvasPane] CreateImage(grid) failed\n");
         return;
@@ -326,16 +330,11 @@ void CanvasPane::SetZoom(float zoom) {
     if (zoom > 2.0f) zoom = 2.0f;
     if (zoom == m_zoom) return;
     m_zoom = zoom;
-    rebuildGridTile();
-    // 已放置控件 rect 是 ×zoom 的像素值：缩放后全部重设（rect+字号），并同步选中框/属性面板
-    for (auto& it : m_items) {
-        if (!it.ctl.IsValid()) continue;
-        const SRect& r = it.model->props.rect;
-        it.ctl.SetRect(r.x * m_zoom, r.y * m_zoom, r.w * m_zoom, r.h * m_zoom);
-        writeFontPx(it.ctl, it.model->props.extended.value("font-size", 16.0f) * m_zoom);
-    }
-    updateSelBox();
-    if (!m_selectedId.empty()) fillPropertyPanel();
+    // 画布缩放交给引擎（画布语义）：控件逻辑 rect 不变，drawRect/字号由
+    // refreshScaleWith 链自动跟随（override 防 resize recompute 重置）
+    if (m_viewport) m_viewport->SetInstanceScale(m_zoom, m_zoom);
+    rebuildGridTile();   // 瓦片纹理按新物理密度重建 + grid rect 抵消
+    updateSelBox();      // 图元逻辑直绘（常量÷zoom 保视觉恒定）
 }
 
 void CanvasPane::SetGridCellSize(float px) {
@@ -553,8 +552,8 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
     model->props.rect = { x, y, w, h };
     model->props.extended["caption"] = caption;
 
-    Control ctl = createViewportControl(toolboxId, x * m_zoom, y * m_zoom,
-                                        w * m_zoom, h * m_zoom, *model);
+    // 逻辑 rect 直建（bench scale=zoom 负责渲染缩放）
+    Control ctl = createViewportControl(toolboxId, x, y, w, h, *model);
     if (!ctl.IsValid()) return;
     styleControl(toolboxId, ctl);   // 编程创建无主题样式：显式浅色面/深字/描边
 
@@ -563,8 +562,9 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
                 m_items.back().model->props.type.c_str(),
                 m_items.back().model->props.id.c_str(), x, y);
 
-    // 记录逻辑基础字号（当时 zoom 下的像素字号 ÷ zoom），供缩放同步
-    m_items.back().model->props.extended["font-size"] = readFontPx(ctl) / m_zoom;
+    // 记录逻辑基础字号（引擎字号属性存逻辑值，缩放由 refreshScaleWith 自动跟随）；
+    // 供动态行 getter 读失败时的回填兜底
+    m_items.back().model->props.extended["font-size"] = readFontPx(ctl);
 
     // 控件树同步：新增节点（标签 = 默认标题 + id）
     syncTreeAdd(m_items.back().model->props.id,
@@ -744,7 +744,10 @@ bool CanvasPane::LoadSchema(const std::string& path) {
 
 void CanvasPane::SetDynamicPropsContainer(Control box) {
     m_propDynamic = box;
-    if (m_propDynamic.IsValid()) rebuildDynamicRows();
+    if (m_propDynamic.IsValid()) {
+        m_propDynamic.SetBool(PropertyNames::kClipChildren, true);   // 真裁剪（滚动）
+        rebuildDynamicRows();
+    }
 }
 
 // 选中控件 → 按 schema 类型生成动态属性行（label 行 + 编辑控件行）。
@@ -903,22 +906,20 @@ void CanvasPane::rebuildDynamicRows() {
                 m_schemaType.c_str(), rows, genKeys.c_str());
 }
 
-// 滚动 → 行偏移 + 超界行隐藏（panel 无裁剪，窗口式滚动）。
+// 滚动 → 行偏移（超界裁剪由 propDynamic 的 clip-children 承担，纯偏移）。
 void CanvasPane::applyDynScroll(float value) {
-    const float viewRowsH = 288.0f - 14.0f;
     for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
         if (!m_dynamicRows[i].IsValid() || i >= m_dynamicRowY.size()) continue;
         const float vy = m_dynamicRowY[i] - value;
         const UIRect r = m_dynamicRows[i].GetRect();
         m_dynamicRows[i].SetRect(r.x, vy, r.w, r.h);
-        m_dynamicRows[i].SetBool(PropertyNames::kVisible,
-                                 vy > -26.0f && vy < viewRowsH);
     }
 }
 
 void CanvasPane::ensureSelBox() {
     if (m_selBox.IsValid() || !m_viewport) return;
-    m_selBox = m_viewport->CreateShape(0, 0, m_contentW, m_contentH);
+    // 本体逻辑尺寸（÷zoom 抵消 bench scale，drawRect 覆盖视口物理区）
+    m_selBox = m_viewport->CreateShape(0, 0, m_contentW / m_zoom, m_contentH / m_zoom);
 }
 
 void CanvasPane::updateSelBox() {
@@ -930,25 +931,28 @@ void CanvasPane::updateSelBox() {
     }
     m_selBox.SetBool(PropertyNames::kVisible, true);
     m_selBox.SetEnum(PropertyNames::kScaleType, PropertyNames::kScaleTypeStretch);
+    // 本体 rect 同步（视口 resize/缩放变化后保持覆盖）
+    m_selBox.SetRect(0, 0, m_contentW / m_zoom, m_contentH / m_zoom);
 
-    // 选中框：逻辑 rect × zoom 外扩 2px；8 向控点 6×6
-    const float pad = 2.0f, hs = 6.0f;
-    const float x = m->props.rect.x * m_zoom - pad;
-    const float y = m->props.rect.y * m_zoom - pad;
-    const float w = m->props.rect.w * m_zoom + pad * 2;
-    const float h = m->props.rect.h * m_zoom + pad * 2;
+    // 逻辑直绘：图元=控件逻辑 rect 外扩（pad/hs/线宽 ÷zoom → drawRect 视觉恒定）；
+    // m_handlePts 缓存物理坐标（逻辑×zoom）供命中检测（ScreenToCanvas 逆换算一致）
+    const float pad = 2.0f / m_zoom, hs = 6.0f / m_zoom;
+    const float x = m->props.rect.x - pad;
+    const float y = m->props.rect.y - pad;
+    const float w = m->props.rect.w + pad * 2;
+    const float h = m->props.rect.h + pad * 2;
 
     m_ui->ShapeClearPrimitives(m_selBox);
     int ib = m_ui->ShapeAddPrimitive(m_selBox, "rect", x, y, w, h);
     m_ui->ShapeSetPrimitiveColor(m_selBox, ib, PropertyNames::kStroke,
                                  UIColor{0x4A, 0x90, 0xD9, 255});
-    m_ui->ShapeSetPrimitiveFloat(m_selBox, ib, PropertyNames::kLineWidthProp, 1.5f);
+    m_ui->ShapeSetPrimitiveFloat(m_selBox, ib, PropertyNames::kLineWidthProp, 1.5f / m_zoom);
     auto handle = [&](float hx, float hy) {
         int ih = m_ui->ShapeAddPrimitive(m_selBox, "filled-rect", hx - hs / 2, hy - hs / 2, hs, hs);
         m_ui->ShapeSetPrimitiveColor(m_selBox, ih, PropertyNames::kFill, UIColor{255, 255, 255, 255});
         m_ui->ShapeSetPrimitiveColor(m_selBox, ih, PropertyNames::kStroke,
                                      UIColor{0x4A, 0x90, 0xD9, 255});
-        m_ui->ShapeSetPrimitiveFloat(m_selBox, ih, PropertyNames::kLineWidthProp, 1.0f);
+        m_ui->ShapeSetPrimitiveFloat(m_selBox, ih, PropertyNames::kLineWidthProp, 1.0f / m_zoom);
     };
     const float x2 = x + w, y2 = y + h;
     // 顺序与 Handle 枚举一致：TL TR BL BR T B L R（缓存供命中检测）
@@ -957,7 +961,7 @@ void CanvasPane::updateSelBox() {
         {x + w / 2, y}, {x + w / 2, y2}, {x, y + h / 2}, {x2, y + h / 2},
     };
     for (int i = 0; i < kHandleCount; ++i) {
-        m_handlePts[i] = { pts[i][0], pts[i][1] };
+        m_handlePts[i] = { pts[i][0] * m_zoom, pts[i][1] * m_zoom };
         handle(pts[i][0], pts[i][1]);
     }
 }
@@ -1023,8 +1027,7 @@ void CanvasPane::tickInput() {
             m->props.rect.x = nx;
             m->props.rect.y = ny;
             if (m_dragCtl.IsValid())
-                m_dragCtl.SetRect(nx * m_zoom, ny * m_zoom,
-                                  m->props.rect.w * m_zoom, m->props.rect.h * m_zoom);
+                m_dragCtl.SetRect(nx, ny, m->props.rect.w, m->props.rect.h);
             updateSelBox();
             fillPropertyPanel();   // 拖动中同步属性面板（m_propSync 抑制回写）
         } else {
@@ -1132,7 +1135,7 @@ void CanvasPane::applyResize(ControlModel* m, float cx, float cy) {
 
     m->props.rect = r;
     if (m_resizeCtl.IsValid())
-        m_resizeCtl.SetRect(r.x * m_zoom, r.y * m_zoom, r.w * m_zoom, r.h * m_zoom);
+        m_resizeCtl.SetRect(r.x, r.y, r.w, r.h);
     updateSelBox();
     fillPropertyPanel();
 }
