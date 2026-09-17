@@ -135,16 +135,17 @@ namespace Designer {
 // 手柄索引 → 光标形态（0=默认 1=移动 2=NWSE 3=NESW 4=NS 5=EW）；定义见 hitHandle 前
 static int handleCursorKind(int hi);
 
-// 控件文本字号（px）：Label/EditBox 等用 font-size，Button 用 caption-size；
-// 两路都写（不支持的返回 0 无害）；读失败（0）回落 16（引擎缺省字号）。
+// 控件文本字号（px）：统一 font-size 键（引擎已废弃 caption-size——Button 分发
+// 归一到 kFontSize；Label/EditBox 等走 setIntProperty，Button 走 setFloatProperty，
+// 双路保留对齐历史行为）；读失败（0）回落 16（引擎缺省字号）。
 static float readFontPx(const Control& ctl) {
     float v = (float)ctl.GetInt(PropertyNames::kFontSize);   // Label/EditBox 等
-    if (v <= 0) v = ctl.GetFloat(PropertyNames::kCaptionSize);   // Button
+    if (v <= 0) v = ctl.GetFloat(PropertyNames::kFontSize);  // Button（Float 分发）
     return v > 0 ? v : 16.0f;
 }
 static void writeFontPx(Control& ctl, float px) {
     ctl.SetInt(PropertyNames::kFontSize, (int)px);        // Label/EditBox 等（setIntProperty）
-    ctl.SetFloat(PropertyNames::kCaptionSize, px);        // Button（setFloatProperty）
+    ctl.SetFloat(PropertyNames::kFontSize, px);           // Button（setFloatProperty）
 }
 
 CanvasPane::CanvasPane() = default;
