@@ -831,8 +831,6 @@ void CanvasPane::rebuildDynamicRows() {
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
-        // common 属性对特定控件无效：button 文本字号是 caption-size（font-size 分发缺失）
-        if (key == "font-size" && m_schemaType == "button") continue;
         const float rowW = 208.0f;
 
         // 键名 label 行
@@ -888,6 +886,9 @@ void CanvasPane::rebuildDynamicRows() {
                 if (m_schemaTarget.IsValid())
                     m_schemaTarget.SetBool(prop.c_str(), e.GetCheckState() != 0);
             });
+            // 勾选状态回填（引擎 getter 补齐后 text-shadow-enable 等可读回）
+            cb.SetBool(PropertyNames::kChecked,
+                       m_schemaTarget.GetBool(prop.c_str()));
             m_propDynamic.AddChild(cb);
             m_dynamicRows.push_back(cb);
             m_dynamicRowY.push_back(y);
