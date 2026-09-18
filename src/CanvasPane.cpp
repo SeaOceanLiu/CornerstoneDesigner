@@ -970,15 +970,27 @@ void CanvasPane::tickInput() {
     const bool downEdge = down && !m_mouseWasDown;
     const bool upEdge = !down && m_mouseWasDown;
 
-    // 引擎 HandleControl 拖拽 resize 感知：选中控件 rect 与模型不一致 →
-    // 同步模型+属性面板（拖拽中 HandleControl 直改 ctl rect，此处收敛）
+    // 引擎 HandleControl 拖拽 resize 感知：选中控件 rect 与模型不一致（拖拽中
+    // HandleControl 直改 ctl rect）→ 网格吸附后写回 ctl（每帧我们最后写，视觉吸附）
+    // + 同步模型/属性面板。吸附写回与引擎拖拽计算天然兼容（tickInput 晚于引擎事件）。
     if (m_selectedId.empty() == false && m_dragId.empty()) {
         if (ControlModel* m = findModel(m_selectedId)) {
             if (PlacedControl* pc = placedById(m->props.id); pc && pc->ctl.IsValid()) {
                 const UIRect vr = pc->ctl.GetRect();
                 if (vr.w != m->props.rect.w || vr.h != m->props.rect.h ||
                     vr.x != m->props.rect.x || vr.y != m->props.rect.y) {
-                    m->props.rect = SRect{ vr.x, vr.y, vr.w, vr.h };
+                    SRect nr{ vr.x, vr.y, vr.w, vr.h };
+                    if (m_snapEnabled) {
+                        const float g = m_gridCell;
+                        nr.x = std::round(nr.x / g) * g;
+                        nr.y = std::round(nr.y / g) * g;
+                        nr.w = std::round(nr.w / g) * g;
+                        nr.h = std::round(nr.h / g) * g;
+                        if (nr.w < m_gridCell) nr.w = m_gridCell;
+                        if (nr.h < m_gridCell) nr.h = m_gridCell;
+                    }
+                    m->props.rect = nr;
+                    pc->ctl.SetRect(nr.x, nr.y, nr.w, nr.h);
                     fillPropertyPanel();
                 }
             }
