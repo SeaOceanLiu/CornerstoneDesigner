@@ -132,9 +132,6 @@ constexpr int kMaxTilePx = 512;                // 瓦片尺寸上限（防缩放
 
 namespace Designer {
 
-// 手柄索引 → 光标形态（0=默认 1=移动 2=NWSE 3=NESW 4=NS 5=EW）；定义见 hitHandle 前
-static int handleCursorKind(int hi);
-
 // 控件文本字号（px）：统一 font-size 键（引擎已废弃 caption-size，并全控件
 // 归一 Int 分发域——Label/Button 均 setIntProperty/getIntProperty）；
 // 读失败（0）回落 16（引擎缺省字号）。
@@ -339,7 +336,6 @@ void CanvasPane::SetZoom(float zoom) {
     rebuildGridTile();   // 瓦片纹理按新物理密度重建 + image-resource 重载
     if (m_grid.IsValid())
         m_grid.SetRect(0, 0, m_contentW / m_zoom, m_contentH / m_zoom);   // rect 抵消（铺满）
-    updateSelBox();      // 图元逻辑直绘（常量÷zoom 保视觉恒定）+ Shape 本体 rect
 }
 
 void CanvasPane::SetGridCellSize(float px) {
@@ -575,9 +571,8 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
     syncTreeAdd(m_items.back().model->props.id,
                 std::string(caption) + " " + m_items.back().model->props.id);
 
-    // 选中新控件；选中框需重新置顶
+    // 选中新控件（HandleControl setTarget 重新附加，alwaysOnTop 置顶）
     m_selectedId.clear();
-    if (m_selBox.IsValid()) { m_selBox.Destroy(); m_selBox = Control(); }
     selectItem(m_items.back().model->props.id);
 }
 
@@ -599,10 +594,11 @@ ControlModel* CanvasPane::findModel(const std::string& id) {
 }
 
 void CanvasPane::selectItem(const std::string& id) {
-    if (m_selectedId == id) { updateSelBox(); return; }
+    if (m_selectedId == id) return;
     m_selectedId = id;
-    ensureSelBox();
-    updateSelBox();
+    PlacedControl* pc = id.empty() ? nullptr : placedById(id);
+    if (pc && pc->ctl.IsValid()) ensureSelHandle(pc->ctl);
+    else detachSelHandle();
     fillPropertyPanel();
     syncTreeSelection();
     rebuildDynamicRows();
@@ -635,12 +631,12 @@ void CanvasPane::fillPropertyPanel() {
     m_propSync = false;
 }
 
-// 模型 rect → 视口控件 rect（× zoom）+ 选中框同步。
+// 模型 rect → 视口控件 rect（逻辑直写，bench scale 负责渲染缩放；
+// HandleControl 每帧按 target getDrawRect 绘制，自动跟随）。
 void CanvasPane::applyModelRect(ControlModel* m) {
-    if (!m) return;    if (PlacedControl* pc = placedById(m->props.id))
-        pc->ctl.SetRect(m->props.rect.x * m_zoom, m->props.rect.y * m_zoom,
-                        m->props.rect.w * m_zoom, m->props.rect.h * m_zoom);
-    updateSelBox();
+    if (!m) return;
+    if (PlacedControl* pc = placedById(m->props.id))
+        pc->ctl.SetRect(m->props.rect.x, m->props.rect.y, m->props.rect.w, m->props.rect.h);
 }
 
 void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
@@ -940,54 +936,19 @@ void CanvasPane::applyDynScroll(float value) {
     }
 }
 
-void CanvasPane::ensureSelBox() {
-    if (m_selBox.IsValid() || !m_viewport) return;
-    // 本体逻辑尺寸（÷zoom 抵消 bench scale，drawRect 覆盖视口物理区）
-    m_selBox = m_viewport->CreateShape(0, 0, m_contentW / m_zoom, m_contentH / m_zoom);
+// 引擎 HandleControl：选中框+8 向手柄+方向光标+拖拽 resize（原生组件，
+// 挂 target 父容器+alwaysOnTop，draw 按 target getDrawRect 跟随 bench scale）。
+// C ABI 仅暴露 CreateHandleControl（target 构造绑定，无 SetTarget/detach/配置）——
+// 每次选中创建、取消销毁；Move 手柄/缺省 minSize 暂用引擎缺省。
+void CanvasPane::ensureSelHandle(Control target) {
+    if (!m_viewport || !m_ui) return;
+    detachSelHandle();
+    m_selHandle = m_ui->CreateHandleControl(target, 0, 0, 1, 1);
 }
 
-void CanvasPane::updateSelBox() {
-    if (!m_selBox.IsValid()) return;
-    const ControlModel* m = findModel(m_selectedId);
-    if (!m) {
-        m_selBox.SetBool(PropertyNames::kVisible, false);
-        return;
-    }
-    m_selBox.SetBool(PropertyNames::kVisible, true);
-    m_selBox.SetEnum(PropertyNames::kScaleType, PropertyNames::kScaleTypeStretch);
-    // 本体 rect 同步（视口 resize/缩放变化后保持覆盖）
-    m_selBox.SetRect(0, 0, m_contentW / m_zoom, m_contentH / m_zoom);
-
-    // 逻辑直绘：图元=控件逻辑 rect 外扩（pad/hs/线宽 ÷zoom → drawRect 视觉恒定）；
-    // m_handlePts 缓存物理坐标（逻辑×zoom）供命中检测（ScreenToCanvas 逆换算一致）
-    const float pad = 2.0f / m_zoom, hs = 6.0f / m_zoom;
-    const float x = m->props.rect.x - pad;
-    const float y = m->props.rect.y - pad;
-    const float w = m->props.rect.w + pad * 2;
-    const float h = m->props.rect.h + pad * 2;
-
-    m_ui->ShapeClearPrimitives(m_selBox);
-    int ib = m_ui->ShapeAddPrimitive(m_selBox, "rect", x, y, w, h);
-    m_ui->ShapeSetPrimitiveColor(m_selBox, ib, PropertyNames::kStroke,
-                                 UIColor{0x4A, 0x90, 0xD9, 255});
-    m_ui->ShapeSetPrimitiveFloat(m_selBox, ib, PropertyNames::kLineWidthProp, 1.5f / m_zoom);
-    auto handle = [&](float hx, float hy) {
-        int ih = m_ui->ShapeAddPrimitive(m_selBox, "filled-rect", hx - hs / 2, hy - hs / 2, hs, hs);
-        m_ui->ShapeSetPrimitiveColor(m_selBox, ih, PropertyNames::kFill, UIColor{255, 255, 255, 255});
-        m_ui->ShapeSetPrimitiveColor(m_selBox, ih, PropertyNames::kStroke,
-                                     UIColor{0x4A, 0x90, 0xD9, 255});
-        m_ui->ShapeSetPrimitiveFloat(m_selBox, ih, PropertyNames::kLineWidthProp, 1.0f / m_zoom);
-    };
-    const float x2 = x + w, y2 = y + h;
-    // 顺序与 Handle 枚举一致：TL TR BL BR T B L R（缓存供命中检测）
-    const float pts[kHandleCount][2] = {
-        {x, y},      {x2, y},      {x, y2},      {x2, y2},
-        {x + w / 2, y}, {x + w / 2, y2}, {x, y + h / 2}, {x2, y + h / 2},
-    };
-    for (int i = 0; i < kHandleCount; ++i) {
-        m_handlePts[i] = { pts[i][0] * m_zoom, pts[i][1] * m_zoom };
-        handle(pts[i][0], pts[i][1]);
-    }
+// 取消选中/删除目标：销毁 HandleControl。
+void CanvasPane::detachSelHandle() {
+    if (m_selHandle.IsValid()) { m_selHandle.Destroy(); m_selHandle = Control(); }
 }
 
 void CanvasPane::tickInput() {
@@ -1006,36 +967,22 @@ void CanvasPane::tickInput() {
     float cx = 0, cy = 0;
     ScreenToCanvas(wx, wy, cx, cy);
 
-    // 光标反馈：resize/拖动中 → move；悬停手柄 → 对应双向箭头；其余默认箭头。
-    // 引擎控件 hover 会经 Cursor::setCurrent 覆盖外部 SetCursor → 激活期（非默认
-    // 形态）须每帧下发；退出激活只发一次恢复，平时不碰（引擎区域光标自管理，
-    // 且每帧 SDL_SetCursor 开销显著）。仅画布视口内生效。
-    if (inVp && m_cursorSink) {
-        int cursorKind = 0;
-        if (!m_resizeId.empty()) cursorKind = handleCursorKind(static_cast<int>(m_resizeHandle));
-        else if (!m_dragId.empty()) cursorKind = 1;
-        else if (!m_selectedId.empty()) {
-            if (const int hi = hitHandle(cx, cy); hi >= 0) cursorKind = handleCursorKind(hi);
-        }
-        if (cursorKind != 0 || m_lastCursorKind != 0) m_cursorSink(cursorKind);
-        m_lastCursorKind = cursorKind;
-    }
-
     const bool downEdge = down && !m_mouseWasDown;
     const bool upEdge = !down && m_mouseWasDown;
 
-    // 手柄 resize 拖动
-    if (!m_resizeId.empty()) {
-        ControlModel* m = findModel(m_resizeId);
-        if (!m) { m_resizeId.clear(); m_resizeCtl = Control(); m_mouseWasDown = down; return; }
-        if (down) {
-            applyResize(m, cx, cy);
-        } else {
-            m_resizeId.clear();
-            m_resizeCtl = Control();
+    // 引擎 HandleControl 拖拽 resize 感知：选中控件 rect 与模型不一致 →
+    // 同步模型+属性面板（拖拽中 HandleControl 直改 ctl rect，此处收敛）
+    if (m_selectedId.empty() == false && m_dragId.empty()) {
+        if (ControlModel* m = findModel(m_selectedId)) {
+            if (PlacedControl* pc = placedById(m->props.id); pc && pc->ctl.IsValid()) {
+                const UIRect vr = pc->ctl.GetRect();
+                if (vr.w != m->props.rect.w || vr.h != m->props.rect.h ||
+                    vr.x != m->props.rect.x || vr.y != m->props.rect.y) {
+                    m->props.rect = SRect{ vr.x, vr.y, vr.w, vr.h };
+                    fillPropertyPanel();
+                }
+            }
         }
-        m_mouseWasDown = down;
-        return;
     }
 
     // 拖动已选中控件
@@ -1052,7 +999,6 @@ void CanvasPane::tickInput() {
             m->props.rect.y = ny;
             if (m_dragCtl.IsValid())
                 m_dragCtl.SetRect(nx, ny, m->props.rect.w, m->props.rect.h);
-            updateSelBox();
             fillPropertyPanel();   // 拖动中同步属性面板（m_propSync 抑制回写）
         } else {
             m_dragId.clear();   // 松开结束拖动
@@ -1061,21 +1007,8 @@ void CanvasPane::tickInput() {
         return;
     }
 
-    // 按下沿：手柄命中 → resize；控件命中 → 选中并拖动；空白 → 取消选中
+    // 按下沿：控件命中 → 选中并拖动（resize 由 HandleControl 手柄接管）；空白 → 取消选中
     if (downEdge && inVp) {
-        if (const int hi = hitHandle(cx, cy); hi >= 0 && !m_selectedId.empty()) {
-            if (ControlModel* m = findModel(m_selectedId)) {
-                m_resizeId = m_selectedId;
-                m_resizeHandle = static_cast<Handle>(hi);
-                m_resizeStartX = cx;
-                m_resizeStartY = cy;
-                m_resizeStartRect = m->props.rect;
-                if (PlacedControl* pc = placedById(m_selectedId))
-                    m_resizeCtl = pc->ctl;
-                m_mouseWasDown = down;
-                return;
-            }
-        }
         std::string hit;
         if (hitTest(cx, cy, hit)) {
             selectItem(hit);
@@ -1097,71 +1030,6 @@ void CanvasPane::tickInput() {
         // 松开且未开始拖动：无操作
     }
     m_mouseWasDown = down;
-}
-
-// 手柄索引 → 光标形态（0=默认 1=移动 2=NWSE 3=NESW 4=NS 5=EW）。
-// Handle: TL=0 TR=1 BL=2 BR=3 T=4 B=5 L=6 R=7
-static int handleCursorKind(int hi) {
-    switch (hi) {
-    case 0: case 3: return 2;   // TL/BR → NWSE 双箭头
-    case 1: case 2: return 3;   // TR/BL → NESW 双箭头
-    case 4: case 5: return 4;   // T/B  → NS 双箭头
-    case 6: case 7: return 5;   // L/R  → EW 双箭头
-    default: return 0;
-    }
-}
-
-// 手柄命中：鼠标（逻辑坐标）→ 视口像素，与手柄中心距离判定（容差 6px）。
-int CanvasPane::hitHandle(float cx, float cy) const {
-    const float mx = cx * m_zoom, my = cy * m_zoom;
-    for (int i = 0; i < kHandleCount; ++i) {
-        const float dx = mx - m_handlePts[i].first;
-        const float dy = my - m_handlePts[i].second;
-        if (dx * dx + dy * dy <= 36.0f) return i;
-    }
-    return -1;
-}
-
-// 手柄 resize：以按下时 rect/鼠标为基准，按方向更新逻辑 rect（网格吸附+最小 8），
-// 同步视口控件、选中框与属性面板。
-void CanvasPane::applyResize(ControlModel* m, float cx, float cy) {
-    float dx = cx - m_resizeStartX;
-    float dy = cy - m_resizeStartY;
-    const SRect& s = m_resizeStartRect;
-    SRect r = s;
-    switch (m_resizeHandle) {
-    case Handle::TL: r.x = s.x + dx; r.y = s.y + dy; r.w = s.w - dx; r.h = s.h - dy; break;
-    case Handle::TR: r.y = s.y + dy; r.w = s.w + dx; r.h = s.h - dy; break;
-    case Handle::BL: r.x = s.x + dx; r.w = s.w - dx; r.h = s.h + dy; break;
-    case Handle::BR: r.w = s.w + dx; r.h = s.h + dy; break;
-    case Handle::T:  r.y = s.y + dy; r.h = s.h - dy; break;
-    case Handle::B:  r.h = s.h + dy; break;
-    case Handle::L:  r.x = s.x + dx; r.w = s.w - dx; break;
-    case Handle::R:  r.w = s.w + dx; break;
-    }
-    if (m_snapEnabled) {
-        const float g = m_gridCell;
-        r.x = std::round(r.x / g) * g;
-        r.y = std::round(r.y / g) * g;
-        r.w = std::round(r.w / g) * g;
-        r.h = std::round(r.h / g) * g;
-    }
-    // 最小尺寸 8：限制后保持对侧边/角不动
-    const float minS = 8.0f;
-    if (r.w < minS) r.w = minS;
-    if (r.h < minS) r.h = minS;
-    const bool fixRight = (m_resizeHandle == Handle::TL || m_resizeHandle == Handle::BL ||
-                           m_resizeHandle == Handle::L);
-    const bool fixBottom = (m_resizeHandle == Handle::TL || m_resizeHandle == Handle::TR ||
-                            m_resizeHandle == Handle::T);
-    if (fixRight)   r.x = s.x + s.w - r.w;
-    if (fixBottom)  r.y = s.y + s.h - r.h;
-
-    m->props.rect = r;
-    if (m_resizeCtl.IsValid())
-        m_resizeCtl.SetRect(r.x, r.y, r.w, r.h);
-    updateSelBox();
-    fillPropertyPanel();
 }
 
 CanvasPane::PlacedControl* CanvasPane::placedById(const std::string& id) {
@@ -1218,10 +1086,6 @@ void CanvasPane::deleteSelected() {
     if (m_dragId == m_selectedId) {   // 拖动中删除：清理拖动状态
         m_dragId.clear();
         m_dragCtl = Control();
-    }
-    if (m_resizeId == m_selectedId) {   // resize 中删除：清理 resize 状态
-        m_resizeId.clear();
-        m_resizeCtl = Control();
     }
     syncTreeRemove(m_selectedId);
     selectItem("");   // 取消选中 → 属性面板清零 + 选中框隐藏

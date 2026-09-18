@@ -68,8 +68,6 @@ public:
     void SetMouseSource(MouseSourceFn src) { m_mouseSource = std::move(src); }
     using KeySourceFn = std::function<bool()>;   // 返回 Delete 键按下沿（每帧轮询一次）
     void SetKeySource(KeySourceFn src) { m_keySource = std::move(src); }
-    using CursorSinkFn = std::function<void(int)>;   // 0=默认 1=移动 2=NWSE 3=NESW 4=NS 5=EW
-    void SetCursorSink(CursorSinkFn sink) { m_cursorSink = std::move(sink); }
 
     // 右侧控件树（tvTree）：画布控件增删/选中双向同步。
     void SetCanvasTree(Control tree);
@@ -150,14 +148,14 @@ private:
     ControlModel* findModel(const std::string& id);
     PlacedControl* placedById(const std::string& id);
     void selectItem(const std::string& id);
-    void ensureSelBox();
-    void updateSelBox();
+    void ensureSelHandle(Control target);   // 引擎 HandleControl 附加（选中框+8向手柄+光标）
+    void detachSelHandle();                 // 分离并隐藏
     void fillPropertyPanel();      // 选中变化 → 属性面板回填
     void applyModelRect(ControlModel* m);   // 模型 rect → 视口控件 rect + 选中框
 
     std::vector<PlacedControl> m_items;
     std::string m_selectedId;
-    Control m_selBox;              // 选中框（视口内 Shape 多图元）
+    Control m_selHandle;           // 引擎 HandleControl（选中框+8向手柄+方向光标，附加 target）
     bool  m_propSync = false;      // 属性面板回填中（抑制回写）
     Control m_propX, m_propY, m_propW, m_propH, m_propCaption;
     Control m_propColor;           // 颜色（color-changed 事件回调：onOK 确认触发）
@@ -182,17 +180,6 @@ private:
     std::string m_dragId;
     Control m_dragCtl;
 
-    // 手柄 resize：8 向控点（视口像素坐标缓存，updateSelBox 时更新）
-    enum class Handle { TL, TR, BL, BR, T, B, L, R };
-    static constexpr int kHandleCount = 8;
-    std::pair<float, float> m_handlePts[kHandleCount]{};
-    std::string m_resizeId;
-    Handle m_resizeHandle = Handle::TL;
-    float  m_resizeStartX = 0, m_resizeStartY = 0;   // 按下时鼠标（逻辑坐标）
-    SRect  m_resizeStartRect{};                      // 按下时控件逻辑 rect
-    Control m_resizeCtl;
-    int   hitHandle(float cx, float cy) const;       // 命中手柄返回 0..7，否则 -1
-    void  applyResize(ControlModel* m, float cx, float cy);
     Control m_toolboxTree;
     Control m_canvasTree;          // 控件树（主实例 tvTree）
     bool    m_treeSync = false;    // 编程式树操作中（抑制 select 回调回环）
@@ -201,8 +188,6 @@ private:
     int   m_seq = 0;
     MouseSourceFn m_mouseSource;
     KeySourceFn   m_keySource;
-    CursorSinkFn  m_cursorSink;
-    int    m_lastCursorKind = 0;
 
     float m_seenX = 0, m_seenY = 0, m_seenW = 0, m_seenH = 0;   // 观测缓存
 

@@ -45,16 +45,11 @@ private:
         int   (*getWindowSize)(void*, int*, int*) = nullptr;
         unsigned (*getMouseState)(float*, float*) = nullptr;   // SDL_GetMouseState
         const unsigned char* (*getKeyboardState)(int*) = nullptr;  // SDL_GetKeyboardState
-        void* (*createSystemCursor)(int) = nullptr;   // SDL_CreateSystemCursor(SDL_SystemCursor)
-        bool  (*setCursor)(void*) = nullptr;          // SDL_SetCursor
-        void* (*getDefaultCursor)() = nullptr;        // SDL_GetDefaultCursor
         bool load();
         void unload();
         void* windowHandle();       // SDL_GetWindows[0]
         bool pollMouse(float& x, float& y);   // 返回左键是否按下；填充窗口坐标
         bool pollDeleteKey();                 // Delete 键按下沿（每帧调一次）
-        // 光标形态：0=默认箭头 1=移动 2=NWSE 3=NESW 4=NS 5=EW（系统光标懒创建缓存）
-        void applyCursor(int kind);
     };
     SdlApi m_sdl;
 

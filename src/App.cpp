@@ -66,18 +66,12 @@ bool App::SdlApi::load() {
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindowSize"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(GetProcAddress((HMODULE)dll, "SDL_GetMouseState"));
     getKeyboardState = reinterpret_cast<const unsigned char*(*)(int*)>(GetProcAddress((HMODULE)dll, "SDL_GetKeyboardState"));
-    createSystemCursor = reinterpret_cast<void*(*)(int)>(GetProcAddress((HMODULE)dll, "SDL_CreateSystemCursor"));
-    setCursor = reinterpret_cast<bool(*)(void*)>(GetProcAddress((HMODULE)dll, "SDL_SetCursor"));
-    getDefaultCursor = reinterpret_cast<void*(*)()>(GetProcAddress((HMODULE)dll, "SDL_GetDefaultCursor"));
 #else
     getWindows   = reinterpret_cast<void*(*)(int*)>(dlsym(dll, "SDL_GetWindows"));
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(dlsym(dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(dlsym(dll, "SDL_GetWindowSize"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(dlsym(dll, "SDL_GetMouseState"));
     getKeyboardState = reinterpret_cast<const unsigned char*(*)(int*)>(dlsym(dll, "SDL_GetKeyboardState"));
-    createSystemCursor = reinterpret_cast<void*(*)(int)>(dlsym(dll, "SDL_CreateSystemCursor"));
-    setCursor = reinterpret_cast<bool(*)(void*)>(dlsym(dll, "SDL_SetCursor"));
-    getDefaultCursor = reinterpret_cast<void*(*)()>(dlsym(dll, "SDL_GetDefaultCursor"));
 #endif
     loaded = getWindows && getWindowSize;
     return loaded;
@@ -103,23 +97,6 @@ bool App::SdlApi::pollDeleteKey() {
     const bool edge = down && !wasDown;
     wasDown = down;
     return edge;
-}
-
-// 光标形态切换（应用层 kind → SDL_SystemCursor；系统光标懒创建缓存）。
-// SDL_SystemCursor 枚举值：DEFAULT=0 MOVE=9 NWSE_RESIZE=5 NESW_RESIZE=6 NS=8 EW=7
-void App::SdlApi::applyCursor(int kind) {
-    if (!setCursor) { std::printf("[CUR] no setCursor fn\n"); return; }
-    static void* cached[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-    static const int sdlId[6] = { 0, 9, 5, 6, 8, 7 };   // DEFAULT MOVE NWSE NESW NS EW
-    if (kind < 0 || kind > 5) return;
-    if (!cached[kind]) {
-        if (kind == 0) cached[0] = getDefaultCursor ? getDefaultCursor() : nullptr;
-        else cached[kind] = createSystemCursor ? createSystemCursor(sdlId[kind]) : nullptr;
-        std::printf("[CUR] create kind=%d -> %p\n", kind, cached[kind]);
-        if (!cached[kind]) return;   // 创建失败：保持当前光标，下次重试
-    }
-    const bool ok = setCursor(cached[kind]);
-    if (kind != 0) std::printf("[CUR] set kind=%d ok=%d\n", kind, (int)ok);
 }
 
 void App::SdlApi::unload() {
@@ -187,7 +164,6 @@ bool App::init() {
     if (m_canvas) {
         m_canvas->SetMouseSource([this](float& x, float& y) { return m_sdl.pollMouse(x, y); });
         m_canvas->SetKeySource([this] { return m_sdl.pollDeleteKey(); });
-        m_canvas->SetCursorSink([this](int kind) { m_sdl.applyCursor(kind); });
         m_canvas->SetCanvasTree(m_ui->FindControl("tvTree"));
         m_canvas->LoadSchema(exeRelative("schema/declarative-ui.schema.json"));
         m_canvas->SetDynamicPropsContainer(m_ui->FindControl("propDynamic"));
