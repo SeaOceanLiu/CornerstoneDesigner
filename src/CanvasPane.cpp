@@ -861,6 +861,7 @@ void CanvasPane::rebuildDynamicRows() {
             // 按 schema 类型分派（引擎已归一：font-size 全控件 Int 域、
             // number 类走 Float 域）；读失败（0）→ 放置记录的 font-size 兜底
             const bool isInt = (t == "integer");
+            if (!isInt) nud.SetFloat(PropertyNames::kStep, 0.1f);   // number 类小数步进
             float v = isInt ? (float)m_schemaTarget.GetInt(prop.c_str())
                             : m_schemaTarget.GetFloat(prop.c_str());
             if (v <= 0 && (prop == "font-size" || prop == "caption-size"))
