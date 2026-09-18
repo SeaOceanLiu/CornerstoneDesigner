@@ -1029,21 +1029,18 @@ void CanvasPane::tickInput() {
     // 拖动；空白 → 取消选中
     if (downEdge && inVp) {
         if (!m_selectedId.empty()) {
-            if (ControlModel* m = findModel(m_selectedId)) {
-                // 手柄带 = 选中控件物理 rect 外扩手柄尺寸（HandleControl 缺省 8，
-                // 角点中心即 rect 角，halfHandle=4 外扩 + 容差）
+            if (findModel(m_selectedId)) {
+                // 手柄带 = 选中控件物理 rect 外扩（HandleControl 手柄 8×8，角点中心
+                // 即 rect 角——内半落在 rect 上）。带内一律让区：HandleControl 的
+                // hitTestHandle 自己判定（非手柄处返回 None，不产生拖拽）；
+                // 若带内仍走本体 hitTest，角手柄内半会被误判为移动拖动。
                 const float hs = 10.0f;
                 const float mx = wx - m_areaX, my = wy - (m_areaY + m_toolbarH);
                 const float x0 = m->props.rect.x * m_zoom - hs;
                 const float y0 = m->props.rect.y * m_zoom - hs;
                 const float x1 = (m->props.rect.x + m->props.rect.w) * m_zoom + hs;
                 const float y1 = (m->props.rect.y + m->props.rect.h) * m_zoom + hs;
-                const bool inHandleBand = (mx >= x0 && mx <= x1 && my >= y0 && my <= y1);
-                const bool inBody = (mx >= m->props.rect.x * m_zoom &&
-                                     mx < (m->props.rect.x + m->props.rect.w) * m_zoom &&
-                                     my >= m->props.rect.y * m_zoom &&
-                                     my < (m->props.rect.y + m->props.rect.h) * m_zoom);
-                if (inHandleBand && !inBody) {   // 手柄区：HandleControl 接管拖拽
+                if (mx >= x0 && mx <= x1 && my >= y0 && my <= y1) {
                     m_mouseWasDown = down;
                     return;
                 }
