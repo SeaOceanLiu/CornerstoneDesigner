@@ -135,17 +135,15 @@ namespace Designer {
 // 手柄索引 → 光标形态（0=默认 1=移动 2=NWSE 3=NESW 4=NS 5=EW）；定义见 hitHandle 前
 static int handleCursorKind(int hi);
 
-// 控件文本字号（px）：统一 font-size 键（引擎已废弃 caption-size——Button 分发
-// 归一到 kFontSize；Label/EditBox 等走 setIntProperty，Button 走 setFloatProperty，
-// 双路保留对齐历史行为）；读失败（0）回落 16（引擎缺省字号）。
+// 控件文本字号（px）：统一 font-size 键（引擎已废弃 caption-size，并全控件
+// 归一 Int 分发域——Label/Button 均 setIntProperty/getIntProperty）；
+// 读失败（0）回落 16（引擎缺省字号）。
 static float readFontPx(const Control& ctl) {
-    float v = (float)ctl.GetInt(PropertyNames::kFontSize);   // Label/EditBox 等
-    if (v <= 0) v = ctl.GetFloat(PropertyNames::kFontSize);  // Button（Float 分发）
+    const float v = (float)ctl.GetInt(PropertyNames::kFontSize);
     return v > 0 ? v : 16.0f;
 }
 static void writeFontPx(Control& ctl, float px) {
-    ctl.SetInt(PropertyNames::kFontSize, (int)px);        // Label/EditBox 等（setIntProperty）
-    ctl.SetFloat(PropertyNames::kFontSize, px);           // Button（setFloatProperty）
+    ctl.SetInt(PropertyNames::kFontSize, (int)px);
 }
 
 CanvasPane::CanvasPane() = default;
@@ -860,21 +858,20 @@ void CanvasPane::rebuildDynamicRows() {
         } else if (t == "number" || t == "integer") {
             Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, 26.0f);
             nud.SetRect(2.0f, y, rowW, 26.0f);
-            // 同名键的 Int/Float 分发按控件而异（Label font-size 在 setIntProperty、
-            // Button caption-size/font-size 在 setFloatProperty）——双读双写，
-            // 命中的生效、失败的无害，消灭整类类型失配问题；
-            // 读全失败（0）→ 放置记录的 font-size 兜底
-            float v = (float)m_schemaTarget.GetInt(prop.c_str());
-            if (v <= 0) v = m_schemaTarget.GetFloat(prop.c_str());
+            // 按 schema 类型分派（引擎已归一：font-size 全控件 Int 域、
+            // number 类走 Float 域）；读失败（0）→ 放置记录的 font-size 兜底
+            const bool isInt = (t == "integer");
+            float v = isInt ? (float)m_schemaTarget.GetInt(prop.c_str())
+                            : m_schemaTarget.GetFloat(prop.c_str());
             if (v <= 0 && (prop == "font-size" || prop == "caption-size"))
                 v = m->props.extended.value("font-size", 0.0f);
             if (v > 0) nud.SetFloat(PropertyNames::kValue, v);
             nud.SetCallback(PropertyNames::kEventValueChanged,
-                            [this, prop](const Event& e) {
+                            [this, prop, isInt](const Event& e) {
                                 if (!m_schemaTarget.IsValid()) return;
-                                m_schemaTarget.SetInt(prop.c_str(),
-                                                      (int)e.GetValueChanged());
-                                m_schemaTarget.SetFloat(prop.c_str(), e.GetValueChanged());
+                                if (isInt) m_schemaTarget.SetInt(prop.c_str(),
+                                                                 (int)e.GetValueChanged());
+                                else m_schemaTarget.SetFloat(prop.c_str(), e.GetValueChanged());
                             });
             m_propDynamic.AddChild(nud);
             m_dynamicRows.push_back(nud);
