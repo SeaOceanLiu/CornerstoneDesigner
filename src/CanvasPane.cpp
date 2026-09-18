@@ -983,22 +983,22 @@ void CanvasPane::tickInput() {
                     m->props.rect = SRect{ vr.x, vr.y, vr.w, vr.h };
                     fillPropertyPanel();
                 }
-            }
-        }
-        if (!down && m_snapEnabled) {   // 松手吸附收敛（每帧检查，无差异零开销）
-            SRect nr = m->props.rect;
-            const float g = m_gridCell;
-            nr.x = std::round(nr.x / g) * g;
-            nr.y = std::round(nr.y / g) * g;
-            nr.w = std::round(nr.w / g) * g;
-            nr.h = std::round(nr.h / g) * g;
-            if (nr.w < m_gridCell) nr.w = m_gridCell;
-            if (nr.h < m_gridCell) nr.h = m_gridCell;
-            if (nr.x != m->props.rect.x || nr.y != m->props.rect.y ||
-                nr.w != m->props.rect.w || nr.h != m->props.rect.h) {
-                m->props.rect = nr;
-                pc->ctl.SetRect(nr.x, nr.y, nr.w, nr.h);
-                fillPropertyPanel();
+                if (!down && m_snapEnabled) {   // 松手吸附收敛（每帧检查，无差异零开销）
+                    SRect nr = m->props.rect;
+                    const float g = m_gridCell;
+                    nr.x = std::round(nr.x / g) * g;
+                    nr.y = std::round(nr.y / g) * g;
+                    nr.w = std::round(nr.w / g) * g;
+                    nr.h = std::round(nr.h / g) * g;
+                    if (nr.w < m_gridCell) nr.w = m_gridCell;
+                    if (nr.h < m_gridCell) nr.h = m_gridCell;
+                    if (nr.x != m->props.rect.x || nr.y != m->props.rect.y ||
+                        nr.w != m->props.rect.w || nr.h != m->props.rect.h) {
+                        m->props.rect = nr;
+                        pc->ctl.SetRect(nr.x, nr.y, nr.w, nr.h);
+                        fillPropertyPanel();
+                    }
+                }
             }
         }
     }
