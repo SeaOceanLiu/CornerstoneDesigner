@@ -1029,7 +1029,7 @@ void CanvasPane::tickInput() {
     // 拖动；空白 → 取消选中
     if (downEdge && inVp) {
         if (!m_selectedId.empty()) {
-            if (findModel(m_selectedId)) {
+            if (ControlModel* m = findModel(m_selectedId)) {
                 // 手柄带 = 选中控件物理 rect 外扩（HandleControl 手柄 8×8，角点中心
                 // 即 rect 角——内半落在 rect 上）。带内一律让区：HandleControl 的
                 // hitTestHandle 自己判定（非手柄处返回 None，不产生拖拽）；
