@@ -108,16 +108,18 @@ bool App::SdlApi::pollDeleteKey() {
 // 光标形态切换（应用层 kind → SDL_SystemCursor；系统光标懒创建缓存）。
 // SDL_SystemCursor 枚举值：DEFAULT=0 MOVE=9 NWSE_RESIZE=5 NESW_RESIZE=6 NS=8 EW=7
 void App::SdlApi::applyCursor(int kind) {
-    if (!setCursor) return;
+    if (!setCursor) { std::printf("[CUR] no setCursor fn\n"); return; }
     static void* cached[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
     static const int sdlId[6] = { 0, 9, 5, 6, 8, 7 };   // DEFAULT MOVE NWSE NESW NS EW
     if (kind < 0 || kind > 5) return;
     if (!cached[kind]) {
         if (kind == 0) cached[0] = getDefaultCursor ? getDefaultCursor() : nullptr;
         else cached[kind] = createSystemCursor ? createSystemCursor(sdlId[kind]) : nullptr;
+        std::printf("[CUR] create kind=%d -> %p\n", kind, cached[kind]);
         if (!cached[kind]) return;   // 创建失败：保持当前光标，下次重试
     }
-    setCursor(cached[kind]);
+    const bool ok = setCursor(cached[kind]);
+    if (kind != 0) std::printf("[CUR] set kind=%d ok=%d\n", kind, (int)ok);
 }
 
 void App::SdlApi::unload() {
@@ -185,7 +187,7 @@ bool App::init() {
     if (m_canvas) {
         m_canvas->SetMouseSource([this](float& x, float& y) { return m_sdl.pollMouse(x, y); });
         m_canvas->SetKeySource([this] { return m_sdl.pollDeleteKey(); });
-        // m_canvas->SetCursorSink([this](int kind) { m_sdl.applyCursor(kind); });   // EXP-OFF
+        m_canvas->SetCursorSink([this](int kind) { m_sdl.applyCursor(kind); });
         m_canvas->SetCanvasTree(m_ui->FindControl("tvTree"));
         m_canvas->LoadSchema(exeRelative("schema/declarative-ui.schema.json"));
         m_canvas->SetDynamicPropsContainer(m_ui->FindControl("propDynamic"));
