@@ -1267,14 +1267,14 @@
                                                                 }
                                                             },
                                                             {
-                                                                "type": "edit-box",
+                                                                "type": "text-area",
                                                                 "id": "prop_caption",
                                                                 "placeholder": "名称",
                                                                 "rect": {
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 120,
-                                                                    "h": 32
+                                                                    "h": 64
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",

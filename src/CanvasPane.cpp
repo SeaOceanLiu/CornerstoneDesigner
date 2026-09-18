@@ -793,6 +793,7 @@ void CanvasPane::rebuildDynamicRows() {
         "check-state", "vertical-align", "popup", "position",
         "caption", "enabled", "visible",
         "border-visible", "font-file", "font-resource",   // 资源路径/调试类
+        "flow-weight",                                     // 布局权重（画布自由布局无意义）
     };
 
     const float viewH = 288.0f, barH = 14.0f;
@@ -867,6 +868,8 @@ void CanvasPane::rebuildDynamicRows() {
             m_dynamicRows.push_back(ta);
             m_dynamicRowY.push_back(y);
             y += 40.0f;
+            std::printf("[DynRow] string editor type=%s valid=%d\n",
+                        ta.GetType().c_str(), (int)ta.IsValid());   // TEMP
         } else if (t == "number" || t == "integer") {
             Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, 26.0f);
             nud.SetRect(2.0f, y, rowW, 26.0f);
