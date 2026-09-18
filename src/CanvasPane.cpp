@@ -1007,8 +1007,30 @@ void CanvasPane::tickInput() {
         return;
     }
 
-    // 按下沿：控件命中 → 选中并拖动（resize 由 HandleControl 手柄接管）；空白 → 取消选中
+    // 按下沿：选中控件手柄带让给 HandleControl（拖拽 resize）；控件命中 → 选中并
+    // 拖动；空白 → 取消选中
     if (downEdge && inVp) {
+        if (!m_selectedId.empty()) {
+            if (ControlModel* m = findModel(m_selectedId)) {
+                // 手柄带 = 选中控件物理 rect 外扩手柄尺寸（HandleControl 缺省 8，
+                // 角点中心即 rect 角，halfHandle=4 外扩 + 容差）
+                const float hs = 10.0f;
+                const float mx = wx - m_areaX, my = wy - (m_areaY + m_toolbarH);
+                const float x0 = m->props.rect.x * m_zoom - hs;
+                const float y0 = m->props.rect.y * m_zoom - hs;
+                const float x1 = (m->props.rect.x + m->props.rect.w) * m_zoom + hs;
+                const float y1 = (m->props.rect.y + m->props.rect.h) * m_zoom + hs;
+                const bool inHandleBand = (mx >= x0 && mx <= x1 && my >= y0 && my <= y1);
+                const bool inBody = (mx >= m->props.rect.x * m_zoom &&
+                                     mx < (m->props.rect.x + m->props.rect.w) * m_zoom &&
+                                     my >= m->props.rect.y * m_zoom &&
+                                     my < (m->props.rect.y + m->props.rect.h) * m_zoom);
+                if (inHandleBand && !inBody) {   // 手柄区：HandleControl 接管拖拽
+                    m_mouseWasDown = down;
+                    return;
+                }
+            }
+        }
         std::string hit;
         if (hitTest(cx, cy, hit)) {
             selectItem(hit);
