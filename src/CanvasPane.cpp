@@ -842,26 +842,42 @@ void CanvasPane::rebuildDynamicRows() {
         y += 18.0f;
 
         if (t == "string") {
-            Control eb = m_ui->CreateEditBox(0, 0, rowW, 26.0f);
-            eb.SetRect(2.0f, y, rowW, 26.0f);
+            // TextArea：多行值（如 Label 文本含换行）直接输入真实换行，
+            // 无需转义；行高 40 容两行，超出内部滚动
+            Control ta = m_ui->CreateTextArea(0, 0, rowW, 40.0f);
+            ta.SetRect(2.0f, y, rowW, 40.0f);
+            // 编程创建无主题：显式深色面板协调样式
+            ta.SetStateColor(PropertyNames::kBackground,
+                             UIStateColor{ UIColor{0x1E, 0x1E, 0x1E, 255}, UIColor{0x1E, 0x1E, 0x1E, 255},
+                                           UIColor{0x1E, 0x1E, 0x1E, 255}, UIColor{0x1E, 0x1E, 0x1E, 255} });
+            ta.SetStateColor(PropertyNames::kText,
+                             UIStateColor{ UIColor{0xE0, 0xE0, 0xE0, 255}, UIColor{0xE0, 0xE0, 0xE0, 255},
+                                           UIColor{0xE0, 0xE0, 0xE0, 255}, UIColor{0xE0, 0xE0, 0xE0, 255} });
+            ta.SetStateColor(PropertyNames::kBorder,
+                             UIStateColor{ UIColor{0x40, 0x40, 0x40, 255}, UIColor{0x4A, 0x90, 0xD9, 255},
+                                           UIColor{0x4A, 0x90, 0xD9, 255}, UIColor{0x40, 0x40, 0x40, 255} });
             const std::string v = m_schemaTarget.GetString(prop.c_str());
-            eb.SetString(PropertyNames::kTextContent, v);
-            eb.SetCallback(PropertyNames::kEventTextChanged,
+            ta.SetString(PropertyNames::kTextContent, v);
+            ta.SetCallback(PropertyNames::kEventTextChanged,
                            [this, prop](const Event& e) {
                                if (m_schemaTarget.IsValid())
                                    m_schemaTarget.SetString(prop.c_str(), e.GetTextChanged());
                            });
-            m_propDynamic.AddChild(eb);
-            m_dynamicRows.push_back(eb);
+            m_propDynamic.AddChild(ta);
+            m_dynamicRows.push_back(ta);
             m_dynamicRowY.push_back(y);
-            y += 26.0f;
+            y += 40.0f;
         } else if (t == "number" || t == "integer") {
             Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, 26.0f);
             nud.SetRect(2.0f, y, rowW, 26.0f);
             // 按 schema 类型分派（引擎已归一：font-size 全控件 Int 域、
             // number 类走 Float 域）；读失败（0）→ 放置记录的 font-size 兜底
             const bool isInt = (t == "integer");
-            if (!isInt) nud.SetFloat(PropertyNames::kStep, 0.1f);   // number 类小数步进
+            if (!isInt) {   // number 类：小数步进+1 位小数（缺省 decimals=0 会 snap 到整数
+                            // 网格且整数显示，0.1 被归零）
+                nud.SetFloat(PropertyNames::kStep, 0.1f);
+                nud.SetInt(PropertyNames::kDecimals, 1);
+            }
             float v = isInt ? (float)m_schemaTarget.GetInt(prop.c_str())
                             : m_schemaTarget.GetFloat(prop.c_str());
             if (v <= 0 && (prop == "font-size" || prop == "caption-size"))
