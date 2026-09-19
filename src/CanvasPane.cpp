@@ -792,12 +792,12 @@ void CanvasPane::rebuildDynamicRows() {
         "flow-weight",                                     // 布局权重（画布自由布局无意义）
     };
 
-    const float viewH = 288.0f, barH = 14.0f;
-    const float viewRowsH = viewH - barH;
+    const float viewH = 288.0f, barW = 12.0f;
+    const float viewRowsH = viewH;                 // 行区全高（滚动条浮于右侧）
 
-    // 滚动条：首次创建常驻（position-changed → applyDynScroll）
+    // 滚动条：首次创建常驻（orientation=0 垂直；position-changed → applyDynScroll）
     if (!m_dynScroll.IsValid()) {
-        m_dynScroll = m_ui->CreateScrollBar(0, viewH - barH, 216.0f, barH, 1);
+        m_dynScroll = m_ui->CreateScrollBar(216.0f - barW, 0.0f, barW, viewH, 0);
         m_dynScroll.SetFloat(PropertyNames::kRangeMin, 0.0f);
         m_dynScroll.SetFloat(PropertyNames::kPageSize, viewRowsH);
         m_dynScroll.SetFloat(PropertyNames::kStepSize, 24.0f);
