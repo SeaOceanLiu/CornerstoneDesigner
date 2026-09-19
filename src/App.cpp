@@ -99,10 +99,6 @@ bool App::SdlApi::pollDeleteKey() {
     return edge;
 }
 
-// Win32 低级鼠标钩子状态（前置定义：unload 亦使用）
-static HHOOK s_mouseHook = nullptr;
-static float* s_wheelState = nullptr;   // 指向 SdlApi::m_wheelState [accumY, mouseX, mouseY]
-
 void App::SdlApi::unload() {
 #ifdef _WIN32
     if (dll) FreeLibrary((HMODULE)dll);
@@ -111,49 +107,6 @@ void App::SdlApi::unload() {
 #endif
     dll = nullptr;
     loaded = false;
-    if (s_mouseHook) { UnhookWindowsHookEx(s_mouseHook); s_mouseHook = nullptr; }
-}
-
-// SDL_Event 滚轮成员视图（偏移与 SDL_Event 联合对齐；仅解读 MOUSE_WHEEL=0x403 事件）
-
-
-
-// Win32 低级鼠标钩子：旁听 WM_MOUSEWHEEL（SDL_PumpEvents 处理 Windows 消息
-// 时回调，安装线程即主线程）。SDL_AddEventWatch 与引擎事件泵不兼容（127 静默退出），弃用。
-static LRESULT CALLBACK wheelMouseHookProc(int code, WPARAM wp, LPARAM lp) {
-    if (code == HC_ACTION && wp == WM_MOUSEWHEEL) {
-        auto* mi = reinterpret_cast<MSLLHOOKSTRUCT*>(lp);
-        const float delta = static_cast<short>(HIWORD(mi->mouseData)) / 120.0f;
-        auto* s = static_cast<float*>(s_wheelState);   // [0]=accumY [1]=mouseX [2]=mouseY
-        if (s) {
-            s[0] += delta;
-            s[1] = static_cast<float>(mi->pt.x);
-            s[2] = static_cast<float>(mi->pt.y);
-            static int wc = 0;
-            if (++wc % 4 == 1)
-                std::printf("[WHEEL] hook n=%d delta=%.1f pt=(%ld,%ld)\n",
-                            wc, delta, (long)mi->pt.x, (long)mi->pt.y);
-        }
-    }
-    return CallNextHookEx(nullptr, code, wp, lp);
-}
-
-bool App::SdlApi::installWheelWatch() {
-    if (s_mouseHook) return true;
-    s_wheelState = m_wheelState;
-    s_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, wheelMouseHookProc, GetModuleHandle(nullptr), 0);
-    return s_mouseHook != nullptr;
-}
-
-
-bool App::SdlApi::consumeWheel(float& dy, float& mx, float& my) {
-    auto* s = static_cast<float*>(s_wheelState);
-    if (!s || s[0] == 0.0f) return false;
-    dy = s[0];
-    mx = s[1];
-    my = s[2];
-    s[0] = 0.0f;
-    return true;
 }
 
 void* App::SdlApi::windowHandle() {
@@ -209,7 +162,6 @@ bool App::init() {
     setupCanvas();
     bindToolbar();
     if (m_canvas) {
-        m_sdl.installWheelWatch();
         m_canvas->SetMouseSource([this](float& x, float& y) { return m_sdl.pollMouse(x, y); });
         m_canvas->SetKeySource([this] { return m_sdl.pollDeleteKey(); });
         m_canvas->SetCanvasTree(m_ui->FindControl("tvTree"));
@@ -361,19 +313,6 @@ int App::run(int autoSeconds) {
     while (!m_ui->IsQuitRequested() && !m_exitRequested) {
         m_ui->ProcessEvents();
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
-        if (m_canvas) {
-            float wd = 0, wmx = 0, wmy = 0;
-            if (m_sdl.consumeWheel(wd, wmx, wmy)) {
-                (void)wmx; (void)wmy;   // 钩子 pt 为 DPI 物理域不可用
-                float mx = 0, my = 0;
-                m_sdl.pollMouse(mx, my);          // SDL 逻辑坐标
-                void* win = m_sdl.windowHandle();
-                int ww = 0, wh = 0;
-                if (win && m_sdl.getWindowSize) m_sdl.getWindowSize(win, &ww, &wh);
-                // 右侧属性面板列（面板 240 + splitter 余量）才滚动态区
-                if (ww > 0 && mx > ww - 300) m_canvas->WheelDynamic(wd);
-            }
-        }
         syncRootToWindow();
 
         auto now = Clock::now();

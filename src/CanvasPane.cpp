@@ -806,9 +806,18 @@ void CanvasPane::rebuildDynamicRows() {
         m_dynScroll.SetFloat(PropertyNames::kRangeMin, 0.0f);
         m_dynScroll.SetFloat(PropertyNames::kPageSize, viewRowsH);
         m_dynScroll.SetFloat(PropertyNames::kStepSize, 24.0f);
-        m_dynScroll.SetCallback(PropertyNames::kEventPositionChanged,
-                                [this](const Event& e) { applyDynScroll(e.GetValueChanged()); });
-        m_propDynamic.AddChild(m_dynScroll);
+    m_dynScroll.SetCallback(PropertyNames::kEventPositionChanged,
+                            [this](const Event& e) { applyDynScroll(e.GetValueChanged()); });
+    m_propDynamic.AddChild(m_dynScroll);
+    // 容器级滚轮（引擎 Panel mouse-wheel 事件，载荷 floatVal=scrollY：+1 上/-1 下）：
+    // 滚轮落在行控件/滚动条上时子控件或滚动条先行消费，其余由面板回调驱动滚动
+    m_propDynamic.SetCallback(PropertyNames::kEventMouseWheel, [this](const Event& e) {
+        if (!m_dynScroll.IsValid() || m_dynScrollMax <= 0) return;
+        float v = m_dynScroll.GetFloat(PropertyNames::kValue) - e.GetValueChanged() * 24.0f;
+        if (v < 0) v = 0;
+        if (v > m_dynScrollMax) v = m_dynScrollMax;
+        m_dynScroll.SetFloat(PropertyNames::kValue, v);
+    });
     }
     m_dynScroll.SetBool(PropertyNames::kVisible, true);
 
@@ -932,17 +941,6 @@ void CanvasPane::rebuildDynamicRows() {
 }
 
 // 滚动 → 行偏移（超界裁剪由 propDynamic 的 clip-children 承担，纯偏移）。
-// 滚轮：鼠标在动态区内 → 滚动属性行（SDL 事件被控件消费也不受影响——
-// 走 SDL_AddEventWatch 旁路，此处按滚轮增量直接驱动滚动值）。
-void CanvasPane::WheelDynamic(float dy) {
-    if (!m_dynScroll.IsValid() || m_dynScrollMax <= 0) return;
-    // 区域判定在 App 层（GetRect 是父局部域，非窗口坐标；右侧面板列由窗口宽判定）
-    float v = m_dynScroll.GetFloat(PropertyNames::kValue) - dy * 24.0f;
-    if (v < 0) v = 0;
-    if (v > m_dynScrollMax) v = m_dynScrollMax;
-    m_dynScroll.SetFloat(PropertyNames::kValue, v);   // setValue → position-changed → applyDynScroll
-}
-
 void CanvasPane::applyDynScroll(float value) {
     const float viewH = 288.0f;
     for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
