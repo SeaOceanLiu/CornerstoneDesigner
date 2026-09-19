@@ -650,7 +650,6 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
             ControlModel* m = findModel(m_selectedId);
             if (!m) return;
             const float v = e.GetValueChanged();
-            std::printf("[W-NUD] which=%d v=%.1f\n", which, v);
             if (which == 0) m->props.rect.x = v;
             else if (which == 1) m->props.rect.y = v;
             else if (which == 2) m->props.rect.w = v;
@@ -966,15 +965,6 @@ int CanvasPane::rectFilterThunk(UIControlHandle, float* x, float* y,
 }
 
 int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
-    static int callCount = 0;
-    ++callCount;
-    {
-        const ControlModel* dbg = findModel(m_selectedId);
-        std::printf("[FLT] c=%d in=(%.1f,%.1f,%.1f,%.1f) p=(%.1f,%.1f,%.1f,%.1f)\n",
-                    callCount, x, y, w, h,
-                    dbg ? dbg->props.rect.x : -1.0f, dbg ? dbg->props.rect.y : -1.0f,
-                    dbg ? dbg->props.rect.w : -1.0f, dbg ? dbg->props.rect.h : -1.0f);
-    }
     if (!m_snapEnabled) return 0;
     const float g = m_gridCell;
     const ControlModel* m = findModel(m_selectedId);
@@ -998,8 +988,6 @@ int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
     const bool topFixed  = std::fabs(y - p.y) < 0.5f;   // 上缘未动（SE/E/S 族）
     if (!leftFixed) x = (p.x + p.w) - w;
     if (!topFixed)  y = (p.y + p.h) - h;
-    std::printf("[FLT] c=%d out=(%.1f,%.1f,%.1f,%.1f) L=%d T=%d\n",
-                callCount, x, y, w, h, (int)leftFixed, (int)topFixed);
     return 1;
 }
 
@@ -1030,9 +1018,6 @@ void CanvasPane::tickInput() {
                 const UIRect vr = pc->ctl.GetRect();
                 if (vr.w != m->props.rect.w || vr.h != m->props.rect.h ||
                     vr.x != m->props.rect.x || vr.y != m->props.rect.y) {
-                    std::printf("[SYNC] model=(%.1f,%.1f,%.1f,%.1f) <- vr=(%.1f,%.1f,%.1f,%.1f)\n",
-                                m->props.rect.x, m->props.rect.y, m->props.rect.w, m->props.rect.h,
-                                vr.x, vr.y, vr.w, vr.h);
                     m->props.rect = SRect{ vr.x, vr.y, vr.w, vr.h };
                     fillPropertyPanel();
                 }
@@ -1050,7 +1035,6 @@ void CanvasPane::tickInput() {
                 nx = std::round(nx / m_gridCell) * m_gridCell;
                 ny = std::round(ny / m_gridCell) * m_gridCell;
             }
-            std::printf("[W-DRAG] nx=%.1f ny=%.1f\n", nx, ny);
             m->props.rect.x = nx;
             m->props.rect.y = ny;
             if (m_dragCtl.IsValid())
@@ -1073,7 +1057,6 @@ void CanvasPane::tickInput() {
             // 坐标域：m_handleAreas 基于 target getDrawRect（父链递归到视口根，
             // 视口根 rect=窗口全局位置）→ 全局域，传 SDL 窗口坐标原样
             const bool hh = m_ui->HandleHitTest(m_selHandle, wx, wy, ht);
-            std::printf("[HIT] hx=%.1f hy=%.1f ret=%d type=%d\n", wx, wy, (int)hh, ht);
             if (hh) {
                 m_mouseWasDown = down;
                 return;
