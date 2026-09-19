@@ -757,6 +757,7 @@ void CanvasPane::rebuildDynamicRows() {
         if (c.IsValid()) c.Destroy();
     m_dynamicRows.clear();
     m_dynamicRowY.clear();
+    m_colorSlots.clear();
     m_schemaTarget = Control();
 
     if (!m_propDynamic.IsValid()) return;
@@ -786,7 +787,7 @@ void CanvasPane::rebuildDynamicRows() {
         "type", "id", "name", "rect", "scale", "margin", "layout", "anchor",
         "events", "context-menu", "actors", "luotiAni", "caption-label",
         "file", "image", "image-resource", "resourceId", "providerName",
-        "font", "colors", "match-parent-rect", "playing", "debug-draw",
+        "font", "match-parent-rect", "playing", "debug-draw",
         "expand", "offset", "shadow", "size", "style", "alignment",
         "check-state", "vertical-align", "popup", "position",
         "caption", "enabled", "visible",
@@ -832,14 +833,56 @@ void CanvasPane::rebuildDynamicRows() {
         if (skip) continue;
         const nlohmann::json& spec = it.value();
         const std::string t = spec.value("type", "");
+        const float rowW = box.w - 16.0f;   // 右侧留滚动条通道
+
+        // 颜色组展开：colors.<组>.<态> → 运行时 "组[.态]"（normal 省略后缀，键名点号风格）
+        // 行先放占位 Button（背景=当前色+hex 文本），点击才创建 ColorPicker（3.5s 构建惰性化）
+        if (key == "colors" && spec.is_object()) {
+            static const char* kGroups[] = { "background", "border", "text", "textShadow" };
+            static const char* kStates[] = { "normal", "hover", "pressed", "disabled" };
+            for (const char* grp : kGroups) {
+                const std::string gk = jsonKeyToProp(grp);   // textShadow → text-shadow
+                for (const char* st : kStates) {
+                    if (std::strcmp(grp, "background") == 0 &&
+                        std::strcmp(st, "normal") == 0) continue;   // 固定区已有背景色
+                    const std::string prop = gk + (std::strcmp(st, "normal") == 0
+                        ? std::string() : ("." + std::string(st)));
+                    const std::string lbl = std::string(grp) + "." + st;
+                    UIColor cc = m_schemaTarget.GetColor(prop.c_str());
+                    char hex[10];
+                    std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", cc.r, cc.g, cc.b);
+
+                    Control lb = m_ui->CreateLabel(lbl, 13.0f, 0, 0, rowW, 18.0f);
+                    lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
+                    lb.SetRect(2.0f, y, rowW, 18.0f);
+                    m_propDynamic.AddChild(lb);
+                    m_dynamicRows.push_back(lb);
+                    m_dynamicRowY.push_back(y);
+                    y += 18.0f;
+
+                    Control ph = m_ui->CreateButton(hex, 2.0f, y, rowW, 26.0f);
+                    ph.SetStateColor(PropertyNames::kBackground,
+                                     UIStateColor{ cc, cc, cc, cc });
+                    ph.SetCallback(PropertyNames::kEventClick,
+                                   [this, prop](const Event&) { onColorSlotClick(prop); });
+                    m_propDynamic.AddChild(ph);
+                    m_colorSlots.push_back({ prop, ph, m_dynamicRows.size() });
+                    m_dynamicRows.push_back(ph);
+                    m_dynamicRowY.push_back(y);
+                    y += 26.0f + 4.0f;
+                    ++rows;
+                    genKeys += " " + lbl;
+                }
+            }
+            continue;
+        }
+
         if (t != "string" && t != "number" && t != "integer" && t != "boolean") continue;
 
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
-        const float rowW = box.w - 16.0f;   // 右侧留滚动条通道
-
-        // 键名 label 行
+         // 键名 label 行
         Control lb = m_ui->CreateLabel(key, 13.0f, 0, 0, rowW, 18.0f);
         lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
         lb.SetRect(2.0f, y, rowW, 18.0f);
@@ -944,6 +987,29 @@ void CanvasPane::ScrollDynamicBy(float scrollY) {
     if (v < 0) v = 0;
     if (v > m_dynScrollMax) v = m_dynScrollMax;
     m_dynScroll.SetFloat(PropertyNames::kValue, v);   // setValue → position-changed → applyDynScroll
+}
+
+// 颜色槽占位点击 → 创建 ColorPicker 替换（须先 Destroy 占位——AddChild 重复挂树语义）
+void CanvasPane::onColorSlotClick(const std::string& prop) {
+    if (!m_ui || !m_propDynamic.IsValid()) return;
+    for (auto& slot : m_colorSlots) {
+        if (slot.prop != prop || !slot.placeholder.IsValid()) continue;
+        const UIRect r = slot.placeholder.GetRect();
+        UIColor cc = m_schemaTarget.GetColor(prop.c_str());
+        char hex[10];
+        std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", cc.r, cc.g, cc.b);
+        Control cp = m_ui->CreateColorPicker(r.x, r.y, r.w, r.h, hex);
+        if (!cp.IsValid()) return;
+        cp.SetCallback(PropertyNames::kEventColorChanged, [this, prop](const Event& e) {
+            if (m_schemaTarget.IsValid())
+                m_schemaTarget.SetColor(prop.c_str(), e.GetChangedColor());
+        });
+        slot.placeholder.Destroy();
+        m_propDynamic.AddChild(cp);
+        if (slot.rowIndex < m_dynamicRows.size()) m_dynamicRows[slot.rowIndex] = cp;
+        slot.placeholder = cp;
+        return;
+    }
 }
 
 void CanvasPane::applyDynScroll(float value) {
