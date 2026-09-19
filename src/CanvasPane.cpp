@@ -810,13 +810,9 @@ void CanvasPane::rebuildDynamicRows() {
                             [this](const Event& e) { applyDynScroll(e.GetValueChanged()); });
     m_propDynamic.AddChild(m_dynScroll);
     // 容器级滚轮（引擎 Panel mouse-wheel 事件，载荷 floatVal=scrollY：+1 上/-1 下）：
-    // 滚轮落在行控件/滚动条上时子控件或滚动条先行消费，其余由面板回调驱动滚动
+    // 最近订阅者消费——动态区内由 propDynamic、面板其他区域由 tabProperty（App 接线）
     m_propDynamic.SetCallback(PropertyNames::kEventMouseWheel, [this](const Event& e) {
-        if (!m_dynScroll.IsValid() || m_dynScrollMax <= 0) return;
-        float v = m_dynScroll.GetFloat(PropertyNames::kValue) - e.GetValueChanged() * 24.0f;
-        if (v < 0) v = 0;
-        if (v > m_dynScrollMax) v = m_dynScrollMax;
-        m_dynScroll.SetFloat(PropertyNames::kValue, v);
+        ScrollDynamicBy(e.GetValueChanged());
     });
     }
     m_dynScroll.SetBool(PropertyNames::kVisible, true);
@@ -941,6 +937,15 @@ void CanvasPane::rebuildDynamicRows() {
 }
 
 // 滚动 → 行偏移（超界裁剪由 propDynamic 的 clip-children 承担，纯偏移）。
+// 滚轮滚动动态区（mouse-wheel 事件载荷 scrollY 驱动；+1 向上 → 内容下移）
+void CanvasPane::ScrollDynamicBy(float scrollY) {
+    if (!m_dynScroll.IsValid() || m_dynScrollMax <= 0) return;
+    float v = m_dynScroll.GetFloat(PropertyNames::kValue) - scrollY * 24.0f;
+    if (v < 0) v = 0;
+    if (v > m_dynScrollMax) v = m_dynScrollMax;
+    m_dynScroll.SetFloat(PropertyNames::kValue, v);   // setValue → position-changed → applyDynScroll
+}
+
 void CanvasPane::applyDynScroll(float value) {
     const float viewH = 288.0f;
     for (size_t i = 0; i < m_dynamicRows.size(); ++i) {

@@ -167,6 +167,12 @@ bool App::init() {
         m_canvas->SetCanvasTree(m_ui->FindControl("tvTree"));
         m_canvas->LoadSchema(exeRelative("schema/declarative-ui.schema.json"));
         m_canvas->SetDynamicPropsContainer(m_ui->FindControl("propDynamic"));
+        // 滚轮双订阅：动态区内 propDynamic 消费；面板其他区域由 tabProperty 兜底
+        // （最近订阅者语义——内层无订阅 Panel 透传，修复后由本层消费）
+        m_ui->FindControl("tabProperty").SetCallback(
+            PropertyNames::kEventMouseWheel, [this](const Event& e) {
+                m_canvas->ScrollDynamicBy(e.GetValueChanged());
+            });
         m_canvas->SetToolboxTree(m_ui->FindControl("tvToolbox"));
         m_canvas->SetPropertyControls(m_ui->FindControl("prop_x"),
                                       m_ui->FindControl("prop_y"),
