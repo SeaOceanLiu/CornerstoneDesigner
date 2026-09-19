@@ -967,12 +967,27 @@ int CanvasPane::rectFilterThunk(UIControlHandle, float* x, float* y,
 int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
     if (!m_snapEnabled) return 0;
     const float g = m_gridCell;
-    x = std::round(x / g) * g;
-    y = std::round(y / g) * g;
+    const ControlModel* m = findModel(m_selectedId);
+    if (!m) return 0;
+    const SRect& p = m->props.rect;   // 上帧 filter 输出（已贴网格）——锚定边推断基准
+
+    // 纯移动（尺寸未变，Move 手柄/选框拖拽）：量化位置即可
+    if (std::fabs(w - p.w) < 0.5f && std::fabs(h - p.h) < 0.5f) {
+        x = std::round(x / g) * g;
+        y = std::round(y / g) * g;
+        return 1;
+    }
+
+    // resize：量化尺寸；按锚定边保持对缘（NW/W/SW 动左缘 → 保持右缘 = p 右缘，
+    // p 已贴网格 + w 量化 → 新 x 自动贴网格，对缘不漂移）
     w = std::round(w / g) * g;
     h = std::round(h / g) * g;
     if (w < g) w = g;
     if (h < g) h = g;
+    const bool leftFixed = std::fabs(x - p.x) < 0.5f;   // 左缘未动（SE/E/S 族）
+    const bool topFixed  = std::fabs(y - p.y) < 0.5f;   // 上缘未动（SE/E/S 族）
+    if (!leftFixed) x = (p.x + p.w) - w;
+    if (!topFixed)  y = (p.y + p.h) - h;
     return 1;
 }
 
