@@ -150,6 +150,9 @@ private:
     void selectItem(const std::string& id);
     void ensureSelHandle(Control target);   // 引擎 HandleControl 附加（选中框+8向手柄+光标）
     void detachSelHandle();                 // 分离并隐藏
+    static int rectFilterThunk(UIControlHandle target, float* x, float* y,
+                               float* w, float* h, void* userData);
+    int filterRect(float& x, float& y, float& w, float& h);   // 网格吸附（HandleControl 拖拽几何过滤）
     void fillPropertyPanel();      // 选中变化 → 属性面板回填
     void applyModelRect(ControlModel* m);   // 模型 rect → 视口控件 rect + 选中框
 

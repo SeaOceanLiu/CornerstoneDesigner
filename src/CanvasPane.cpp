@@ -938,17 +938,42 @@ void CanvasPane::applyDynScroll(float value) {
 
 // 引擎 HandleControl：选中框+8 向手柄+方向光标+拖拽 resize（原生组件，
 // 挂 target 父容器+alwaysOnTop，draw 按 target getDrawRect 跟随 bench scale）。
-// C ABI 仅暴露 CreateHandleControl（target 构造绑定，无 SetTarget/detach/配置）——
-// 每次选中创建、取消销毁；Move 手柄/缺省 minSize 暂用引擎缺省。
+// 首次创建并接线几何 filter（网格吸附）；改选经 SetHandleTarget 复用切换；
+// detach 经 SetHandleTarget 空 target（移出容器+恢复光标）。
 void CanvasPane::ensureSelHandle(Control target) {
     if (!m_viewport || !m_ui) return;
-    detachSelHandle();
-    m_selHandle = m_ui->CreateHandleControl(target, 0, 0, 1, 1);
+    if (!m_selHandle.IsValid()) {
+        m_selHandle = m_ui->CreateHandleControl(target, 0, 0, 1, 1);
+        if (!m_selHandle.IsValid()) return;
+        m_ui->SetHandleRectFilter(m_selHandle, &CanvasPane::rectFilterThunk, this);
+    } else {
+        m_ui->SetHandleTarget(m_selHandle, target);
+    }
 }
 
-// 取消选中/删除目标：销毁 HandleControl。
+// 取消选中/删除目标：detach（移出容器+恢复光标），实例保留复用。
 void CanvasPane::detachSelHandle() {
-    if (m_selHandle.IsValid()) { m_selHandle.Destroy(); m_selHandle = Control(); }
+    if (m_selHandle.IsValid())
+        m_ui->SetHandleTarget(m_selHandle, Control());
+}
+
+// 拖拽几何过滤（HandleControl setRect 前回调，target 局部逻辑坐标）：
+// 网格吸附量化（四边独立贴网格；引擎 minSize 钳位在前，filter 值最终）。
+int CanvasPane::rectFilterThunk(UIControlHandle, float* x, float* y,
+                                float* w, float* h, void* userData) {
+    return static_cast<CanvasPane*>(userData)->filterRect(*x, *y, *w, *h);
+}
+
+int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
+    if (!m_snapEnabled) return 0;
+    const float g = m_gridCell;
+    x = std::round(x / g) * g;
+    y = std::round(y / g) * g;
+    w = std::round(w / g) * g;
+    h = std::round(h / g) * g;
+    if (w < g) w = g;
+    if (h < g) h = g;
+    return 1;
 }
 
 void CanvasPane::tickInput() {
@@ -970,10 +995,8 @@ void CanvasPane::tickInput() {
     const bool downEdge = down && !m_mouseWasDown;
     const bool upEdge = !down && m_mouseWasDown;
 
-    // 引擎 HandleControl 拖拽 resize 感知：
-    // - 拖拽中（down）：只同步模型/属性面板（不写回——引擎实时读当前 rect 对侧角
-    //   作锚定，写回 x/y 会漂移锚点使 resize 畸变为移动）
-    // - 松手后：吸附收敛一次（snap 模型 → 写回 ctl），此后 rect 稳定无差异
+    // 引擎 HandleControl 拖拽感知：rect 差异（filter 吸附后引擎 setRect）→
+    // 同步模型/属性面板（吸附已由 filter 实时承担，此处纯同步）
     if (m_selectedId.empty() == false && m_dragId.empty()) {
         if (ControlModel* m = findModel(m_selectedId)) {
             if (PlacedControl* pc = placedById(m->props.id); pc && pc->ctl.IsValid()) {
@@ -982,22 +1005,6 @@ void CanvasPane::tickInput() {
                     vr.x != m->props.rect.x || vr.y != m->props.rect.y) {
                     m->props.rect = SRect{ vr.x, vr.y, vr.w, vr.h };
                     fillPropertyPanel();
-                }
-                if (!down && m_snapEnabled) {   // 松手吸附收敛（每帧检查，无差异零开销）
-                    SRect nr = m->props.rect;
-                    const float g = m_gridCell;
-                    nr.x = std::round(nr.x / g) * g;
-                    nr.y = std::round(nr.y / g) * g;
-                    nr.w = std::round(nr.w / g) * g;
-                    nr.h = std::round(nr.h / g) * g;
-                    if (nr.w < m_gridCell) nr.w = m_gridCell;
-                    if (nr.h < m_gridCell) nr.h = m_gridCell;
-                    if (nr.x != m->props.rect.x || nr.y != m->props.rect.y ||
-                        nr.w != m->props.rect.w || nr.h != m->props.rect.h) {
-                        m->props.rect = nr;
-                        pc->ctl.SetRect(nr.x, nr.y, nr.w, nr.h);
-                        fillPropertyPanel();
-                    }
                 }
             }
         }
@@ -1028,22 +1035,15 @@ void CanvasPane::tickInput() {
     // 按下沿：选中控件手柄带让给 HandleControl（拖拽 resize）；控件命中 → 选中并
     // 拖动；空白 → 取消选中
     if (downEdge && inVp) {
-        if (!m_selectedId.empty()) {
-            if (ControlModel* m = findModel(m_selectedId)) {
-                // 手柄带 = 选中控件物理 rect 外扩（HandleControl 手柄 8×8，角点中心
-                // 即 rect 角——内半落在 rect 上）。带内一律让区：HandleControl 的
-                // hitTestHandle 自己判定（非手柄处返回 None，不产生拖拽）；
-                // 若带内仍走本体 hitTest，角手柄内半会被误判为移动拖动。
-                const float hs = 10.0f;
-                const float mx = wx - m_areaX, my = wy - (m_areaY + m_toolbarH);
-                const float x0 = m->props.rect.x * m_zoom - hs;
-                const float y0 = m->props.rect.y * m_zoom - hs;
-                const float x1 = (m->props.rect.x + m->props.rect.w) * m_zoom + hs;
-                const float y1 = (m->props.rect.y + m->props.rect.h) * m_zoom + hs;
-                if (mx >= x0 && mx <= x1 && my >= y0 && my <= y1) {
-                    m_mouseWasDown = down;
-                    return;
-                }
+        // 手柄精确让区：HandleHitTest（域=视口局部物理，同引擎 mousePos）命中
+        // → HandleControl 接管拖拽；未命中（本体/空白）走设计器逻辑——
+        // 本体边缘（非手柄处）恢复移动能力，无外扩近似
+        if (m_selectedId.empty() == false && m_selHandle.IsValid()) {
+            int ht = 0;
+            if (m_ui->HandleHitTest(m_selHandle, wx - m_areaX,
+                                    wy - (m_areaY + m_toolbarH), ht)) {
+                m_mouseWasDown = down;
+                return;
             }
         }
         std::string hit;
