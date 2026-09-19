@@ -45,13 +45,12 @@ private:
         int   (*getWindowSize)(void*, int*, int*) = nullptr;
         unsigned (*getMouseState)(float*, float*) = nullptr;   // SDL_GetMouseState
         const unsigned char* (*getKeyboardState)(int*) = nullptr;  // SDL_GetKeyboardState
-        bool (*addEventWatch)(void*, void*) = nullptr;  // SDL_AddEventWatch（滚轮旁听）
         bool load();
         void unload();
         void* windowHandle();       // SDL_GetWindows[0]
         bool pollMouse(float& x, float& y);   // 返回左键是否按下；填充窗口坐标
         bool pollDeleteKey();                 // Delete 键按下沿（每帧调一次）
-        bool installWheelWatch();             // SDL_AddEventWatch 旁听滚轮（load 后调用一次）
+        bool installWheelWatch();             // Win32 低级鼠标钩子旁听滚轮（load 后调用一次）
         bool consumeWheel(float& dy, float& mx, float& my);   // 取走滚轮增量与鼠标位置
         float m_wheelState[3] = { 0, 0, 0 };   // accumY / mouseX / mouseY（watch 状态）
     };
