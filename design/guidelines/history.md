@@ -1,4 +1,4 @@
-# Session 历史记录
+﻿# Session 历史记录
 
 本文件按时间顺序记录每个开发 Session 的决策、变更与待办，供后续 Session 回溯（遵循 UICornerstone 的 history.md 惯例）。
 
@@ -34,3 +34,7 @@
 | 2026-08-14 | 18 | 实施视角反向审核修正 | 04 v2.7：以实施者视角反查 05→04 发现 5 处——§0 App 框架 m_preview 独立实例与 CreateViewport 子视口矛盾（统一为子视口，删独立实例声明）；§6 补 .csd 项目文件顶层结构（metadata/layout/events/resourceProviders/components，layout 为唯一数据源，events 平铺仅冗余校验）；§7.2 补生成代码经 RegisterAction 包装桥接说明（C ABI 桩签名不变，02 §7 一致）；§9 画布工具栏明确为 canvasArea 面板内控件组（子视口之外，概念图"浮动"为视觉示意）；视图菜单补缩放 25% Ctrl+0 与 §2.3 六档一致（03 §3 菜单表同步） | doc 03、04 |
 | 2026-08-14 | 19 | 全链路一致性审核（02→05） | 02 v2.2 + 04 v2.8 + 05 v2.3 补遗：通读 02 全文逐契约核对 03/04/05——① 02 M4 属性分组"四组"未随 03/04 改三组+事件独立 Tab（修正）；② 02 §9 事件范围缺 color-changed/enter（补完整表引用 04 §3.2）；③ 02 §8 layouts 四文件 vs 05 阶段一只建 main_layout.json（05 补子面板落法说明）；④ M3 约束检测 Dialog 提示 04 未落地（04 §10 补越界提示行）。核对无冲突项：模块 M1-M8 职责、注册表 19 控件与工具箱分组（03 一致）、Binding API 映射（含 CreateViewport 代理/v2.7 一致）、动画托管、资源/组件耦合边界、测试设计 | design/02、04、05 |
 | 2026-08-14 | 20 | 全链路反向一致性检查（05→01） | 01 v2 + 03 微调：以 04/05 定稿为基准反查上游残留——① 01 F3.2 属性分组仍"四组"（补注设计定稿三组+事件独立 Tab）；② 01 F4.1 事件示例含 onMouseEnter/onMouseLeave（补注实际范围以 02 §9 / 04 §3.2 注册表为准，hover 为颜色状态非事件）；③ 03 §5.1 工具栏"浮动"措辞与 04 §9 面板内控件组实现加注（视觉示意）。01 补修订记录 v2 | design/01、03 |
+| 2026-08-15~09-14 | 21 | 实施阶段汇总（阶段零~一·E） | 阶段零依赖构建（BuildTools VS2022 + subModules 手动同步）；阶段一骨架：三栏+菜单/状态栏+v-flow 布局+窗口自适应（A）、工具箱 27 项+SVG 图标（B）、右栏属性/事件 Tab 面板（C）、画布工具栏（D）、画布子视口+纸面网格 tile 瓦片（E）。详见 05 v2.10~v2.24 修订记录 | CMakeLists、main_layout.json、App/CanvasPane/main、assets/gen/icons、design/05 |
+| 2026-09-15~16 | 22 | 阶段四·P1 画布交互全链 | 双击工具箱放置（27 类型映射+瀑布偏移+网格吸附）；选中/拖动（SDL 鼠标轮询）；8 向手柄 resize（方向数学+最小 8+对侧固定）；Delete 删除；控件树三向联动（m_treeSync 防回环）；属性面板联动（回填/回写，m_propSync 防回环）。关键坑：回调 lambda 悬空引用 UB（onRect 按引用捕获）、CheckBox 不发 click（只发 check-changed）、引擎控件 hover 覆盖外部光标 | CanvasPane、App、ControlModel、layouts/main_layout.json、design/05 v2.25 |
+| 2026-09-16~19 | 23 | 阶段四·P1 属性面板 Schema 驱动 | 消费引擎 declarative-ui.schema.json 动态生成属性行（string→TextArea/number·integer→NUD/boolean→CheckBox）；固定区+动态区（absolute 自管布局+右侧垂直滚动条+滚轮）；kSkip 布局资源类键；JSON 键→运行时属性 kebab 映射；颜色联动（color-changed）；多行文本/步进精度。关键坑：Panel::addControl 不触发 v-flow reflow（初始叠放）、滚动条 orientation 0=垂直、滚轮事件路由（Win32 钩子绕行→引擎 Panel mouse-wheel 事件回收） | CanvasPane.h/.cpp、App.h/.cpp、CMakeLists、design/05 v2.26 |
+| 2026-09-19~20 | 24 | 阶段四·P1 引擎能力集成批 | 配合 UICornerstone 六设计文档（InstanceScale/HandleControl C ABI/容器 reflow·属性对称·clip/滚轮/Panel 门控/命名统一）完成设计评审往返（Temp/ 清单与复核文档）与设计器迁移：画布缩放迁移引擎画布语义（删像素旁路）、选中框/手柄迁移 HandleControl（filter 吸附对缘保持、HandleHitTest 精确让区）、滚轮事件订阅、caption-size 废弃同步、布局配置修复（flow-weight/splitter linked/最大化贴底）。关键坑：GetRect 父局部域 vs GetDrawRect 递归全局域（引擎注释勘误）、引擎事件坐标全局域、Panel 空转消费、DPI 物理域、CLIP 穿透。文档刷新：05 v2.25~v2.27 | CanvasPane、App、CMakeLists、layouts/main_layout.json、design/05、Temp/ 清单系列 |
