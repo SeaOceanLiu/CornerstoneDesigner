@@ -740,6 +740,8 @@ void CanvasPane::SetDynamicPropsContainer(Control box) {
     m_propDynamic = box;
     if (m_propDynamic.IsValid()) {
         m_propDynamic.SetBool(PropertyNames::kClipChildren, true);   // 真裁剪（滚动）
+        std::printf("[CLIP] readBack=%d\n",
+                    m_propDynamic.GetBool(PropertyNames::kClipChildren) ? 1 : 0);
         rebuildDynamicRows();
     }
 }
@@ -790,14 +792,17 @@ void CanvasPane::rebuildDynamicRows() {
         "caption", "enabled", "visible",
         "border-visible", "font-file", "font-resource",   // 资源路径/调试类
         "flow-weight",                                     // 布局权重（画布自由布局无意义）
+        "col", "colSpan", "row", "rowSpan", "gap", "padding",   // 容器布局键
+        "clip-children",
     };
 
-    const float viewH = 288.0f, barW = 12.0f;
+    const UIRect box = m_propDynamic.GetRect();    // 容器实际尺寸（v-flow 排布后）
+    const float viewH = box.h, barW = 12.0f;
     const float viewRowsH = viewH;                 // 行区全高（滚动条浮于右侧）
 
     // 滚动条：首次创建常驻（orientation=0 垂直；position-changed → applyDynScroll）
     if (!m_dynScroll.IsValid()) {
-        m_dynScroll = m_ui->CreateScrollBar(216.0f - barW, 0.0f, barW, viewH, 0);
+        m_dynScroll = m_ui->CreateScrollBar(box.w - barW, 0.0f, barW, viewH, 0);
         m_dynScroll.SetFloat(PropertyNames::kRangeMin, 0.0f);
         m_dynScroll.SetFloat(PropertyNames::kPageSize, viewRowsH);
         m_dynScroll.SetFloat(PropertyNames::kStepSize, 24.0f);
@@ -827,7 +832,7 @@ void CanvasPane::rebuildDynamicRows() {
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
-        const float rowW = 200.0f;   // 右侧留 12px 垂直滚动条
+        const float rowW = box.w - 16.0f;   // 右侧留滚动条通道
 
         // 键名 label 行
         Control lb = m_ui->CreateLabel(key, 13.0f, 0, 0, rowW, 18.0f);
@@ -929,10 +934,13 @@ void CanvasPane::rebuildDynamicRows() {
 // 滚动 → 行偏移（超界裁剪由 propDynamic 的 clip-children 承担，纯偏移）。
 // 滚轮：鼠标在动态区内 → 滚动属性行（SDL 事件被控件消费也不受影响——
 // 走 SDL_AddEventWatch 旁路，此处按滚轮增量直接驱动滚动值）。
-void CanvasPane::WheelDynamic(float dy, float wx, float wy) {
+void CanvasPane::WheelDynamic(float dy) {
     if (!m_propDynamic.IsValid() || !m_dynScroll.IsValid() || m_dynScrollMax <= 0) return;
-    const UIRect pr = m_propDynamic.GetRect();   // 主 bench 全局域 = 窗口坐标
-    if (wx < pr.x || wx > pr.x + pr.w || wy < pr.y || wy > pr.y + pr.h) return;
+    // 鼠标位置用 SDL 逻辑坐标（与 GetRect 同域；Win32 钩子 pt 是 DPI 物理域不可混用）
+    float mx = 0, my = 0;
+    if (m_mouseSource) m_mouseSource(mx, my);
+    const UIRect pr = m_propDynamic.GetRect();
+    if (mx < pr.x || mx > pr.x + pr.w || my < pr.y || my > pr.y + pr.h) return;
     float v = m_dynScroll.GetFloat(PropertyNames::kValue) - dy * 24.0f;
     if (v < 0) v = 0;
     if (v > m_dynScrollMax) v = m_dynScrollMax;
@@ -940,11 +948,14 @@ void CanvasPane::WheelDynamic(float dy, float wx, float wy) {
 }
 
 void CanvasPane::applyDynScroll(float value) {
+    const float viewH = 288.0f;
     for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
         if (!m_dynamicRows[i].IsValid() || i >= m_dynamicRowY.size()) continue;
         const float vy = m_dynamicRowY[i] - value;
         const UIRect r = m_dynamicRows[i].GetRect();
         m_dynamicRows[i].SetRect(r.x, vy, r.w, r.h);
+        // clip-children 已开启但绘制仍可穿透（引擎嵌套 clip 语义），超界隐藏兜底
+        m_dynamicRows[i].SetBool(PropertyNames::kVisible, vy > -40.0f && vy < viewH);
     }
 }
 

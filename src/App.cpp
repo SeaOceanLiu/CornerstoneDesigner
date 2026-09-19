@@ -129,6 +129,10 @@ static LRESULT CALLBACK wheelMouseHookProc(int code, WPARAM wp, LPARAM lp) {
             s[0] += delta;
             s[1] = static_cast<float>(mi->pt.x);
             s[2] = static_cast<float>(mi->pt.y);
+            static int wc = 0;
+            if (++wc % 4 == 1)
+                std::printf("[WHEEL] hook n=%d delta=%.1f pt=(%ld,%ld)\n",
+                            wc, delta, (long)mi->pt.x, (long)mi->pt.y);
         }
     }
     return CallNextHookEx(nullptr, code, wp, lp);
@@ -359,8 +363,10 @@ int App::run(int autoSeconds) {
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
         if (m_canvas) {
             float wd = 0, wmx = 0, wmy = 0;
-            if (m_sdl.consumeWheel(wd, wmx, wmy))
-                m_canvas->WheelDynamic(wd, wmx, wmy);
+            if (m_sdl.consumeWheel(wd, wmx, wmy)) {
+                (void)wmx; (void)wmy;   // 钩子 pt 为 DPI 物理域不可用，鼠标由 SDL 逻辑域取
+                m_canvas->WheelDynamic(wd);
+            }
         }
         syncRootToWindow();
 

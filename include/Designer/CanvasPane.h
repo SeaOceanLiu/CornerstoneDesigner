@@ -97,8 +97,8 @@ public:
     void SetGridCellSize(float px);
     void SetSnapEnabled(bool snap) { m_snapEnabled = snap; }
     bool IsSnapEnabled() const { return m_snapEnabled; }
-    // 滚轮滚动动态属性区（App 注入 SDL 滚轮增量；wx/wy 为窗口坐标，区域外忽略）
-    void WheelDynamic(float dy, float wx, float wy);
+    // 滚轮滚动动态属性区（App 注入 SDL 滚轮增量；鼠标位置经 SDL 逻辑域取，区域外忽略）
+    void WheelDynamic(float dy);
 
     // 内容：渲染 ControlModel 树为画布控件（交互阶段接入）。
     void SetContent(std::unique_ptr<ControlModel> root);
