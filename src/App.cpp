@@ -369,7 +369,7 @@ int App::run(int autoSeconds) {
                 m_sdl.pollMouse(mx, my);          // SDL 逻辑坐标
                 void* win = m_sdl.windowHandle();
                 int ww = 0, wh = 0;
-                if (win && getWindowSize) getWindowSize(win, &ww, &wh);
+                if (win && m_sdl.getWindowSize) m_sdl.getWindowSize(win, &ww, &wh);
                 // 右侧属性面板列（面板 240 + splitter 余量）才滚动态区
                 if (ww > 0 && mx > ww - 300) m_canvas->WheelDynamic(wd);
             }
