@@ -364,8 +364,14 @@ int App::run(int autoSeconds) {
         if (m_canvas) {
             float wd = 0, wmx = 0, wmy = 0;
             if (m_sdl.consumeWheel(wd, wmx, wmy)) {
-                (void)wmx; (void)wmy;   // 钩子 pt 为 DPI 物理域不可用，鼠标由 SDL 逻辑域取
-                m_canvas->WheelDynamic(wd);
+                (void)wmx; (void)wmy;   // 钩子 pt 为 DPI 物理域不可用
+                float mx = 0, my = 0;
+                m_sdl.pollMouse(mx, my);          // SDL 逻辑坐标
+                void* win = m_sdl.windowHandle();
+                int ww = 0, wh = 0;
+                if (win && getWindowSize) getWindowSize(win, &ww, &wh);
+                // 右侧属性面板列（面板 240 + splitter 余量）才滚动态区
+                if (ww > 0 && mx > ww - 300) m_canvas->WheelDynamic(wd);
             }
         }
         syncRootToWindow();

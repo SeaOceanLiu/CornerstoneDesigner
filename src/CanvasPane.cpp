@@ -935,12 +935,8 @@ void CanvasPane::rebuildDynamicRows() {
 // 滚轮：鼠标在动态区内 → 滚动属性行（SDL 事件被控件消费也不受影响——
 // 走 SDL_AddEventWatch 旁路，此处按滚轮增量直接驱动滚动值）。
 void CanvasPane::WheelDynamic(float dy) {
-    if (!m_propDynamic.IsValid() || !m_dynScroll.IsValid() || m_dynScrollMax <= 0) return;
-    // 鼠标位置用 SDL 逻辑坐标（与 GetRect 同域；Win32 钩子 pt 是 DPI 物理域不可混用）
-    float mx = 0, my = 0;
-    if (m_mouseSource) m_mouseSource(mx, my);
-    const UIRect pr = m_propDynamic.GetRect();
-    if (mx < pr.x || mx > pr.x + pr.w || my < pr.y || my > pr.y + pr.h) return;
+    if (!m_dynScroll.IsValid() || m_dynScrollMax <= 0) return;
+    // 区域判定在 App 层（GetRect 是父局部域，非窗口坐标；右侧面板列由窗口宽判定）
     float v = m_dynScroll.GetFloat(PropertyNames::kValue) - dy * 24.0f;
     if (v < 0) v = 0;
     if (v > m_dynScrollMax) v = m_dynScrollMax;
