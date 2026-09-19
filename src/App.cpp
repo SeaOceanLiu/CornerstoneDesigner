@@ -66,12 +66,14 @@ bool App::SdlApi::load() {
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindowSize"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(GetProcAddress((HMODULE)dll, "SDL_GetMouseState"));
     getKeyboardState = reinterpret_cast<const unsigned char*(*)(int*)>(GetProcAddress((HMODULE)dll, "SDL_GetKeyboardState"));
+    addEventWatch = reinterpret_cast<bool(*)(void*, void*)>(GetProcAddress((HMODULE)dll, "SDL_AddEventWatch"));
 #else
     getWindows   = reinterpret_cast<void*(*)(int*)>(dlsym(dll, "SDL_GetWindows"));
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(dlsym(dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(dlsym(dll, "SDL_GetWindowSize"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(dlsym(dll, "SDL_GetMouseState"));
     getKeyboardState = reinterpret_cast<const unsigned char*(*)(int*)>(dlsym(dll, "SDL_GetKeyboardState"));
+    addEventWatch = reinterpret_cast<bool(*)(void*, void*)>(dlsym(dll, "SDL_AddEventWatch"));
 #endif
     loaded = getWindows && getWindowSize;
     return loaded;
@@ -107,6 +109,46 @@ void App::SdlApi::unload() {
 #endif
     dll = nullptr;
     loaded = false;
+}
+
+// SDL_Event 滚轮成员视图（偏移与 SDL_Event 联合对齐；仅解读 MOUSE_WHEEL=0x403 事件）
+struct SdlWheelView {
+    unsigned type;                 // +0
+    unsigned reserved;             // +4
+    unsigned long long timestamp;  // +8
+    unsigned windowID;             // +16
+    int which;                     // +20
+    float x;                       // +24
+    float y;                       // +28
+    unsigned direction;            // +32
+    float mouse_x;                 // +36
+    float mouse_y;                 // +40
+};
+
+static bool wheelWatchThunk(void* userdata, void* event) {
+    if (!event || !userdata) return true;
+    auto* w = reinterpret_cast<SdlWheelView*>(event);
+    if (w->type == 0x403) {   // SDL_EVENT_MOUSE_WHEEL
+        auto* s = static_cast<float*>(userdata);   // [0]=accumY [1]=mouseX [2]=mouseY
+        s[0] += w->y;
+        s[1] = w->mouse_x;
+        s[2] = w->mouse_y;
+    }
+    return true;   // 不消费，引擎照常处理
+}
+
+bool App::SdlApi::installWheelWatch() {
+    if (!addEventWatch) return false;
+    return addEventWatch(m_wheelState, this) != 0;
+}
+
+bool App::SdlApi::consumeWheel(float& dy, float& mx, float& my) {
+    if (m_wheelState[0] == 0.0f) return false;
+    dy = m_wheelState[0];
+    mx = m_wheelState[1];
+    my = m_wheelState[2];
+    m_wheelState[0] = 0.0f;
+    return true;
 }
 
 void* App::SdlApi::windowHandle() {
@@ -162,6 +204,7 @@ bool App::init() {
     setupCanvas();
     bindToolbar();
     if (m_canvas) {
+        m_sdl.installWheelWatch();
         m_canvas->SetMouseSource([this](float& x, float& y) { return m_sdl.pollMouse(x, y); });
         m_canvas->SetKeySource([this] { return m_sdl.pollDeleteKey(); });
         m_canvas->SetCanvasTree(m_ui->FindControl("tvTree"));
@@ -313,6 +356,11 @@ int App::run(int autoSeconds) {
     while (!m_ui->IsQuitRequested() && !m_exitRequested) {
         m_ui->ProcessEvents();
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
+        if (m_canvas) {
+            float wd = 0, wmx = 0, wmy = 0;
+            if (m_sdl.consumeWheel(wd, wmx, wmy))
+                m_canvas->WheelDynamic(wd, wmx, wmy);
+        }
         syncRootToWindow();
 
         auto now = Clock::now();

@@ -827,7 +827,7 @@ void CanvasPane::rebuildDynamicRows() {
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
-        const float rowW = 208.0f;
+        const float rowW = 200.0f;   // 右侧留 12px 垂直滚动条
 
         // 键名 label 行
         Control lb = m_ui->CreateLabel(key, 13.0f, 0, 0, rowW, 18.0f);
@@ -927,6 +927,18 @@ void CanvasPane::rebuildDynamicRows() {
 }
 
 // 滚动 → 行偏移（超界裁剪由 propDynamic 的 clip-children 承担，纯偏移）。
+// 滚轮：鼠标在动态区内 → 滚动属性行（SDL 事件被控件消费也不受影响——
+// 走 SDL_AddEventWatch 旁路，此处按滚轮增量直接驱动滚动值）。
+void CanvasPane::WheelDynamic(float dy, float wx, float wy) {
+    if (!m_propDynamic.IsValid() || !m_dynScroll.IsValid() || m_dynScrollMax <= 0) return;
+    const UIRect pr = m_propDynamic.GetRect();   // 主 bench 全局域 = 窗口坐标
+    if (wx < pr.x || wx > pr.x + pr.w || wy < pr.y || wy > pr.y + pr.h) return;
+    float v = m_dynScroll.GetFloat(PropertyNames::kValue) - dy * 24.0f;
+    if (v < 0) v = 0;
+    if (v > m_dynScrollMax) v = m_dynScrollMax;
+    m_dynScroll.SetFloat(PropertyNames::kValue, v);   // setValue → position-changed → applyDynScroll
+}
+
 void CanvasPane::applyDynScroll(float value) {
     for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
         if (!m_dynamicRows[i].IsValid() || i >= m_dynamicRowY.size()) continue;
