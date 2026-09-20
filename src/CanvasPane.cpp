@@ -872,23 +872,19 @@ void CanvasPane::rebuildDynamicRows() {
                                    [this, prop, grp, st](const Event& e) {
                         if (!m_schemaTarget.IsValid()) return;
                         const UIColor c = e.GetChangedColor();
-                        // text/textShadow 组：单色 setter（setTextShadowNormalStateColor
-                        // 等）不同步 Button 内部 caption——走 StateColor 读改写
-                        // （setStateColorProperty 虚分派到 Button::setTextShadowStateColor
-                        //   同步 caption）
-                        if (grp == "text" || grp == "textShadow") {
-                            std::string base = prop;
-                            const size_t dot = base.find('.');
-                            if (dot != std::string::npos) base = base.substr(0, dot);
-                            UIStateColor sc = m_schemaTarget.GetStateColor(base.c_str());
-                            if (st == "normal") sc.normal = c;
-                            else if (st == "hover") sc.hover = c;
-                            else if (st == "pressed") sc.pressed = c;
-                            else sc.disabled = c;
-                            m_schemaTarget.SetStateColor(base.c_str(), sc);
-                            return;
+                        // text/textShadow 组：直控内部 caption Label
+                        // （GetPtr("caption-label")——Button 单色 setter 不同步 caption 的绕行回收）
+                        if ((grp == "text" || grp == "textShadow") && m_ui) {
+                            void* capH = nullptr;
+                            if (m_schemaTarget.GetPtr(PropertyNames::kCaptionLabel, &capH) && capH) {
+                                auto cap = m_ui->FromHandle(capH);
+                                const std::string capProp = base + (std::strcmp(st, "normal") == 0
+                                    ? std::string() : ("." + std::string(st)));
+                                cap.SetColor(capProp.c_str(), c);
+                                return;
+                            }
                         }
-                        m_schemaTarget.SetColor(prop.c_str(), c);
+                        m_schemaTarget.SetColor(prop.c_str(), c);   // 兜底（无 caption 控件等）
                     });
                     m_fixedWidthRows.insert(m_dynamicRows.size());
                     m_propDynamic.AddChild(cp);
