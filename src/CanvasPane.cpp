@@ -825,6 +825,18 @@ void CanvasPane::rebuildDynamicRows() {
     float y = 2.0f;
     int rows = 0;
     std::string genKeys;
+    // 动态行排版节奏（统一相对位置：描述行 22 + 2 + 控件行 26 + 组间距 8）
+    const float lblFont = 16.0f, lblH = 22.0f, ctlH = 26.0f, gapLbl = 2.0f, rowGap = 8.0f;
+    const float rowW = box.w - 16.0f;   // 右侧留滚动条通道
+    auto makeLabel = [&](const std::string& label) {
+        Control lb = m_ui->CreateLabel(label, lblFont, 0, 0, rowW, lblH);
+        lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
+        lb.SetRect(2.0f, y, rowW, lblH);
+        m_propDynamic.AddChild(lb);
+        m_dynamicRows.push_back(lb);
+        m_dynamicRowY.push_back(y);
+        y += lblH + gapLbl;
+    };
     for (auto it = merged.begin(); it != merged.end(); ++it) {
         const std::string key = it.key();
         bool skip = false;
@@ -833,7 +845,6 @@ void CanvasPane::rebuildDynamicRows() {
         if (skip) continue;
         const nlohmann::json& spec = it.value();
         const std::string t = spec.value("type", "");
-        const float rowW = box.w - 16.0f;   // 右侧留滚动条通道
 
         // 颜色组展开：colors.<组>.<态> → 运行时 "组[.态]"（normal 省略后缀，键名点号风格）
         // 行先放占位 Button（背景=当前色+hex 文本），点击才创建 ColorPicker（3.5s 构建惰性化）
@@ -852,31 +863,11 @@ void CanvasPane::rebuildDynamicRows() {
                     char hex[12];
                     std::snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X",
                                   cc.r, cc.g, cc.b, cc.a);
-
-                    Control lb = m_ui->CreateLabel(lbl, 13.0f, 0, 0, rowW, 18.0f);
-                    lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
-                    lb.SetRect(2.0f, y, rowW, 18.0f);
-                    m_propDynamic.AddChild(lb);
-                    m_dynamicRows.push_back(lb);
-                    m_dynamicRowY.push_back(y);
-                    y += 18.0f;
+                    makeLabel(lbl);
 
                     // 颜色槽：直建 ColorPicker（引擎惰性化——关闭态秒建、弹窗首次打开才构建）
                     // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
-                    const std::string lbl = std::string(grp) + "." + st;
-                    UIColor cc = m_schemaTarget.GetColor(prop.c_str());
-                    char hex[10];
-                    std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", cc.r, cc.g, cc.b);
-
-                    Control lb = m_ui->CreateLabel(lbl, 13.0f, 0, 0, rowW, 18.0f);
-                    lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
-                    lb.SetRect(2.0f, y, rowW, 18.0f);
-                    m_propDynamic.AddChild(lb);
-                    m_dynamicRows.push_back(lb);
-                    m_dynamicRowY.push_back(y);
-                    y += 18.0f;
-
-                    Control cp = m_ui->CreateColorPicker(2.0f, y, 120.0f, 26.0f, hex);
+                    Control cp = m_ui->CreateColorPicker(2.0f, y, 120.0f, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
                                    [this, prop](const Event& e) {
                         if (m_schemaTarget.IsValid())
@@ -886,11 +877,7 @@ void CanvasPane::rebuildDynamicRows() {
                     m_propDynamic.AddChild(cp);
                     m_dynamicRows.push_back(cp);
                     m_dynamicRowY.push_back(y);
-                    y += 26.0f + 4.0f;
-                    ++rows;
-                    genKeys += " " + lbl;
-                    m_dynamicRowY.push_back(y);
-                    y += 26.0f + 4.0f;
+                    y += ctlH + rowGap;
                     ++rows;
                     genKeys += " " + lbl;
                 }
@@ -903,14 +890,7 @@ void CanvasPane::rebuildDynamicRows() {
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
-         // 键名 label 行
-        Control lb = m_ui->CreateLabel(key, 13.0f, 0, 0, rowW, 18.0f);
-        lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
-        lb.SetRect(2.0f, y, rowW, 18.0f);
-        m_propDynamic.AddChild(lb);
-        m_dynamicRows.push_back(lb);
-        m_dynamicRowY.push_back(y);
-        y += 18.0f;
+        makeLabel(key);
 
         if (t == "string") {
             // TextArea：多行值（如 Label 文本含换行）直接输入真实换行，
@@ -937,9 +917,7 @@ void CanvasPane::rebuildDynamicRows() {
             m_propDynamic.AddChild(ta);
             m_dynamicRows.push_back(ta);
             m_dynamicRowY.push_back(y);
-            y += 40.0f;
-            std::printf("[DynRow] string editor type=%s valid=%d\n",
-                        ta.GetType().c_str(), (int)ta.IsValid());   // TEMP
+            y += 40.0f + rowGap;
         } else if (t == "number" || t == "integer") {
             Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, 26.0f);
             nud.SetRect(2.0f, y, rowW, 26.0f);
@@ -966,7 +944,7 @@ void CanvasPane::rebuildDynamicRows() {
             m_propDynamic.AddChild(nud);
             m_dynamicRows.push_back(nud);
             m_dynamicRowY.push_back(y);
-            y += 26.0f;
+            y += ctlH + rowGap;
         } else {
             Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, 24.0f);
             cb.SetRect(2.0f, y, rowW, 24.0f);
@@ -983,9 +961,8 @@ void CanvasPane::rebuildDynamicRows() {
             m_propDynamic.AddChild(cb);
             m_dynamicRows.push_back(cb);
             m_dynamicRowY.push_back(y);
-            y += 24.0f;
+            y += ctlH + rowGap;
         }
-        y += 4.0f;
         ++rows;
         genKeys += " " + key;
     }
