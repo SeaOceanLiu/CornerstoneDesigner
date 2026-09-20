@@ -17,6 +17,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -80,17 +81,9 @@ public:
     // 滚轮滚动动态区（mouse-wheel 事件载荷 scrollY；propDynamic 与 tabProperty 双订阅）
     void ScrollDynamicBy(float scrollY);
 
-    // 颜色槽惰性化：行先放占位 Button（背景=当前色），点击才创建 ColorPicker 替换
-    // （ColorPicker 每实例构建弹窗子树 ~3.5s，15 槽全量创建不可接受）
-    struct PendingColorSlot {
-        std::string prop;                 // 运行时颜色属性键
-        std::vector<Control> parts;       // 占位件（swatch/hex/点击层；替换后为 ColorPicker）
-        std::vector<size_t> rowIndexes;   // 各占位件在 m_dynamicRows 中的索引
-    };
-    std::vector<PendingColorSlot> m_colorSlots;
-    float m_seenDynW = -1.0f;    // 动态区容器宽观测（splitter 拖动后同步滚动条/行宽）
-    void onColorSlotClick(const std::string& prop);   // 占位点击 → 创建 ColorPicker 替换
-    void syncDynamicWidth();                          // 容器宽变化 → 滚动条/行宽同步
+    std::set<size_t> m_fixedWidthRows;   // 固定宽行（ColorPicker 120，宽度同步跳过）
+    float m_seenDynW = -1.0f;            // 动态区容器宽观测（splitter 拖动后同步滚动条/行宽）
+    void syncDynamicWidth();             // 容器宽变化 → 滚动条/行宽同步
 
     // 属性面板联动（App 注入；选中回填面板，面板变更回写控件）
     void SetPropertyControls(Control x, Control y, Control w, Control h,
