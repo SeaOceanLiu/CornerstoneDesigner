@@ -888,18 +888,12 @@ void CanvasPane::rebuildDynamicRows() {
                     Control cp = m_ui->CreateColorPicker(2.0f, y, 120.0f, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
                                    [this, prop, gk, grp, st](const Event& e) {
-                        std::printf("[CAP-ANY] prop=%s targetValid=%d sel='%s'\n",
-                                    prop.c_str(), (int)m_schemaTarget.IsValid(),
-                                    m_selectedId.c_str()); fflush(stdout);
                         if (!m_schemaTarget.IsValid()) return;
                         const UIColor c = e.GetChangedColor();
                         // text/textShadow 组：直控内部 caption Label
                         // （GetPtr("caption-label")——Button 单色 setter 不同步 caption 的绕行回收）
-                        if ((grp == "text" || grp == "textShadow") && m_ui) {
+                        if ((std::strcmp(grp, "text") == 0 || std::strcmp(grp, "textShadow") == 0) && m_ui) {
                             void* capH = m_schemaTarget.GetPtr(PropertyNames::kCaptionLabel);
-                            std::printf("[CAPD] grp=%s st=%s prop=%s got=%d capH=%p\n",
-                                        grp, st, prop.c_str(), capH ? 1 : 0, capH);
-                            fflush(stdout);
                             if (capH) {
                                 // caption 属于被设计控件子树（子视口实例）——
                                 // FromHandle 须用子视口域（主实例域会 validate 失败落空）
@@ -907,16 +901,11 @@ void CanvasPane::rebuildDynamicRows() {
                                 const std::string capProp = gk + (std::strcmp(st, "normal") == 0
                                     ? std::string() : ("." + std::string(st)));
                                 cap.SetColor(capProp.c_str(), c);
-                                UIColor back = cap.GetColor(capProp.c_str());
-                                std::printf("[CAP] readback prop=%s #%02X%02X%02X%02X\n",
-                                            capProp.c_str(), back.r, back.g, back.b, back.a);
-                                fflush(stdout);
                                 return;
                             }
                         }
                         m_schemaTarget.SetColor(prop.c_str(), c);   // 兜底（无 caption 控件等）
                     });
-                    std::printf("[REG] color-changed registered for %s\n", prop.c_str()); fflush(stdout);
                     m_fixedWidthRows.insert(m_dynamicRows.size());
                     m_propDynamic.AddChild(cp);
                     m_dynamicRows.push_back(cp);
