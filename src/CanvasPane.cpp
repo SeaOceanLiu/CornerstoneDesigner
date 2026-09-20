@@ -869,9 +869,26 @@ void CanvasPane::rebuildDynamicRows() {
                     // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
                     Control cp = m_ui->CreateColorPicker(2.0f, y, 120.0f, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
-                                   [this, prop](const Event& e) {
-                        if (m_schemaTarget.IsValid())
-                            m_schemaTarget.SetColor(prop.c_str(), e.GetChangedColor());
+                                   [this, prop, grp, st](const Event& e) {
+                        if (!m_schemaTarget.IsValid()) return;
+                        const UIColor c = e.GetChangedColor();
+                        // text/textShadow 组：单色 setter（setTextShadowNormalStateColor
+                        // 等）不同步 Button 内部 caption——走 StateColor 读改写
+                        // （setStateColorProperty 虚分派到 Button::setTextShadowStateColor
+                        //   同步 caption）
+                        if (grp == "text" || grp == "textShadow") {
+                            std::string base = prop;
+                            const size_t dot = base.find('.');
+                            if (dot != std::string::npos) base = base.substr(0, dot);
+                            UIStateColor sc = m_schemaTarget.GetStateColor(base.c_str());
+                            if (st == "normal") sc.normal = c;
+                            else if (st == "hover") sc.hover = c;
+                            else if (st == "pressed") sc.pressed = c;
+                            else sc.disabled = c;
+                            m_schemaTarget.SetStateColor(base.c_str(), sc);
+                            return;
+                        }
+                        m_schemaTarget.SetColor(prop.c_str(), c);
                     });
                     m_fixedWidthRows.insert(m_dynamicRows.size());
                     m_propDynamic.AddChild(cp);
