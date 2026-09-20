@@ -888,7 +888,9 @@ void CanvasPane::rebuildDynamicRows() {
                     Control cp = m_ui->CreateColorPicker(2.0f, y, 120.0f, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
                                    [this, prop, gk, grp, st](const Event& e) {
-                        std::printf("[CAP-ANY] prop=%s\n", prop.c_str()); fflush(stdout);
+                        std::printf("[CAP-ANY] prop=%s targetValid=%d sel='%s'\n",
+                                    prop.c_str(), (int)m_schemaTarget.IsValid(),
+                                    m_selectedId.c_str()); fflush(stdout);
                         if (!m_schemaTarget.IsValid()) return;
                         const UIColor c = e.GetChangedColor();
                         // text/textShadow 组：直控内部 caption Label
