@@ -892,56 +892,6 @@ void CanvasPane::rebuildDynamicRows() {
         const nlohmann::json& spec = it.value();
         const std::string t = spec.value("type", "");
 
-        // Label 阴影展开：shadow.{enabled,offset.x,offset.y} → 运行时 shadow /
-        // shadow-offset-x / shadow-offset-y（object 子键展开，属性名按引擎简写映射）
-        if (key == "shadow" && spec.is_object()) {
-            struct ShadowSlot { const char* lbl; const char* prop; bool isBool; };
-            static const ShadowSlot kSlots[] = {
-                { "shadow.enabled",  "shadow",            true },
-                { "shadow.offset.x", "shadow-offset-x",   false },
-                { "shadow.offset.y", "shadow-offset-y",   false },
-            };
-            for (const auto& slot : kSlots) {
-                makeLabel(slot.lbl);
-                if (slot.isBool) {
-                    Control cb = m_ui->CreateCheckBox(slot.lbl, 0, 0, rowW, ctlH);
-                    cb.SetRect(2.0f, y, rowW, ctlH);
-                    cb.SetBool(PropertyNames::kTriState, false);
-                    cb.SetBool(PropertyNames::kChecked,
-                               m_schemaTarget.GetBool(slot.prop));
-                    cb.SetCallback(PropertyNames::kEventCheckChanged,
-                                   [this, prop = std::string(slot.prop)](const Event& e2) {
-                        if (m_schemaTarget.IsValid())
-                            m_schemaTarget.SetBool(prop.c_str(), e2.GetCheckState() != 0);
-                    });
-                    m_propDynamic.AddChild(cb);
-                    m_dynamicRows.push_back(cb);
-                    m_dynamicRowY.push_back(y);
-                } else {
-                    Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, ctlH);
-                    nud.SetRect(2.0f, y, rowW, ctlH);
-                    nud.SetFloat(PropertyNames::kStep, 0.5f);
-                    nud.SetInt(PropertyNames::kDecimals, 1);
-                    nud.SetFloat(PropertyNames::kRangeMin, -50.0f);   // 阴影偏移可为负
-                    nud.SetFloat(PropertyNames::kRangeMax, 50.0f);
-                    const float v = m_schemaTarget.GetFloat(slot.prop);
-                    nud.SetFloat(PropertyNames::kValue, v);
-                    nud.SetCallback(PropertyNames::kEventValueChanged,
-                                    [this, prop = std::string(slot.prop)](const Event& e2) {
-                        if (m_schemaTarget.IsValid())
-                            m_schemaTarget.SetFloat(prop.c_str(), e2.GetValueChanged());
-                    });
-                    m_propDynamic.AddChild(nud);
-                    m_dynamicRows.push_back(nud);
-                    m_dynamicRowY.push_back(y);
-                }
-                y += ctlH + rowGap;
-                ++rows;
-                genKeys += " " + std::string(slot.lbl);
-            }
-            continue;
-        }
-
         // 颜色组展开：colors.<组>.<态> → 运行时 "组[.态]"（normal 省略后缀，键名点号风格）
         // 行先放占位 Button（背景=当前色+hex 文本），点击才创建 ColorPicker（3.5s 构建惰性化）
         if (key == "colors" && spec.is_object()) {
@@ -1124,6 +1074,83 @@ void CanvasPane::rebuildDynamicRows() {
     m_dynScroll.SetFloat(PropertyNames::kValue, 0.0f);
     m_dynScroll.SetBool(PropertyNames::kVisible, m_dynScrollMax > 0);
     applyDynScroll(0.0f);
+    // 文字阴影统一段（label/button/win-frame——用户视角一致的"文字阴影"配置）：
+    // enabled 走各控件路径（label 自身 shadow / button text-shadow-enable /
+    // win-frame title 的 shadow）；offset 走内部 Label 直控（caption/title-label）
+    if (m_schemaType == "label" || m_schemaType == "button" || m_schemaType == "win-frame") {
+        const bool isLabelT = (m_schemaType == "label");
+        const char* attLabelKey = (m_schemaType == "win-frame")
+            ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel;
+        // 阴影目标（offset 属性所在控件）：label 自身；button/win-frame 内部 Label
+        Control shTarget = m_schemaTarget;
+        if (!isLabelT) {
+            void* h = m_schemaTarget.GetPtr(attLabelKey);
+            if (h) shTarget = m_viewport->FromHandle(h);
+        }
+        // enabled 三行/offset 两行
+        makeLabel("shadow.enabled");
+        {
+            Control cb = m_ui->CreateCheckBox("shadow.enabled", 0, 0, rowW, ctlH);
+            cb.SetRect(2.0f, y, rowW, ctlH);
+            cb.SetBool(PropertyNames::kTriState, false);
+            bool on = false;
+            if (m_schemaType == "label") on = m_schemaTarget.GetBool(PropertyNames::kShadow);
+            else if (m_schemaType == "button") on = m_schemaTarget.GetBool(PropertyNames::kTextShadowEnable);
+            else on = shTarget.IsValid() && shTarget.GetBool(PropertyNames::kShadow);
+            cb.SetBool(PropertyNames::kChecked, on);
+            cb.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e2) {
+                const bool on2 = e2.GetCheckState() != 0;
+                if (m_schemaType == "label") {
+                    if (m_schemaTarget.IsValid()) m_schemaTarget.SetBool(PropertyNames::kShadow, on2);
+                    return;
+                }
+                if (m_schemaType == "button") {
+                    if (m_schemaTarget.IsValid())
+                        m_schemaTarget.SetBool(PropertyNames::kTextShadowEnable, on2);
+                    return;
+                }
+                const char* k = PropertyNames::kTitleLabel;   // win-frame：title Label 直控
+                void* h = m_schemaTarget.GetPtr(k);
+                if (h) m_viewport->FromHandle(h).SetBool(PropertyNames::kShadow, on2);
+            });
+            m_propDynamic.AddChild(cb);
+            m_dynamicRows.push_back(cb);
+            m_dynamicRowY.push_back(y);
+            y += ctlH + rowGap;
+            ++rows;
+            genKeys += " shadow.enabled";
+        }
+        static const char* kOff[] = { "shadow.offset.x", "shadow.offset.y" };
+        static const char* kOffProp[] = { "shadow-offset-x", "shadow-offset-y" };
+        for (int oi = 0; oi < 2; ++oi) {
+            makeLabel(kOff[oi]);
+            Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, ctlH);
+            nud.SetRect(2.0f, y, rowW, ctlH);
+            nud.SetFloat(PropertyNames::kStep, 0.5f);
+            nud.SetInt(PropertyNames::kDecimals, 1);
+            nud.SetFloat(PropertyNames::kRangeMin, -50.0f);
+            nud.SetFloat(PropertyNames::kRangeMax, 50.0f);
+            const float v = shTarget.IsValid() ? shTarget.GetFloat(kOffProp[oi]) : 0.0f;
+            nud.SetFloat(PropertyNames::kValue, v);
+            nud.SetCallback(PropertyNames::kEventValueChanged,
+                            [this, attLabelKey, oi](const Event& e2) {
+                if (!m_schemaTarget.IsValid()) return;
+                if (m_schemaType == "label") {
+                    m_schemaTarget.SetFloat(kOffProp[oi], e2.GetValueChanged());
+                    return;
+                }
+                void* h = m_schemaTarget.GetPtr(attLabelKey);
+                if (h) m_viewport->FromHandle(h).SetFloat(kOffProp[oi], e2.GetValueChanged());
+            });
+            m_propDynamic.AddChild(nud);
+            m_dynamicRows.push_back(nud);
+            m_dynamicRowY.push_back(y);
+            y += ctlH + rowGap;
+            ++rows;
+            genKeys += " " + std::string(kOff[oi]);
+        }
+    }
+
     std::printf("[CanvasPane] dynamic rows for '%s': %d (%s)\n",
                 m_schemaType.c_str(), rows, genKeys.c_str());
 }
