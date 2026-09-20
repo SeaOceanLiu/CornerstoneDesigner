@@ -615,8 +615,17 @@ void CanvasPane::fillPropertyPanel() {
     m_propY.SetFloat(PropertyNames::kValue, m ? m->props.rect.y : 0);
     m_propW.SetFloat(PropertyNames::kValue, m ? m->props.rect.w : 0);
     m_propH.SetFloat(PropertyNames::kValue, m ? m->props.rect.h : 0);
-    m_propCaption.SetString(PropertyNames::kTextContent,
-                            m ? m->props.extended.value("caption", "") : "");
+    // caption 回填：check-box/win-frame 的文本在内部 Label（经句柄直控读）
+    std::string capVal = m ? m->props.extended.value("caption", "") : "";
+    if (m && pc && pc->ctl.IsValid()) {
+        const std::string& tp = m->props.type;
+        if ((tp == "check-box" || tp == "win-frame") && m_ui) {
+            void* h = pc->ctl.GetPtr(tp == "win-frame"
+                ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
+            if (h) capVal = m_viewport->FromHandle(h).GetString(PropertyNames::kCaption);
+        }
+    }
+    m_propCaption.SetString(PropertyNames::kTextContent, capVal);
     // 颜色回填：读控件背景色（normal 态），失败用缺省；SetString 走 ColorPicker
     // 的 hex 写入口（setColor），记录 hex 供回调 echo 抑制
     UIColor cc{0x4A, 0x90, 0xD9, 255};
@@ -684,8 +693,20 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
         ControlModel* m = findModel(m_selectedId);
         if (!m) return;
         m->props.extended["caption"] = e.GetTextChanged();
-        if (PlacedControl* pc = placedById(m->props.id))
-            pc->ctl.SetString(PropertyNames::kCaption, e.GetTextChanged());
+        PlacedControl* pc = placedById(m->props.id);
+        if (!pc || !pc->ctl.IsValid()) return;
+        // check-box（无 caption 属性分发）/ win-frame（title 键）经内部 Label 直控
+        const std::string& tp = m->props.type;
+        if ((tp == "check-box" || tp == "win-frame") && m_ui) {
+            void* h = pc->ctl.GetPtr(tp == "win-frame"
+                ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
+            if (h) {
+                m_viewport->FromHandle(h).SetString(PropertyNames::kCaption,
+                                                    e.GetTextChanged());
+                return;
+            }
+        }
+        pc->ctl.SetString(PropertyNames::kCaption, e.GetTextChanged());
     });
     // 颜色：ColorPicker 经 color-changed（onOK 确认触发，Binding Event
     // GetChangedColor 取 UIColor 载荷）
