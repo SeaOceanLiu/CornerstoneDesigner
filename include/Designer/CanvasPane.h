@@ -170,6 +170,7 @@ private:
     Control m_selHandle;           // 引擎 HandleControl（选中框+8向手柄+方向光标，附加 target）
     bool  m_propSync = false;      // 属性面板回填中（抑制回写）
     Control m_propX, m_propY, m_propW, m_propH, m_propCaption, m_propVisible, m_propEnabled;
+    Control m_captionEditor;    // 动态区文本行编辑器（caption/title——与固定区"文本"双向同步）
     Control m_propColor;           // 颜色（color-changed 事件回调：onOK 确认触发）
     std::string m_lastColorHex;    // 上次回填/已应用的颜色（echo 抑制）
     void onColorPicked(unsigned char r, unsigned char g, unsigned char b);

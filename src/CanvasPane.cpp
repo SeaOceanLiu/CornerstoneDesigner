@@ -707,6 +707,11 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
             }
         }
         pc->ctl.SetString(PropertyNames::kCaption, e.GetTextChanged());
+        if (m_captionEditor.IsValid()) {   // 动态区文本行同步（防回环）
+            m_propSync = true;
+            m_captionEditor.SetString(PropertyNames::kTextContent, e.GetTextChanged());
+            m_propSync = false;
+        }
     });
     // 颜色：ColorPicker 经 color-changed（onOK 确认触发，Binding Event
     // GetChangedColor 取 UIColor 载荷）
@@ -797,6 +802,7 @@ void CanvasPane::rebuildDynamicRows() {
     m_dynamicRows.clear();
     m_dynamicRowY.clear();
     m_fixedWidthRows.clear();
+    m_captionEditor = Control();
     m_schemaTarget = Control();
 
     if (!m_propDynamic.IsValid()) return;
@@ -987,16 +993,26 @@ void CanvasPane::rebuildDynamicRows() {
                 v = m_schemaTarget.GetString(prop.c_str());
             }
             ta.SetString(PropertyNames::kTextContent, v);
+            // 文本行（caption/title）与固定区"文本"行双向同步
+            const bool isCaptionRow = (prop == PropertyNames::kCaption || prop == "title");
+            if (isCaptionRow) m_captionEditor = ta;
             ta.SetCallback(PropertyNames::kEventTextChanged,
-                           [this, prop, viaLabel, innerKey](const Event& e) {
+                           [this, prop, viaLabel, innerKey, isCaptionRow](const Event& e) {
+                               if (m_propSync) return;
                                if (!m_schemaTarget.IsValid()) return;
+                               const std::string v2 = e.GetTextChanged();
+                               if (isCaptionRow && m_propCaption.IsValid()) {
+                                   m_propSync = true;
+                                   m_propCaption.SetString(PropertyNames::kTextContent, v2);
+                                   m_propSync = false;
+                               }
                                if (viaLabel) {
                                    void* h = m_schemaTarget.GetPtr(innerKey);
                                    if (h) m_viewport->FromHandle(h).SetString(
-                                       PropertyNames::kCaption, e.GetTextChanged());
+                                       PropertyNames::kCaption, v2);
                                    return;
                                }
-                               m_schemaTarget.SetString(prop.c_str(), e.GetTextChanged());
+                               m_schemaTarget.SetString(prop.c_str(), v2);
                            });
             m_propDynamic.AddChild(ta);
             m_dynamicRows.push_back(ta);
