@@ -1068,12 +1068,6 @@ void CanvasPane::rebuildDynamicRows() {
         genKeys += " " + key;
     }
 
-    m_dynScrollMax = (y + 2.0f) - viewRowsH;
-    if (m_dynScrollMax < 0) m_dynScrollMax = 0;
-    m_dynScroll.SetFloat(PropertyNames::kRangeMax, m_dynScrollMax > 0 ? m_dynScrollMax : 1.0f);
-    m_dynScroll.SetFloat(PropertyNames::kValue, 0.0f);
-    m_dynScroll.SetBool(PropertyNames::kVisible, m_dynScrollMax > 0);
-    applyDynScroll(0.0f);
     // 文字阴影统一段（label/button/win-frame——用户视角一致的"文字阴影"配置）：
     // enabled 走各控件路径（label 自身 shadow / button text-shadow-enable /
     // win-frame title 的 shadow）；offset 走内部 Label 直控（caption/title-label）
@@ -1151,6 +1145,12 @@ void CanvasPane::rebuildDynamicRows() {
         }
     }
 
+    m_dynScrollMax = (y + 2.0f) - viewRowsH;
+    if (m_dynScrollMax < 0) m_dynScrollMax = 0;
+    m_dynScroll.SetFloat(PropertyNames::kRangeMax, m_dynScrollMax > 0 ? m_dynScrollMax : 1.0f);
+    m_dynScroll.SetFloat(PropertyNames::kValue, 0.0f);
+    m_dynScroll.SetBool(PropertyNames::kVisible, m_dynScrollMax > 0);
+    applyDynScroll(0.0f);
     std::printf("[CanvasPane] dynamic rows for '%s': %d (%s)\n",
                 m_schemaType.c_str(), rows, genKeys.c_str());
 }
