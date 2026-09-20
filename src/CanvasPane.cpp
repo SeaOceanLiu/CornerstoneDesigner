@@ -645,6 +645,8 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
     m_propX = x; m_propY = y; m_propW = w; m_propH = h;
     m_propCaption = caption; m_propColor = color;
     m_propVisible = visible; m_propEnabled = enabled;
+    visible.SetBool(PropertyNames::kTriState, false);    // bool 两态（引擎缺省三态循环）
+    enabled.SetBool(PropertyNames::kTriState, false);
     // 可见/启用勾选（check-changed，intVal=CheckState）→ 被选控件标准属性直写
     m_propVisible.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
         if (m_propSync) return;
@@ -889,6 +891,10 @@ void CanvasPane::rebuildDynamicRows() {
                         // （GetPtr("caption-label")——Button 单色 setter 不同步 caption 的绕行回收）
                         if ((grp == "text" || grp == "textShadow") && m_ui) {
                             void* capH = m_schemaTarget.GetPtr(PropertyNames::kCaptionLabel);
+                            std::printf("[CAPD] grp=%s st=%s prop=%s got=%d\n",
+                                        grp.c_str(), st.c_str(), prop.c_str(),
+                                        capH ? 1 : 0);
+                            fflush(stdout);
                             if (capH) {
                                 // caption 属于被设计控件子树（子视口实例）——
                                 // FromHandle 须用子视口域（主实例域会 validate 失败落空）
