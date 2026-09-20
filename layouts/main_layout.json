@@ -1358,6 +1358,7 @@
                                                                 "type": "check-box",
                                                                 "id": "prop_visible",
                                                                 "checked": true,
+                                                                "tri-state": false,
                                                                 "rect": {
                                                                     "x": 0,
                                                                     "y": 0,
@@ -1402,6 +1403,7 @@
                                                                 "type": "check-box",
                                                                 "id": "prop_enabled",
                                                                 "checked": true,
+                                                                "tri-state": false,
                                                                 "rect": {
                                                                     "x": 0,
                                                                     "y": 0,

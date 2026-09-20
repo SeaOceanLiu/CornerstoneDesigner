@@ -628,6 +628,9 @@ void CanvasPane::fillPropertyPanel() {
         m_propColor.SetString(PropertyNames::kColor, hex);
         m_lastColorHex = hex;
     }
+    // 可见/启用回填（读控件实际值；未选中清零）
+    m_propVisible.SetBool(PropertyNames::kChecked, pc ? pc->ctl.GetBool(PropertyNames::kVisible) : false);
+    m_propEnabled.SetBool(PropertyNames::kChecked, pc ? pc->ctl.GetBool(PropertyNames::kEnabled) : false);
     m_propSync = false;
 }
 
@@ -892,7 +895,7 @@ void CanvasPane::rebuildDynamicRows() {
                         if ((grp == "text" || grp == "textShadow") && m_ui) {
                             void* capH = m_schemaTarget.GetPtr(PropertyNames::kCaptionLabel);
                             std::printf("[CAPD] grp=%s st=%s prop=%s got=%d\n",
-                                        grp.c_str(), st.c_str(), prop.c_str(),
+                                        grp, st, prop.c_str(),
                                         capH ? 1 : 0);
                             fflush(stdout);
                             if (capH) {
