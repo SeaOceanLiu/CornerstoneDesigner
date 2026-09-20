@@ -692,7 +692,14 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
         if (m_propSync) return;
         ControlModel* m = findModel(m_selectedId);
         if (!m) return;
-        m->props.extended["caption"] = e.GetTextChanged();
+        const std::string v = e.GetTextChanged();
+        m->props.extended["caption"] = v;
+        // 动态区文本行同步（先行——不依赖控件写路径，防回环）
+        if (m_captionEditor.IsValid()) {
+            m_propSync = true;
+            m_captionEditor.SetString(PropertyNames::kTextContent, v);
+            m_propSync = false;
+        }
         PlacedControl* pc = placedById(m->props.id);
         if (!pc || !pc->ctl.IsValid()) return;
         // check-box（无 caption 属性分发）/ win-frame（title 键）经内部 Label 直控
@@ -701,17 +708,11 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
             void* h = pc->ctl.GetPtr(tp == "win-frame"
                 ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
             if (h) {
-                m_viewport->FromHandle(h).SetString(PropertyNames::kCaption,
-                                                    e.GetTextChanged());
+                m_viewport->FromHandle(h).SetString(PropertyNames::kCaption, v);
                 return;
             }
         }
-        pc->ctl.SetString(PropertyNames::kCaption, e.GetTextChanged());
-        if (m_captionEditor.IsValid()) {   // 动态区文本行同步（防回环）
-            m_propSync = true;
-            m_captionEditor.SetString(PropertyNames::kTextContent, e.GetTextChanged());
-            m_propSync = false;
-        }
+        pc->ctl.SetString(PropertyNames::kCaption, v);
     });
     // 颜色：ColorPicker 经 color-changed（onOK 确认触发，Binding Event
     // GetChangedColor 取 UIColor 载荷）
