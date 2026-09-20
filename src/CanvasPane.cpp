@@ -877,11 +877,15 @@ void CanvasPane::rebuildDynamicRows() {
                     const std::string prop = gk + (std::strcmp(st, "normal") == 0
                         ? std::string() : ("." + std::string(st)));
                     const std::string lbl = std::string(grp) + "." + st;
-                    // 回读：text/textShadow 组的实际色在内部 caption Label 上
-                    // （Button 基类字段不反映 caption 直控结果）——从 caption 读
+                    // 内部文本 Label 的暴露键按类型分派：WinFrame 用其专有 title-label
+                    // （caption-label 不为其发明新键——92 键一致性），其余用 caption-label
+                    const char* capKey = (m_schemaType == "win-frame")
+                        ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel;
+                    // 回读：text/textShadow 组的实际色在内部 Label 上
+                    // （Button 基类字段不反映直控结果）——从其读
                     UIColor cc;
                     if ((std::strcmp(grp, "text") == 0 || std::strcmp(grp, "textShadow") == 0) && m_ui) {
-                        void* capH = m_schemaTarget.GetPtr(PropertyNames::kCaptionLabel);
+                        void* capH = m_schemaTarget.GetPtr(capKey);
                         cc = capH ? m_viewport->FromHandle(capH).GetColor(prop.c_str())
                                   : m_schemaTarget.GetColor(prop.c_str());
                     } else {
@@ -896,13 +900,13 @@ void CanvasPane::rebuildDynamicRows() {
                     // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
                     Control cp = m_ui->CreateColorPicker(2.0f, y, 120.0f, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
-                                   [this, prop, gk, grp, st](const Event& e) {
+                                   [this, prop, gk, grp, st, capKey](const Event& e) {
                         if (!m_schemaTarget.IsValid()) return;
                         const UIColor c = e.GetChangedColor();
                         // text/textShadow 组：直控内部 caption Label
                         // （GetPtr("caption-label")——Button 单色 setter 不同步 caption 的绕行回收）
                         if ((std::strcmp(grp, "text") == 0 || std::strcmp(grp, "textShadow") == 0) && m_ui) {
-                            void* capH = m_schemaTarget.GetPtr(PropertyNames::kCaptionLabel);
+                            void* capH = m_schemaTarget.GetPtr(capKey);
                             if (capH) {
                                 // caption 属于被设计控件子树（子视口实例）——
                                 // FromHandle 须用子视口域（主实例域会 validate 失败落空）
