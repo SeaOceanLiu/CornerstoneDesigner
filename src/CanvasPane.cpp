@@ -869,7 +869,7 @@ void CanvasPane::rebuildDynamicRows() {
                     // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
                     Control cp = m_ui->CreateColorPicker(2.0f, y, 120.0f, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
-                                   [this, prop, base, grp, st](const Event& e) {
+                                   [this, prop, gk, grp, st](const Event& e) {
                         if (!m_schemaTarget.IsValid()) return;
                         const UIColor c = e.GetChangedColor();
                         // text/textShadow 组：直控内部 caption Label
@@ -878,7 +878,7 @@ void CanvasPane::rebuildDynamicRows() {
                             void* capH = m_schemaTarget.GetPtr(PropertyNames::kCaptionLabel);
                             if (capH) {
                                 auto cap = m_ui->FromHandle(capH);
-                                const std::string capProp = base + (std::strcmp(st, "normal") == 0
+                                const std::string capProp = gk + (std::strcmp(st, "normal") == 0
                                     ? std::string() : ("." + std::string(st)));
                                 cap.SetColor(capProp.c_str(), c);
                                 return;
