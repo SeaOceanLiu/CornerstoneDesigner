@@ -877,7 +877,16 @@ void CanvasPane::rebuildDynamicRows() {
                     const std::string prop = gk + (std::strcmp(st, "normal") == 0
                         ? std::string() : ("." + std::string(st)));
                     const std::string lbl = std::string(grp) + "." + st;
-                    UIColor cc = m_schemaTarget.GetColor(prop.c_str());
+                    // 回读：text/textShadow 组的实际色在内部 caption Label 上
+                    // （Button 基类字段不反映 caption 直控结果）——从 caption 读
+                    UIColor cc;
+                    if ((std::strcmp(grp, "text") == 0 || std::strcmp(grp, "textShadow") == 0) && m_ui) {
+                        void* capH = m_schemaTarget.GetPtr(PropertyNames::kCaptionLabel);
+                        cc = capH ? m_viewport->FromHandle(capH).GetColor(prop.c_str())
+                                  : m_schemaTarget.GetColor(prop.c_str());
+                    } else {
+                        cc = m_schemaTarget.GetColor(prop.c_str());
+                    }
                     char hex[12];
                     std::snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X",
                                   cc.r, cc.g, cc.b, cc.a);
