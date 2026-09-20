@@ -83,9 +83,9 @@ public:
     // 颜色槽惰性化：行先放占位 Button（背景=当前色），点击才创建 ColorPicker 替换
     // （ColorPicker 每实例构建弹窗子树 ~3.5s，15 槽全量创建不可接受）
     struct PendingColorSlot {
-        std::string prop;        // 运行时颜色属性键
-        Control     placeholder; // 占位 Button（或已替换后的 ColorPicker）
-        size_t      rowIndex = 0;// m_dynamicRows 中的索引（滚动偏移用）
+        std::string prop;                 // 运行时颜色属性键
+        std::vector<Control> parts;       // 占位件（swatch/hex/点击层；替换后为 ColorPicker）
+        std::vector<size_t> rowIndexes;   // 各占位件在 m_dynamicRows 中的索引
     };
     std::vector<PendingColorSlot> m_colorSlots;
     float m_seenDynW = -1.0f;    // 动态区容器宽观测（splitter 拖动后同步滚动条/行宽）

@@ -861,33 +861,53 @@ void CanvasPane::rebuildDynamicRows() {
                     m_dynamicRowY.push_back(y);
                     y += 18.0f;
 
-                    // 占位复刻 ColorPicker 关闭态：透明 Button 容器（承载点击）+
-                    // swatch 16×16（左侧垂直居中）+ hex Label（右侧，#RRGGBBAA）
+                    // 占位复刻 ColorPicker 关闭态形态（平级三件套——AddChildControl
+                    // 要求 parent 为 Panel，Button 容器挂接会静默失败）：
+                    //   Panel swatch 16×16（左侧垂直居中，当前色）+ Label hex（右侧 #RRGGBBAA）
+                    //   + 透明 Button 点击层（最上层承载点击，fire click）
                     const float slotW = 120.0f, slotH = 26.0f, sw = 16.0f, gap = 4.0f;
-                    const UIColor clear{ 0, 0, 0, 0 };
-                    Control ph = m_ui->CreateButton("", 2.0f, y, slotW, slotH);
-                    ph.SetStateColor(PropertyNames::kBackground,
-                                     UIStateColor{ clear, clear, clear, clear });
-                    ph.SetStateColor(PropertyNames::kBorder,
-                                     UIStateColor{ clear, clear, clear, clear });
-                    ph.SetCallback(PropertyNames::kEventClick,
-                                   [this, prop](const Event&) { onColorSlotClick(prop); });
-                    Control swatch = m_ui->CreatePanel(0.0f, (slotH - sw) / 2.0f, sw, sw);
+                    PendingColorSlot slot;
+                    slot.prop = prop;
+
+                    Control swatch = m_ui->CreatePanel(2.0f, y + (slotH - sw) / 2.0f, sw, sw);
                     swatch.SetStateColor(PropertyNames::kBackground,
                                          UIStateColor{ cc, cc, cc, cc });
                     const UIColor gray{ 0x64, 0x64, 0x64, 255 };
                     swatch.SetStateColor(PropertyNames::kBorder,
                                          UIStateColor{ gray, gray, gray, gray });
-                    swatch.SetBool(PropertyNames::kEnabled, false);   // 不消费 → 冒泡容器
-                    ph.AddChild(swatch);
-                    Control hl = m_ui->CreateLabel(hex, 13.0f, sw + gap, 0.0f,
+                    m_propDynamic.AddChild(swatch);
+                    slot.rowIndexes.push_back(m_dynamicRows.size());
+                    m_dynamicRows.push_back(swatch);
+                    slot.parts.push_back(swatch);
+
+                    Control hl = m_ui->CreateLabel(hex, 13.0f, 2.0f + sw + gap, y,
                                                    slotW - sw - gap * 2, slotH);
                     hl.SetColor(PropertyNames::kText, UIColor{ 0xE0, 0xE0, 0xE0, 255 });
-                    hl.SetBool(PropertyNames::kEnabled, false);       // 不消费 → 冒泡容器
-                    ph.AddChild(hl);
-                    m_propDynamic.AddChild(ph);
-                    m_colorSlots.push_back({ prop, ph, m_dynamicRows.size() });
-                    m_dynamicRows.push_back(ph);
+                    hl.SetBool(PropertyNames::kEnabled, false);
+                    m_propDynamic.AddChild(hl);
+                    slot.rowIndexes.push_back(m_dynamicRows.size());
+                    m_dynamicRows.push_back(hl);
+                    slot.parts.push_back(hl);
+
+                    const UIColor clear{ 0, 0, 0, 0 };
+                    Control clickBtn = m_ui->CreateButton("", 2.0f, y, slotW, slotH);
+                    clickBtn.SetStateColor(PropertyNames::kBackground,
+                                           UIStateColor{ clear, clear, clear, clear });
+                    clickBtn.SetStateColor(PropertyNames::kBorder,
+                                           UIStateColor{ clear, clear, clear, clear });
+                    clickBtn.SetCallback(PropertyNames::kEventClick,
+                                         [this, prop](const Event&) { onColorSlotClick(prop); });
+                    m_propDynamic.AddChild(clickBtn);
+                    slot.rowIndexes.push_back(m_dynamicRows.size());
+                    m_dynamicRows.push_back(clickBtn);
+                    slot.parts.push_back(clickBtn);
+                    m_colorSlots.push_back(std::move(slot));
+                    m_dynamicRowY.push_back(y);
+                    m_dynamicRowY.push_back(y);
+                    m_dynamicRowY.push_back(y);
+                    y += 26.0f + 4.0f;
+                    ++rows;
+                    genKeys += " " + lbl;
                     m_dynamicRowY.push_back(y);
                     y += 26.0f + 4.0f;
                     ++rows;
@@ -1009,26 +1029,35 @@ void CanvasPane::ScrollDynamicBy(float scrollY) {
     m_dynScroll.SetFloat(PropertyNames::kValue, v);   // setValue → position-changed → applyDynScroll
 }
 
-// 颜色槽占位点击 → 创建 ColorPicker 替换（须先 Destroy 占位——AddChild 重复挂树语义）
+// 颜色槽占位点击 → 销毁三件套、创建 ColorPicker 替换（首件索引换为 ColorPicker，
+// 其余索引置空——滚动同步跳过；创建成本 ~3.5s 为引擎侧待优化项）
 void CanvasPane::onColorSlotClick(const std::string& prop) {
     if (!m_ui || !m_propDynamic.IsValid()) return;
     for (auto& slot : m_colorSlots) {
-        if (slot.prop != prop || !slot.placeholder.IsValid()) continue;
-        const UIRect r = slot.placeholder.GetRect();
+        if (slot.prop != prop || slot.parts.empty() || !slot.parts[0].IsValid()) continue;
+        const UIRect r = slot.parts[0].GetRect();   // swatch 位置推按钮行位置
+        const float ry = slot.parts.back().IsValid()
+            ? slot.parts.back().GetRect().y : r.y;   // 点击层 y = 行 y
         UIColor cc = m_schemaTarget.GetColor(prop.c_str());
         char hex[12];
         std::snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X",
                       cc.r, cc.g, cc.b, cc.a);
-        Control cp = m_ui->CreateColorPicker(r.x, r.y, r.w, r.h, hex);
+        for (auto& part : slot.parts)
+            if (part.IsValid()) part.Destroy();
+        Control cp = m_ui->CreateColorPicker(2.0f, ry, 120.0f, 26.0f, hex);
         if (!cp.IsValid()) return;
         cp.SetCallback(PropertyNames::kEventColorChanged, [this, prop](const Event& e) {
             if (m_schemaTarget.IsValid())
                 m_schemaTarget.SetColor(prop.c_str(), e.GetChangedColor());
         });
-        slot.placeholder.Destroy();
         m_propDynamic.AddChild(cp);
-        if (slot.rowIndex < m_dynamicRows.size()) m_dynamicRows[slot.rowIndex] = cp;
-        slot.placeholder = cp;
+        for (size_t k = 0; k < slot.rowIndexes.size(); ++k) {
+            const size_t idx = slot.rowIndexes[k];
+            if (idx < m_dynamicRows.size())
+                m_dynamicRows[idx] = (k == 0) ? cp : Control();
+        }
+        slot.parts.clear();
+        slot.parts.push_back(cp);
         return;
     }
 }
@@ -1042,17 +1071,13 @@ void CanvasPane::syncDynamicWidth() {
     m_seenDynW = box.w;
     const float rowW = box.w - 16.0f;   // 右侧留滚动条通道
     m_dynScroll.SetRect(box.w - 12.0f, 0.0f, 12.0f, box.h);
-    for (auto& slot : m_colorSlots) {
-        if (slot.rowIndex < m_dynamicRows.size()) {
-            Control& c = m_dynamicRows[slot.rowIndex];
-            if (c.IsValid()) { UIRect r = c.GetRect(); c.SetRect(r.x, r.y, 120.0f, r.h); }
-        }
-    }
+    // 色槽件宽固定（swatch 16/hex 98/点击层 120），不参与行宽同步
     for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
         if (!m_dynamicRows[i].IsValid()) continue;
         bool isSlot = false;
         for (const auto& slot : m_colorSlots)
-            if (slot.rowIndex == i) { isSlot = true; break; }
+            for (const size_t idx : slot.rowIndexes)
+                if (idx == i) { isSlot = true; break; }
         if (isSlot) continue;
         UIRect r = m_dynamicRows[i].GetRect();
         m_dynamicRows[i].SetRect(r.x, r.y, rowW, r.h);
