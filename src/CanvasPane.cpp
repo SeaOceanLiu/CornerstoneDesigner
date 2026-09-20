@@ -860,7 +860,8 @@ void CanvasPane::rebuildDynamicRows() {
                     m_dynamicRowY.push_back(y);
                     y += 18.0f;
 
-                    Control ph = m_ui->CreateButton(hex, 2.0f, y, rowW, 26.0f);
+                    const float slotW = 120.0f;   // 参考外观区 ColorPicker 宽度
+                    Control ph = m_ui->CreateButton(hex, 2.0f, y, slotW, 26.0f);
                     ph.SetStateColor(PropertyNames::kBackground,
                                      UIStateColor{ cc, cc, cc, cc });
                     ph.SetCallback(PropertyNames::kEventClick,
@@ -1012,6 +1013,32 @@ void CanvasPane::onColorSlotClick(const std::string& prop) {
     }
 }
 
+// 动态区宽度跟随（splitter 拖动 propertyPanel 宽变化）：滚动条贴右缘、普通行宽同步；
+// 色槽宽固定 120 不参与（参考外观区形态）。
+void CanvasPane::syncDynamicWidth() {
+    if (!m_propDynamic.IsValid() || !m_dynScroll.IsValid()) return;
+    const UIRect box = m_propDynamic.GetRect();
+    if (box.w <= 16.0f || box.w == m_seenDynW) return;
+    m_seenDynW = box.w;
+    const float rowW = box.w - 16.0f;   // 右侧留滚动条通道
+    m_dynScroll.SetRect(box.w - 12.0f, 0.0f, 12.0f, box.h);
+    for (auto& slot : m_colorSlots) {
+        if (slot.rowIndex < m_dynamicRows.size()) {
+            Control& c = m_dynamicRows[slot.rowIndex];
+            if (c.IsValid()) { UIRect r = c.GetRect(); c.SetRect(r.x, r.y, 120.0f, r.h); }
+        }
+    }
+    for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
+        if (!m_dynamicRows[i].IsValid()) continue;
+        bool isSlot = false;
+        for (const auto& slot : m_colorSlots)
+            if (slot.rowIndex == i) { isSlot = true; break; }
+        if (isSlot) continue;
+        UIRect r = m_dynamicRows[i].GetRect();
+        m_dynamicRows[i].SetRect(r.x, r.y, rowW, r.h);
+    }
+}
+
 void CanvasPane::applyDynScroll(float value) {
     const float viewH = 288.0f;
     for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
@@ -1082,6 +1109,7 @@ int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
 void CanvasPane::tickInput() {
     // Delete 键：删除选中控件（键源每帧轮询一次，返回按下沿）
     if (m_keySource && m_keySource()) deleteSelected();
+    syncDynamicWidth();   // 动态区宽度跟随（splitter 拖动后滚动条贴边/行宽同步）
 
     if (!m_viewport || !m_mouseSource) return;
     float wx = 0, wy = 0;

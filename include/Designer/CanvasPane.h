@@ -88,7 +88,9 @@ public:
         size_t      rowIndex = 0;// m_dynamicRows 中的索引（滚动偏移用）
     };
     std::vector<PendingColorSlot> m_colorSlots;
+    float m_seenDynW = -1.0f;    // 动态区容器宽观测（splitter 拖动后同步滚动条/行宽）
     void onColorSlotClick(const std::string& prop);   // 占位点击 → 创建 ColorPicker 替换
+    void syncDynamicWidth();                          // 容器宽变化 → 滚动条/行宽同步
 
     // 属性面板联动（App 注入；选中回填面板，面板变更回写控件）
     void SetPropertyControls(Control x, Control y, Control w, Control h,
