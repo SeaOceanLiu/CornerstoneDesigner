@@ -849,8 +849,9 @@ void CanvasPane::rebuildDynamicRows() {
                         ? std::string() : ("." + std::string(st)));
                     const std::string lbl = std::string(grp) + "." + st;
                     UIColor cc = m_schemaTarget.GetColor(prop.c_str());
-                    char hex[10];
-                    std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", cc.r, cc.g, cc.b);
+                    char hex[12];
+                    std::snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X",
+                                  cc.r, cc.g, cc.b, cc.a);
 
                     Control lb = m_ui->CreateLabel(lbl, 13.0f, 0, 0, rowW, 18.0f);
                     lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
@@ -860,12 +861,30 @@ void CanvasPane::rebuildDynamicRows() {
                     m_dynamicRowY.push_back(y);
                     y += 18.0f;
 
-                    const float slotW = 120.0f;   // 参考外观区 ColorPicker 宽度
-                    Control ph = m_ui->CreateButton(hex, 2.0f, y, slotW, 26.0f);
+                    // 占位复刻 ColorPicker 关闭态：透明 Button 容器（承载点击）+
+                    // swatch 16×16（左侧垂直居中）+ hex Label（右侧，#RRGGBBAA）
+                    const float slotW = 120.0f, slotH = 26.0f, sw = 16.0f, gap = 4.0f;
+                    const UIColor clear{ 0, 0, 0, 0 };
+                    Control ph = m_ui->CreateButton("", 2.0f, y, slotW, slotH);
                     ph.SetStateColor(PropertyNames::kBackground,
-                                     UIStateColor{ cc, cc, cc, cc });
+                                     UIStateColor{ clear, clear, clear, clear });
+                    ph.SetStateColor(PropertyNames::kBorder,
+                                     UIStateColor{ clear, clear, clear, clear });
                     ph.SetCallback(PropertyNames::kEventClick,
                                    [this, prop](const Event&) { onColorSlotClick(prop); });
+                    Control swatch = m_ui->CreatePanel(0.0f, (slotH - sw) / 2.0f, sw, sw);
+                    swatch.SetStateColor(PropertyNames::kBackground,
+                                         UIStateColor{ cc, cc, cc, cc });
+                    const UIColor gray{ 0x64, 0x64, 0x64, 255 };
+                    swatch.SetStateColor(PropertyNames::kBorder,
+                                         UIStateColor{ gray, gray, gray, gray });
+                    swatch.SetBool(PropertyNames::kEnabled, false);   // 不消费 → 冒泡容器
+                    ph.AddChild(swatch);
+                    Control hl = m_ui->CreateLabel(hex, 13.0f, sw + gap, 0.0f,
+                                                   slotW - sw - gap * 2, slotH);
+                    hl.SetColor(PropertyNames::kText, UIColor{ 0xE0, 0xE0, 0xE0, 255 });
+                    hl.SetBool(PropertyNames::kEnabled, false);       // 不消费 → 冒泡容器
+                    ph.AddChild(hl);
                     m_propDynamic.AddChild(ph);
                     m_colorSlots.push_back({ prop, ph, m_dynamicRows.size() });
                     m_dynamicRows.push_back(ph);
@@ -997,8 +1016,9 @@ void CanvasPane::onColorSlotClick(const std::string& prop) {
         if (slot.prop != prop || !slot.placeholder.IsValid()) continue;
         const UIRect r = slot.placeholder.GetRect();
         UIColor cc = m_schemaTarget.GetColor(prop.c_str());
-        char hex[10];
-        std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", cc.r, cc.g, cc.b);
+        char hex[12];
+        std::snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X",
+                      cc.r, cc.g, cc.b, cc.a);
         Control cp = m_ui->CreateColorPicker(r.x, r.y, r.w, r.h, hex);
         if (!cp.IsValid()) return;
         cp.SetCallback(PropertyNames::kEventColorChanged, [this, prop](const Event& e) {
