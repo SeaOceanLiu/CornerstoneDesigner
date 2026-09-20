@@ -87,7 +87,8 @@ public:
 
     // 属性面板联动（App 注入；选中回填面板，面板变更回写控件）
     void SetPropertyControls(Control x, Control y, Control w, Control h,
-                             Control caption, Control color);
+                             Control caption, Control color,
+                             Control visible, Control enabled);
 
     // ── Schema 驱动动态属性区 ──
     // 加载引擎 declarative-ui.schema.json（$defs 按控件类型提供属性清单+类型）。
@@ -168,7 +169,7 @@ private:
     std::string m_selectedId;
     Control m_selHandle;           // 引擎 HandleControl（选中框+8向手柄+方向光标，附加 target）
     bool  m_propSync = false;      // 属性面板回填中（抑制回写）
-    Control m_propX, m_propY, m_propW, m_propH, m_propCaption;
+    Control m_propX, m_propY, m_propW, m_propH, m_propCaption, m_propVisible, m_propEnabled;
     Control m_propColor;           // 颜色（color-changed 事件回调：onOK 确认触发）
     std::string m_lastColorHex;    // 上次回填/已应用的颜色（echo 抑制）
     void onColorPicked(unsigned char r, unsigned char g, unsigned char b);

@@ -640,9 +640,22 @@ void CanvasPane::applyModelRect(ControlModel* m) {
 }
 
 void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
-                                     Control caption, Control color) {
+                                     Control caption, Control color,
+                                     Control visible, Control enabled) {
     m_propX = x; m_propY = y; m_propW = w; m_propH = h;
     m_propCaption = caption; m_propColor = color;
+    m_propVisible = visible; m_propEnabled = enabled;
+    // 可见/启用勾选（check-changed，intVal=CheckState）→ 被选控件标准属性直写
+    m_propVisible.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
+        if (m_propSync) return;
+        if (PlacedControl* pc = placedById(m_selectedId))
+            pc->ctl.SetBool(PropertyNames::kVisible, e.GetCheckState() != 0);
+    });
+    m_propEnabled.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
+        if (m_propSync) return;
+        if (PlacedControl* pc = placedById(m_selectedId))
+            pc->ctl.SetBool(PropertyNames::kEnabled, e.GetCheckState() != 0);
+    });
     // NUD 事件载荷为 Float（GetValueChanged）；lambda 按值捕获（不可悬空）
     auto bindRect = [this](Control nud, int which) {
         nud.SetCallback(PropertyNames::kEventValueChanged, [this, which](const Event& e) {
@@ -877,7 +890,9 @@ void CanvasPane::rebuildDynamicRows() {
                         if ((grp == "text" || grp == "textShadow") && m_ui) {
                             void* capH = m_schemaTarget.GetPtr(PropertyNames::kCaptionLabel);
                             if (capH) {
-                                auto cap = m_ui->FromHandle(capH);
+                                // caption 属于被设计控件子树（子视口实例）——
+                                // FromHandle 须用子视口域（主实例域会 validate 失败落空）
+                                auto cap = m_viewport->FromHandle(capH);
                                 const std::string capProp = gk + (std::strcmp(st, "normal") == 0
                                     ? std::string() : ("." + std::string(st)));
                                 cap.SetColor(capProp.c_str(), c);

@@ -179,7 +179,9 @@ bool App::init() {
                                       m_ui->FindControl("prop_w"),
                                       m_ui->FindControl("prop_h"),
                                       m_ui->FindControl("prop_caption"),
-                                      m_ui->FindControl("prop_color"));
+                                      m_ui->FindControl("prop_color"),
+                                      m_ui->FindControl("prop_visible"),
+                                      m_ui->FindControl("prop_enabled"));
     }
 
     // 初始化基准尺寸
