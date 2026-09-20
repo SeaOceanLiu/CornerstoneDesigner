@@ -834,7 +834,7 @@ void CanvasPane::rebuildDynamicRows() {
         "events", "context-menu", "actors", "luotiAni", "caption-label",
         "file", "image", "image-resource", "resourceId", "providerName",
         "font", "match-parent-rect", "playing", "debug-draw",
-        "expand", "offset", "shadow", "size", "style", "alignment",
+        "expand", "offset", "size", "style", "alignment",
         "check-state", "vertical-align", "popup", "position",
         "caption", "enabled", "visible",
         "border-visible", "font-file", "font-resource",   // 资源路径/调试类
@@ -891,6 +891,56 @@ void CanvasPane::rebuildDynamicRows() {
         if (skip) continue;
         const nlohmann::json& spec = it.value();
         const std::string t = spec.value("type", "");
+
+        // Label 阴影展开：shadow.{enabled,offset.x,offset.y} → 运行时 shadow /
+        // shadow-offset-x / shadow-offset-y（object 子键展开，属性名按引擎简写映射）
+        if (key == "shadow" && spec.is_object()) {
+            struct ShadowSlot { const char* lbl; const char* prop; bool isBool; };
+            static const ShadowSlot kSlots[] = {
+                { "shadow.enabled",  "shadow",            true },
+                { "shadow.offset.x", "shadow-offset-x",   false },
+                { "shadow.offset.y", "shadow-offset-y",   false },
+            };
+            for (const auto& slot : kSlots) {
+                makeLabel(slot.lbl);
+                if (slot.isBool) {
+                    Control cb = m_ui->CreateCheckBox(slot.lbl, 0, 0, rowW, ctlH);
+                    cb.SetRect(2.0f, y, rowW, ctlH);
+                    cb.SetBool(PropertyNames::kTriState, false);
+                    cb.SetBool(PropertyNames::kChecked,
+                               m_schemaTarget.GetBool(slot.prop));
+                    cb.SetCallback(PropertyNames::kEventCheckChanged,
+                                   [this, prop = std::string(slot.prop)](const Event& e2) {
+                        if (m_schemaTarget.IsValid())
+                            m_schemaTarget.SetBool(prop.c_str(), e2.GetCheckState() != 0);
+                    });
+                    m_propDynamic.AddChild(cb);
+                    m_dynamicRows.push_back(cb);
+                    m_dynamicRowY.push_back(y);
+                } else {
+                    Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, ctlH);
+                    nud.SetRect(2.0f, y, rowW, ctlH);
+                    nud.SetFloat(PropertyNames::kStep, 0.5f);
+                    nud.SetInt(PropertyNames::kDecimals, 1);
+                    nud.SetFloat(PropertyNames::kRangeMin, -50.0f);   // 阴影偏移可为负
+                    nud.SetFloat(PropertyNames::kRangeMax, 50.0f);
+                    const float v = m_schemaTarget.GetFloat(slot.prop);
+                    nud.SetFloat(PropertyNames::kValue, v);
+                    nud.SetCallback(PropertyNames::kEventValueChanged,
+                                    [this, prop = std::string(slot.prop)](const Event& e2) {
+                        if (m_schemaTarget.IsValid())
+                            m_schemaTarget.SetFloat(prop.c_str(), e2.GetValueChanged());
+                    });
+                    m_propDynamic.AddChild(nud);
+                    m_dynamicRows.push_back(nud);
+                    m_dynamicRowY.push_back(y);
+                }
+                y += ctlH + rowGap;
+                ++rows;
+                genKeys += " " + std::string(slot.lbl);
+            }
+            continue;
+        }
 
         // 颜色组展开：colors.<组>.<态> → 运行时 "组[.态]"（normal 省略后缀，键名点号风格）
         // 行先放占位 Button（背景=当前色+hex 文本），点击才创建 ColorPicker（3.5s 构建惰性化）
