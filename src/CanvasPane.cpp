@@ -953,12 +953,29 @@ void CanvasPane::rebuildDynamicRows() {
             ta.SetStateColor(PropertyNames::kBorder,
                              UIStateColor{ UIColor{0x40, 0x40, 0x40, 255}, UIColor{0x4A, 0x90, 0xD9, 255},
                                            UIColor{0x4A, 0x90, 0xD9, 255}, UIColor{0x40, 0x40, 0x40, 255} });
-            const std::string v = m_schemaTarget.GetString(prop.c_str());
+            // 内部文本 Label 键分派：check-box（无 caption 属性分发）与 win-frame
+            // （title 键）经其内部 Label 直控（Label caption 读写完整）；其余直设属性
+            const bool viaLabel = (m_schemaType == "check-box" || m_schemaType == "win-frame");
+            const char* innerKey = (m_schemaType == "win-frame")
+                ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel;
+            std::string v;
+            if (viaLabel) {
+                void* h = m_schemaTarget.GetPtr(innerKey);
+                v = h ? m_viewport->FromHandle(h).GetString(PropertyNames::kCaption) : "";
+            } else {
+                v = m_schemaTarget.GetString(prop.c_str());
+            }
             ta.SetString(PropertyNames::kTextContent, v);
             ta.SetCallback(PropertyNames::kEventTextChanged,
-                           [this, prop](const Event& e) {
-                               if (m_schemaTarget.IsValid())
-                                   m_schemaTarget.SetString(prop.c_str(), e.GetTextChanged());
+                           [this, prop, viaLabel, innerKey](const Event& e) {
+                               if (!m_schemaTarget.IsValid()) return;
+                               if (viaLabel) {
+                                   void* h = m_schemaTarget.GetPtr(innerKey);
+                                   if (h) m_viewport->FromHandle(h).SetString(
+                                       PropertyNames::kCaption, e.GetTextChanged());
+                                   return;
+                               }
+                               m_schemaTarget.SetString(prop.c_str(), e.GetTextChanged());
                            });
             m_propDynamic.AddChild(ta);
             m_dynamicRows.push_back(ta);
