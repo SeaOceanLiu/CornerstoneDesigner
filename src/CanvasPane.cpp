@@ -1089,7 +1089,7 @@ void CanvasPane::rebuildDynamicRows() {
             cb.SetBool(PropertyNames::kTriState, false);
             bool on = false;
             if (m_schemaType == "label") on = m_schemaTarget.GetBool(PropertyNames::kShadow);
-            else if (m_schemaType == "button") on = m_schemaTarget.GetBool(PropertyNames::kTextShadowEnable);
+            else if (m_schemaType == "button") on = m_schemaTarget.GetBool(PropertyNames::kShadow);
             else on = shTarget.IsValid() && shTarget.GetBool(PropertyNames::kShadow);
             cb.SetBool(PropertyNames::kChecked, on);
             cb.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e2) {
@@ -1100,7 +1100,7 @@ void CanvasPane::rebuildDynamicRows() {
                 }
                 if (m_schemaType == "button") {
                     if (m_schemaTarget.IsValid())
-                        m_schemaTarget.SetBool(PropertyNames::kTextShadowEnable, on2);
+                        m_schemaTarget.SetBool(PropertyNames::kShadow, on2);
                     return;
                 }
                 const char* k = PropertyNames::kTitleLabel;   // win-frame：title Label 直控
