@@ -1071,7 +1071,8 @@ void CanvasPane::rebuildDynamicRows() {
     // 文字阴影统一段（label/button/win-frame——用户视角一致的"文字阴影"配置）：
     // enabled 走各控件路径（label 自身 shadow / button text-shadow-enable /
     // win-frame title 的 shadow）；offset 走内部 Label 直控（caption/title-label）
-    if (m_schemaType == "label" || m_schemaType == "button" || m_schemaType == "win-frame") {
+    if (m_schemaType == "label" || m_schemaType == "button" || m_schemaType == "check-box" ||
+        m_schemaType == "win-frame") {
         const bool isLabelT = (m_schemaType == "label");
         const char* attLabelKey = (m_schemaType == "win-frame")
             ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel;
