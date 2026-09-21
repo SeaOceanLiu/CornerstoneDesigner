@@ -942,10 +942,27 @@ void CanvasPane::rebuildDynamicRows() {
                                 const std::string capProp = gk + (std::strcmp(st, "normal") == 0
                                     ? std::string() : ("." + std::string(st)));
                                 cap.SetColor(capProp.c_str(), c);
+                                // CheckBox recreate 丢 caption 状态——存 extended（拖动结束恢复用）
+                                ControlModel* m2 = findModel(m_selectedId);
+                                if (m2) {
+                                    char hex8[12];
+                                    std::snprintf(hex8, sizeof(hex8), "#%02X%02X%02X%02X",
+                                                  c.r, c.g, c.b, c.a);
+                                    m2->props.extended[prop + "-color"] = hex8;
+                                }
                                 return;
                             }
                         }
                         m_schemaTarget.SetColor(prop.c_str(), c);   // 兜底（无 caption 控件等）
+                        {
+                            ControlModel* m2 = findModel(m_selectedId);
+                            if (m2) {
+                                char hex8[12];
+                                std::snprintf(hex8, sizeof(hex8), "#%02X%02X%02X%02X",
+                                              c.r, c.g, c.b, c.a);
+                                m2->props.extended[prop + "-color"] = hex8;
+                            }
+                        }
                     });
                     m_fixedWidthRows.insert(m_dynamicRows.size());
                     m_propDynamic.AddChild(cp);
@@ -1167,6 +1184,18 @@ void CanvasPane::ScrollDynamicBy(float scrollY) {
 
 // 动态区宽度跟随（splitter 拖动 propertyPanel 宽变化）：滚动条贴右缘、普通行宽同步；
 // 色槽宽固定 120 不参与（参考外观区形态）。
+// hex 字符串（#RRGGBBAA / #RRGGBB）→ UIColor（解析失败返回黑）
+static UIColor hexToColor(const std::string& hex) {
+    if (hex.size() < 7 || hex[0] != '#') return UIColor{0, 0, 0, 255};
+    auto byte = [&](size_t off) -> unsigned char {
+        auto v = std::strtol(hex.substr(off, 2).c_str(), nullptr, 16);
+        return static_cast<unsigned char>(v);
+    };
+    UIColor c{ byte(1), byte(3), byte(5), 255 };
+    if (hex.size() >= 9) c.a = byte(7);
+    return c;
+}
+
 void CanvasPane::syncDynamicWidth() {
     if (!m_propDynamic.IsValid() || !m_dynScroll.IsValid()) return;
     const UIRect box = m_propDynamic.GetRect();
@@ -1300,6 +1329,27 @@ void CanvasPane::tickInput() {
                 m_dragCtl.SetRect(nx, ny, m->props.rect.w, m->props.rect.h);
             fillPropertyPanel();   // 拖动中同步属性面板（m_propSync 抑制回写）
         } else {
+            // CheckBox 拖动 → setRect → recreate → 内部 caption 全新重建
+            // （文本/直控色丢失）——从 model.extended 恢复
+            if (m->props.type == "check-box" && m_dragCtl.IsValid()) {
+                void* h = m_dragCtl.GetPtr(PropertyNames::kCaptionLabel);
+                if (h) {
+                    auto cap = m_viewport->FromHandle(h);
+                    cap.SetString(PropertyNames::kCaption,
+                                  m->props.extended.value("caption", ""));
+                    const auto& ex = m->props.extended;
+                    static const char* kCC[] = { "text", "text.hover", "text.pressed",
+                                                 "text.disabled", "text-shadow",
+                                                 "text-shadow.hover", "text-shadow.pressed",
+                                                 "text-shadow.disabled" };
+                    for (const char* k : kCC) {
+                        auto it = ex.find(std::string(k) + "-color");
+                        if (it != ex.end() && it.value().is_string()) {
+                            cap.SetColor(k, hexToColor(it.value().get<std::string>()));
+                        }
+                    }
+                }
+            }
             m_dragId.clear();   // 松开结束拖动
         }
         m_mouseWasDown = down;
