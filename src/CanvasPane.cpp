@@ -1095,18 +1095,16 @@ void CanvasPane::rebuildDynamicRows() {
             cb.SetBool(PropertyNames::kChecked, on);
             cb.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e2) {
                 const bool on2 = e2.GetCheckState() != 0;
-                if (m_schemaType == "label") {
-                    if (m_schemaTarget.IsValid()) m_schemaTarget.SetBool(PropertyNames::kShadow, on2);
+                if (m_schemaType == "win-frame") {
+                    // win-frame：title Label 直控
+                    void* h = m_schemaTarget.GetPtr(PropertyNames::kTitleLabel);
+                    if (h) m_viewport->FromHandle(h).SetBool(PropertyNames::kShadow, on2);
                     return;
                 }
-                if (m_schemaType == "button") {
-                    if (m_schemaTarget.IsValid())
-                        m_schemaTarget.SetBool(PropertyNames::kShadow, on2);
-                    return;
-                }
-                const char* k = PropertyNames::kTitleLabel;   // win-frame：title Label 直控
-                void* h = m_schemaTarget.GetPtr(k);
-                if (h) m_viewport->FromHandle(h).SetBool(PropertyNames::kShadow, on2);
+                // label/button/check-box：自身 kShadow（引擎 setBoolProperty 分发：
+                //   Label→setShadow / Button→setTextShadowEnable / CheckBox→宿主+caption 同步）
+                if (m_schemaTarget.IsValid())
+                    m_schemaTarget.SetBool(PropertyNames::kShadow, on2);
             });
             m_propDynamic.AddChild(cb);
             m_dynamicRows.push_back(cb);
