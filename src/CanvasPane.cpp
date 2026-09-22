@@ -911,8 +911,10 @@ void CanvasPane::rebuildDynamicRows() {
     m_schemaType = m->props.type;
     // 无文字/无颜色概念的控件（图片/动画）：固定区 caption/背景色行隐藏
     const bool noVisual = (m_schemaType == "image" || m_schemaType == "animation");
-    if (m_propCaption.IsValid()) m_propCaption.SetVisible(!noVisual);
-    if (m_propColor.IsValid()) m_propColor.SetVisible(!noVisual);
+    if (m_propCaption.IsValid())
+        m_propCaption.SetBool(PropertyNames::kVisible, !noVisual);
+    if (m_propColor.IsValid())
+        m_propColor.SetBool(PropertyNames::kVisible, !noVisual);
     const bool textIsCaption = (m_schemaType == "label" || m_schemaType == "button" ||
                                 m_schemaType == "check-box" || m_schemaType == "image-button");
     float y = 2.0f;
