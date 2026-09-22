@@ -916,6 +916,9 @@ void CanvasPane::rebuildDynamicRows() {
         bool skip = false;
         for (const char* s : kSkip)
             if (key == s) { skip = true; break; }
+        if (!skip && m_schemaType == "button" &&
+            (key == "image" || key == "image-resource" || key == "imageResource"))
+            skip = true;   // Button 无 image 运行时分发（资源入口是四态图/animation）
         if (skip) continue;
         const nlohmann::json& spec = it.value();
         const std::string t = spec.value("type", "");
@@ -1073,6 +1076,16 @@ void CanvasPane::rebuildDynamicRows() {
                                    return;
                                }
                                if (isPathLikeProp(prop)) {
+                                   // textChanged 每键写回——过滤明显无效中间态
+                                   // （空串/无扩展名且非 provider: 引用），避免
+                                   // loadFromFile 过程性失败日志刷屏；空串引擎无
+                                   // 卸载语义，保持上次有效值
+                                   const bool providerRef =
+                                       v2.rfind("provider:", 0) == 0;
+                                   if (v2.empty() ||
+                                       (!providerRef &&
+                                        v2.find('.') == std::string::npos))
+                                       return;
                                    if (ControlModel* m2 = findModel(m_selectedId))
                                        m2->props.extended[prop] = v2;
                                }
