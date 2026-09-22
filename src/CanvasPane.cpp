@@ -986,6 +986,11 @@ void CanvasPane::rebuildDynamicRows() {
 
         if (t != "string" && t != "number" && t != "integer" && t != "boolean") continue;
 
+        // image 的 providerName/resourceId：仅 JSON 解析期键（引擎运行时
+        // setStringProperty 只分发 image/image-resource）——不生成无效槽
+        if (m_schemaType == "image" &&
+            (key == "providerName" || key == "resourceId")) continue;
+
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
@@ -1091,6 +1096,43 @@ void CanvasPane::rebuildDynamicRows() {
         }
         ++rows;
         genKeys += " " + key;
+    }
+
+    // Button 资源行：schema 只暴露 actors/luotiAni object（解析期结构），运行时
+    // 单键未入 schema——设计器补内置行（引擎 setStringProperty 分发已支持：
+    // 四态状态图 + luoti 动画；读回暂不支持，输入型行）
+    if (m_schemaType == "button") {
+        static const char* kBtnRes[] = { "normal-image", "hover-image",
+                                         "pressed-image", "disabled-image", "animation" };
+        for (const char* rk : kBtnRes) {
+            const std::string prop = jsonKeyToProp(rk);
+            makeLabel(rk);
+            Control ta = m_ui->CreateTextArea(0, 0, rowW, 40.0f);
+            ta.SetRect(2.0f, y, rowW, 40.0f);
+            ta.SetStateColor(PropertyNames::kBackground,
+                             UIStateColor{ UIColor{0x1E, 0x1E, 0x1E, 255}, UIColor{0x1E, 0x1E, 0x1E, 255},
+                                           UIColor{0x1E, 0x1E, 0x1E, 255}, UIColor{0x1E, 0x1E, 0x1E, 255} });
+            ta.SetStateColor(PropertyNames::kText,
+                             UIStateColor{ UIColor{0xE0, 0xE0, 0xE0, 255}, UIColor{0xE0, 0xE0, 0xE0, 255},
+                                           UIColor{0xE0, 0xE0, 0xE0, 255}, UIColor{0xE0, 0xE0, 0xE0, 255} });
+            ta.SetStateColor(PropertyNames::kBorder,
+                             UIStateColor{ UIColor{0x40, 0x40, 0x40, 255}, UIColor{0x4A, 0x90, 0xD9, 255},
+                                           UIColor{0x4A, 0x90, 0xD9, 255}, UIColor{0x40, 0x40, 0x40, 255} });
+            ta.SetString(PropertyNames::kTextContent,
+                         m_schemaTarget.GetString(prop.c_str()));
+            ta.SetCallback(PropertyNames::kEventTextChanged,
+                           [this, prop](const Event& e) {
+                               if (m_propSync) return;
+                               if (!m_schemaTarget.IsValid()) return;
+                               m_schemaTarget.SetString(prop.c_str(), e.GetTextChanged());
+                           });
+            m_propDynamic.AddChild(ta);
+            m_dynamicRows.push_back(ta);
+            m_dynamicRowY.push_back(y);
+            y += 40.0f + rowGap;
+            ++rows;
+            genKeys += std::string(" ") + rk;
+        }
     }
 
     // 文字阴影统一段（label/button/win-frame——用户视角一致的"文字阴影"配置）：
