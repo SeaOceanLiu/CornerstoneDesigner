@@ -555,12 +555,14 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
         ctl = m_viewport->CreateWinFrame(cap, x, y, w, h);
     else if (tb == "tImage" || tb == "tImgBtn")
         ctl = m_viewport->CreateImage("provider:dc_canvas_grid", x, y, w, h);
-    else if (tb == "tAni")
+    else if (tb == "tAni") {
         // 缺省动画（assets 必备文件）：创建即加载——空路径创建引擎不支持
         // （prepare 对未加载 throw 回滚，引擎清单 P0-25）；用户经 path 行换动画
         ctl = m_viewport->CreateAnimation(
             "assets/animations/rotateBtn/rotateBtn.jsonc", x, y, w, h);
-    else ctl = m_viewport->CreatePanel(x, y, w, h);   // 占位类型
+        // 放置即播放（预览意图）；此后 path 换动画由引擎 wasPlaying 语义保持状态
+        if (ctl.IsValid()) ctl.SetBool(PropertyNames::kPlaying, 1);
+    } else ctl = m_viewport->CreatePanel(x, y, w, h);   // 占位类型
     return ctl;
 }
 
@@ -1108,23 +1110,10 @@ void CanvasPane::rebuildDynamicRows() {
                                    if (ControlModel* m2 = findModel(m_selectedId))
                                        m2->props.extended[prop] = v2;
                                }
-                               if (prop == PropertyNames::kAnimation ||
-                                   prop == "path") {   // 诊断：两种 prop 都打（判特判是否生效）
-                                   std::printf(
-                                       "[DBG-anim] write prop=%s value=%s "
-                                       "schemaType=%s\n",
-                                       prop.c_str(), v2.c_str(),
-                                       m_schemaType.c_str());
-                                   std::fflush(stdout);
-                               }
                                m_schemaTarget.SetString(prop.c_str(), v2);
-                               // animation path 设置成功 → 自动播放
-                               // （引擎语义创建/换动画不自动 play——输入路径
-                               // 即预览意图；SetString 失败时引擎两阶段语义
-                               // 安全吞掉 play 请求，无需检查返回值）
-                               if (prop == PropertyNames::kAnimation)
-                                   m_schemaTarget.SetBool(
-                                       PropertyNames::kPlaying, 1);
+                               // playing 状态不干预：引擎 wasPlaying 语义
+                               // （播放中换动画→重播、暂停中换→保持暂停）；
+                               // 首次预览由 placeControl 放置时自动播放承担
                            });
             m_propDynamic.AddChild(ta);
             m_dynamicRows.push_back(ta);
