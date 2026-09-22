@@ -860,7 +860,7 @@ void CanvasPane::rebuildDynamicRows() {
     static const char* kSkip[] = {
         "type", "id", "name", "rect", "scale", "margin", "layout", "anchor",
         "events", "context-menu", "actors", "luotiAni", "caption-label",
-        "file", "image", "image-resource", "resourceId", "providerName",
+        "file", "resourceId", "providerName",   // 解析期键（引擎无运行时 setter）
         "font", "match-parent-rect", "playing", "debug-draw",
         "expand", "offset", "size", "style", "alignment",
         "check-state", "vertical-align", "popup", "position",
@@ -1014,11 +1014,6 @@ void CanvasPane::rebuildDynamicRows() {
 
         if (t != "string" && t != "number" && t != "integer" && t != "boolean") continue;
 
-        // image 的 providerName/resourceId：仅 JSON 解析期键（引擎运行时
-        // setStringProperty 只分发 image/image-resource）——不生成无效槽
-        if (m_schemaType == "image" &&
-            (key == "providerName" || key == "resourceId")) continue;
-
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
@@ -1050,6 +1045,11 @@ void CanvasPane::rebuildDynamicRows() {
                 v = h ? m_viewport->FromHandle(h).GetString(PropertyNames::kCaption) : "";
             } else {
                 v = m_schemaTarget.GetString(prop.c_str());
+                // 路径类引擎只写不读（normal-image 等）——extended 兜底显示
+                if (v.empty() && isPathLikeProp(prop)) {
+                    if (ControlModel* m2 = findModel(m_selectedId))
+                        v = m2->props.extended.value(prop, "");
+                }
             }
             ta.SetString(PropertyNames::kTextContent, v);
             // 文本行（caption/title）与固定区"文本"行双向同步
@@ -1071,6 +1071,10 @@ void CanvasPane::rebuildDynamicRows() {
                                    if (h) m_viewport->FromHandle(h).SetString(
                                        PropertyNames::kCaption, v2);
                                    return;
+                               }
+                               if (isPathLikeProp(prop)) {
+                                   if (ControlModel* m2 = findModel(m_selectedId))
+                                       m2->props.extended[prop] = v2;
                                }
                                m_schemaTarget.SetString(prop.c_str(), v2);
                            });
@@ -1148,13 +1152,22 @@ void CanvasPane::rebuildDynamicRows() {
                              UIStateColor{ UIColor{0x40, 0x40, 0x40, 255}, UIColor{0x4A, 0x90, 0xD9, 255},
                                            UIColor{0x4A, 0x90, 0xD9, 255}, UIColor{0x40, 0x40, 0x40, 255} });
             ta.SetString(PropertyNames::kTextContent,
-                         m_schemaTarget.GetString(prop.c_str()));
+                         [&] {
+                             std::string v = m_schemaTarget.GetString(prop.c_str());
+                             if (v.empty()) {   // 引擎只写不读——extended 兜底
+                                 if (ControlModel* m2 = findModel(m_selectedId))
+                                     v = m2->props.extended.value(prop, "");
+                             }
+                             return v;
+                         }());
             ta.SetCallback(PropertyNames::kEventTextChanged,
                            [this, prop](const Event& e) {
                                if (m_propSync) return;
                                if (!m_schemaTarget.IsValid()) return;
                                const std::string v2 =
                                    sanitizePropValue(prop, e.GetTextChanged());
+                               if (ControlModel* m2 = findModel(m_selectedId))
+                                   m2->props.extended[prop] = v2;
                                m_schemaTarget.SetString(prop.c_str(), v2.c_str());
                            });
             m_propDynamic.AddChild(ta);
