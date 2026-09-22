@@ -1028,6 +1028,9 @@ void CanvasPane::rebuildDynamicRows() {
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
+        // animation def 的 path 键 → 引擎运行时键 animation（LuotiAni 分发/读回均为此键）
+        if (key == "path" && m_schemaType == "animation")
+            prop = PropertyNames::kAnimation;
         makeLabel(key);
 
         if (t == "string") {
