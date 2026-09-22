@@ -1103,12 +1103,12 @@ void CanvasPane::rebuildDynamicRows() {
                                    if (ControlModel* m2 = findModel(m_selectedId))
                                        m2->props.extended[prop] = v2;
                                }
-                               const int rc =
-                                   m_schemaTarget.SetString(prop.c_str(), v2);
+                               m_schemaTarget.SetString(prop.c_str(), v2);
                                // animation path 设置成功 → 自动播放
                                // （引擎语义创建/换动画不自动 play——输入路径
-                               // 即预览意图，设计器补 play 免去手动勾 playing）
-                               if (rc == 1 && prop == PropertyNames::kAnimation)
+                               // 即预览意图；SetString 失败时引擎两阶段语义
+                               // 安全吞掉 play 请求，无需检查返回值）
+                               if (prop == PropertyNames::kAnimation)
                                    m_schemaTarget.SetBool(
                                        PropertyNames::kPlaying, 1);
                            });
