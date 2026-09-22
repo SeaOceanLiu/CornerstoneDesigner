@@ -866,7 +866,7 @@ void CanvasPane::rebuildDynamicRows() {
         "type", "id", "name", "rect", "scale", "margin", "layout", "anchor",
         "events", "context-menu", "actors", "luotiAni", "caption-label",
         "file", "resourceId", "providerName",   // 解析期键（引擎无运行时 setter）
-        "font", "match-parent-rect", "playing", "debug-draw",
+        "font", "match-parent-rect", "debug-draw",
         "expand", "offset", "size", "style", "alignment",
         "check-state", "vertical-align", "popup", "position",
         "caption", "enabled", "visible",
