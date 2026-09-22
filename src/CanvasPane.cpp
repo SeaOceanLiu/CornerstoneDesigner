@@ -859,8 +859,16 @@ void CanvasPane::rebuildDynamicRows() {
     // 合并 common（allOf $ref）与类型自有属性
     nlohmann::json merged = def["properties"];
     const auto& commonProps = defs["common"]["properties"];
-    for (auto it = commonProps.begin(); it != commonProps.end(); ++it)
-        if (!merged.contains(it.key())) merged[it.key()] = it.value();
+    // 无文字/无颜色概念的控件（图片/动画）：common 的视觉类键不强补
+    // （类型 def 未声明 = 引擎无对应概念——text 组/阴影/字号对图片动画无意义）
+    const bool noVisualType = (m_schemaType == "image" || m_schemaType == "animation");
+    for (auto it = commonProps.begin(); it != commonProps.end(); ++it) {
+        if (merged.contains(it.key())) continue;
+        if (noVisualType && (it.key() == "colors" || it.key() == "text-shadow" ||
+                             it.key() == "font" || it.key() == "font-size"))
+            continue;
+        merged[it.key()] = it.value();
+    }
 
     // 跳过：布局/资源/嵌套复杂对象/事件类；caption/enabled/visible 固定区已有
     // （schema 键名已统一 kebab——skip 名单同步 kebab）
@@ -901,6 +909,10 @@ void CanvasPane::rebuildDynamicRows() {
 
     m_schemaTarget = pc->ctl;
     m_schemaType = m->props.type;
+    // 无文字/无颜色概念的控件（图片/动画）：固定区 caption/背景色行隐藏
+    const bool noVisual = (m_schemaType == "image" || m_schemaType == "animation");
+    if (m_propCaption.IsValid()) m_propCaption.SetVisible(!noVisual);
+    if (m_propColor.IsValid()) m_propColor.SetVisible(!noVisual);
     const bool textIsCaption = (m_schemaType == "label" || m_schemaType == "button" ||
                                 m_schemaType == "check-box" || m_schemaType == "image-button");
     float y = 2.0f;
