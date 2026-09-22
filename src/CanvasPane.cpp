@@ -128,6 +128,34 @@ std::vector<unsigned char> buildGridTilePng(int tilePx, int cellPx) {
 constexpr int kTileCells = 4;                  // 每瓦片 4×4 格（减少每帧平铺绘制调用数）
 constexpr int kMaxTilePx = 512;                // 瓦片尺寸上限（防缩放档过大）
 
+// 路径类属性（资源/文件引用）：值中任何换行/空白都非合法路径成分——
+// TextArea 多行文本天然携带换行（尾随或误回车），写回前必须清理，
+// 否则引擎 loadFromFile 以 'xxx.png\n' 打开必然失败
+bool isPathLikeProp(const std::string& p) {
+    return p == "image" || p == "image-resource" ||
+           p == "normal-image" || p == "hover-image" ||
+           p == "pressed-image" || p == "disabled-image" ||
+           p == "animation" || p == "file" || p == "font-file";
+}
+
+std::string sanitizePropValue(const std::string& prop, std::string s) {
+    auto isEolWs = [](char c) {
+        return c == '\n' || c == '\r' || c == ' ' || c == '\t';
+    };
+    if (isPathLikeProp(prop)) {
+        // 路径类：移除全部换行 + 首尾空白
+        s.erase(std::remove_if(s.begin(), s.end(),
+                               [](char c) { return c == '\n' || c == '\r'; }),
+                s.end());
+        while (!s.empty() && isEolWs(s.front())) s.erase(s.begin());
+        while (!s.empty() && isEolWs(s.back())) s.pop_back();
+        return s;
+    }
+    // 文本类：仅裁尾随换行（多行正文保留内部换行）
+    while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
+    return s;
+}
+
 }  // namespace
 
 namespace Designer {
@@ -1031,7 +1059,8 @@ void CanvasPane::rebuildDynamicRows() {
                            [this, prop, viaLabel, innerKey, isCaptionRow](const Event& e) {
                                if (m_propSync) return;
                                if (!m_schemaTarget.IsValid()) return;
-                               const std::string v2 = e.GetTextChanged();
+                               const std::string v2 =
+                                   sanitizePropValue(prop, e.GetTextChanged());
                                if (isCaptionRow && m_propCaption.IsValid()) {
                                    m_propSync = true;
                                    m_propCaption.SetString(PropertyNames::kTextContent, v2);
@@ -1124,7 +1153,9 @@ void CanvasPane::rebuildDynamicRows() {
                            [this, prop](const Event& e) {
                                if (m_propSync) return;
                                if (!m_schemaTarget.IsValid()) return;
-                               m_schemaTarget.SetString(prop.c_str(), e.GetTextChanged());
+                               const std::string v2 =
+                                   sanitizePropValue(prop, e.GetTextChanged());
+                               m_schemaTarget.SetString(prop.c_str(), v2.c_str());
                            });
             m_propDynamic.AddChild(ta);
             m_dynamicRows.push_back(ta);
