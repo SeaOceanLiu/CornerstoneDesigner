@@ -499,7 +499,7 @@ static bool controlSpec(const std::string& tb, float& w, float& h,
         { "tColor",  80,  32,  "颜色",        "color" },
         { "tMenu",   220, 28,  "菜单",        "menu" },
         { "tStatus", 220, 28,  "状态栏(占位)", "status" },
-        { "tAni",    120, 120, "动画(占位)",  "ani" },
+        { "tAni",    120, 120, "动画",        "ani" },
         { "tDialog", 240, 150, "对话框(占位)", "dlg" },
         { "tCtx",    140, 80,  "右键菜单(占位)","ctx" },
         { "tImgBtn", 48,  48,  "图片按钮",    "imgbtn" },
@@ -555,6 +555,11 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
         ctl = m_viewport->CreateWinFrame(cap, x, y, w, h);
     else if (tb == "tImage" || tb == "tImgBtn")
         ctl = m_viewport->CreateImage("provider:dc_canvas_grid", x, y, w, h);
+    else if (tb == "tAni")
+        // 缺省动画（assets 必备文件）：创建即加载——空路径创建引擎不支持
+        // （prepare 对未加载 throw 回滚，引擎清单 P0-25）；用户经 path 行换动画
+        ctl = m_viewport->CreateAnimation(
+            "assets/animations/rotateBtn/rotateBtn.jsonc", x, y, w, h);
     else ctl = m_viewport->CreatePanel(x, y, w, h);   // 占位类型
     return ctl;
 }
