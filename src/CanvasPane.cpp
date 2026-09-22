@@ -861,7 +861,8 @@ void CanvasPane::rebuildDynamicRows() {
     const auto& commonProps = defs["common"]["properties"];
     // 无文字/无颜色概念的控件（图片/动画）：common 的视觉类键不强补
     // （类型 def 未声明 = 引擎无对应概念——text 组/阴影/字号对图片动画无意义）
-    const bool noVisualType = (m_schemaType == "image" || m_schemaType == "animation");
+    // 注意用 m->props.type：m_schemaType 在下方才赋值，此处读会是上一控件的类型
+    const bool noVisualType = (m->props.type == "image" || m->props.type == "animation");
     for (auto it = commonProps.begin(); it != commonProps.end(); ++it) {
         if (merged.contains(it.key())) continue;
         if (noVisualType && (it.key() == "colors" || it.key() == "text-shadow" ||
