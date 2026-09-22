@@ -911,8 +911,16 @@ void CanvasPane::rebuildDynamicRows() {
         m_dynamicRowY.push_back(y);
         y += lblH + gapLbl;
     };
-    for (auto it = merged.begin(); it != merged.end(); ++it) {
-        const std::string key = it.key();
+    // 先收集再排序：nlohmann 对象按字母序遍历，资源/路径类键（animation、
+    // 四态图等）会被普通属性切断——聚尾生成（用户视角的属性分组）
+    std::vector<std::pair<std::string, const nlohmann::json*>> kvs;
+    for (auto it = merged.begin(); it != merged.end(); ++it)
+        kvs.push_back({it.key(), &it.value()});
+    std::stable_partition(kvs.begin(), kvs.end(), [](const auto& kv) {
+        return !isPathLikeProp(jsonKeyToProp(kv.first));
+    });
+    for (const auto& kv : kvs) {
+        const std::string key = kv.first;
         bool skip = false;
         for (const char* s : kSkip)
             if (key == s) { skip = true; break; }
@@ -920,7 +928,7 @@ void CanvasPane::rebuildDynamicRows() {
             (key == "image" || key == "image-resource" || key == "imageResource"))
             skip = true;   // Button 无 image 运行时分发（资源入口是四态图/animation）
         if (skip) continue;
-        const nlohmann::json& spec = it.value();
+        const nlohmann::json& spec = *kv.second;
         const std::string t = spec.value("type", "");
 
         // 颜色组展开：colors.<组>.<态> → 运行时 "组[.态]"（normal 省略后缀，键名点号风格）
@@ -1082,9 +1090,12 @@ void CanvasPane::rebuildDynamicRows() {
                                    // 卸载语义，保持上次有效值
                                    const bool providerRef =
                                        v2.rfind("provider:", 0) == 0;
-                                   if (v2.empty() ||
-                                       (!providerRef &&
-                                        v2.find('.') == std::string::npos))
+                                   // 空串放行（引擎加载失败 → Actor 无纹理 →
+                                   // 图消失 = 用户视角的"删除"）；仅过滤非空
+                                   // 无扩展名的中间态（'D:' 等 drive-relative
+                                   // 会拼 basePath 刷失败日志）
+                                   if (!providerRef && !v2.empty() &&
+                                       v2.find('.') == std::string::npos)
                                        return;
                                    if (ControlModel* m2 = findModel(m_selectedId))
                                        m2->props.extended[prop] = v2;
