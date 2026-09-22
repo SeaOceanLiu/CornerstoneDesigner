@@ -898,18 +898,18 @@ void CanvasPane::rebuildDynamicRows() {
             static const char* kGroups[] = { "background", "border", "text", "textShadow" };
             static const char* kStates[] = { "normal", "hover", "pressed", "disabled" };
             for (const char* grp : kGroups) {
-                // win-frame 无 hover/pressed 状态机（窗口语义）、title 阴影四态色设计上
-                // 不生效——跳过不可达槽位（normal/disabled 可达保留）
-                if (m_schemaType == "win-frame") {
-                    if (std::strcmp(grp, "textShadow") == 0) continue;
-                    if (std::strcmp(grp, "text") == 0 &&
-                        (std::strcmp(st, "hover") == 0 || std::strcmp(st, "pressed") == 0))
-                        continue;
-                }
+                // win-frame：title 阴影四态色设计上不生效——整组跳过
+                if (m_schemaType == "win-frame" && std::strcmp(grp, "textShadow") == 0)
+                    continue;
                 const std::string gk = jsonKeyToProp(grp);   // textShadow → text-shadow
                 for (const char* st : kStates) {
                     if (std::strcmp(grp, "background") == 0 &&
                         std::strcmp(st, "normal") == 0) continue;   // 固定区已有背景色
+                    // win-frame 无 hover/pressed 状态机（窗口语义）——不可达槽跳过
+                    // （text.normal/disabled 可达保留）
+                    if (m_schemaType == "win-frame" && std::strcmp(grp, "text") == 0 &&
+                        (std::strcmp(st, "hover") == 0 || std::strcmp(st, "pressed") == 0))
+                        continue;
                     const std::string prop = gk + (std::strcmp(st, "normal") == 0
                         ? std::string() : ("." + std::string(st)));
                     const std::string lbl = std::string(grp) + "." + st;
