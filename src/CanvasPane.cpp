@@ -1103,6 +1103,15 @@ void CanvasPane::rebuildDynamicRows() {
                                    if (ControlModel* m2 = findModel(m_selectedId))
                                        m2->props.extended[prop] = v2;
                                }
+                               if (prop == PropertyNames::kAnimation ||
+                                   prop == "path") {   // 诊断：两种 prop 都打（判特判是否生效）
+                                   std::printf(
+                                       "[DBG-anim] write prop=%s value=%s "
+                                       "schemaType=%s\n",
+                                       prop.c_str(), v2.c_str(),
+                                       m_schemaType.c_str());
+                                   std::fflush(stdout);
+                               }
                                m_schemaTarget.SetString(prop.c_str(), v2);
                                // animation path 设置成功 → 自动播放
                                // （引擎语义创建/换动画不自动 play——输入路径
