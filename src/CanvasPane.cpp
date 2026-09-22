@@ -910,12 +910,13 @@ void CanvasPane::rebuildDynamicRows() {
 
     m_schemaTarget = pc->ctl;
     m_schemaType = m->props.type;
-    // 无文字/无颜色概念的控件（图片/动画）：固定区 caption/背景色行隐藏
-    const bool noVisual = (m_schemaType == "image" || m_schemaType == "animation");
+    // 无文字概念的控件（图片/动画）：固定区 caption 行隐藏（背景色行已退役——
+    // 背景色统一走动态区 colors.background.normal 色槽）
+    const bool noText = (m_schemaType == "image" || m_schemaType == "animation");
     if (m_propCaption.IsValid())
-        m_propCaption.SetBool(PropertyNames::kVisible, !noVisual);
+        m_propCaption.SetBool(PropertyNames::kVisible, !noText);
     if (m_propColor.IsValid())
-        m_propColor.SetBool(PropertyNames::kVisible, !noVisual);
+        m_propColor.SetBool(PropertyNames::kVisible, false);   // 已退役：动态区背景色槽替代
     const bool textIsCaption = (m_schemaType == "label" || m_schemaType == "button" ||
                                 m_schemaType == "check-box" || m_schemaType == "image-button");
     float y = 2.0f;
@@ -964,8 +965,7 @@ void CanvasPane::rebuildDynamicRows() {
                     continue;
                 const std::string gk = jsonKeyToProp(grp);   // textShadow → text-shadow
                 for (const char* st : kStates) {
-                    if (std::strcmp(grp, "background") == 0 &&
-                        std::strcmp(st, "normal") == 0) continue;   // 固定区已有背景色
+                    // 背景色入动态区（固定区背景色行已退役——schema 驱动统一）；
                     // win-frame 无 hover/pressed 状态机（窗口语义）——不可达槽跳过
                     // （text.normal/disabled 可达保留）
                     if (m_schemaType == "win-frame" && std::strcmp(grp, "text") == 0 &&
