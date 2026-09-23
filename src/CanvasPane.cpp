@@ -906,7 +906,7 @@ void CanvasPane::rebuildDynamicRows() {
         "expand", "offset", "size", "style", "alignment",
         "check-state", "vertical-align", "popup", "position",
         "caption", "enabled", "visible",
-        "border-visible", "font-file", "font-resource",   // 资源路径/调试类
+        "font-file", "font-resource",   // 资源路径类（border-visible 已随 P0-26 视觉组下放启用）
         "flow-weight",                                     // 布局权重（画布自由布局无意义）
         "col", "colSpan", "row", "rowSpan", "gap", "padding",   // 容器布局键
         "clip-children",
