@@ -793,6 +793,39 @@ static std::string jsonKeyToProp(const std::string& key) {
     return out;
 }
 
+// P0-26 schema 重构：colors 组态子集解析——类型 def 的 colors.$ref → 组 def →
+// 子组 $ref → state-color-N → 态名清单。返回 { 子组名 → 态名清单 }；
+// 类型未声明 colors（组件实例等）返回空 → 动态区不生成颜色组。
+static std::map<std::string, std::vector<std::string>> resolveColorGroups(
+    const nlohmann::json& defs, const nlohmann::json& typeDef) {
+    std::map<std::string, std::vector<std::string>> out;
+    static const std::map<std::string, std::vector<std::string>> kStateSets = {
+        { "state-color-4",  { "normal", "hover", "pressed", "disabled" } },
+        { "state-color-3d", { "normal", "hover", "disabled" } },
+        { "state-color-3p", { "normal", "hover", "pressed" } },
+        { "state-color-1",  { "normal" } },
+    };
+    if (!typeDef.contains("properties") || !typeDef["properties"].contains("colors"))
+        return out;
+    const auto& colorsDecl = typeDef["properties"]["colors"];
+    if (!colorsDecl.contains("$ref")) return out;
+    const std::string colorsRef = colorsDecl["$ref"].get<std::string>();
+    static const std::string kPrefix = "#/$defs/";
+    if (colorsRef.rfind(kPrefix, 0) != 0) return out;
+    const std::string colorsDefName = colorsRef.substr(kPrefix.size());
+    if (!defs.contains(colorsDefName) || !defs[colorsDefName].contains("properties"))
+        return out;
+    for (auto it = defs[colorsDefName]["properties"].begin();
+         it != defs[colorsDefName]["properties"].end(); ++it) {
+        if (!it.value().contains("$ref")) continue;
+        const std::string scRef = it.value()["$ref"].get<std::string>();
+        if (scRef.rfind(kPrefix, 0) != 0) continue;
+        const auto& states = kStateSets.find(scRef.substr(kPrefix.size()));
+        if (states != kStateSets.end()) out[it.key()] = states->second;
+    }
+    return out;
+}
+
 bool CanvasPane::LoadSchema(const std::string& path) {
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) {
@@ -857,19 +890,11 @@ void CanvasPane::rebuildDynamicRows() {
     if (!def.contains("properties")) return;
 
     // 合并 common（allOf $ref）与类型自有属性
+    // （P0-26 重构后 common 仅真通用键：id/enabled/visible/margin/scale/rect 等）
     nlohmann::json merged = def["properties"];
     const auto& commonProps = defs["common"]["properties"];
-    // 无文字/无颜色概念的控件（图片/动画）：common 的视觉类键不强补
-    // （类型 def 未声明 = 引擎无对应概念——text 组/阴影/字号对图片动画无意义）
-    // 注意用 m->props.type：m_schemaType 在下方才赋值，此处读会是上一控件的类型
-    const bool noVisualType = (m->props.type == "image" || m->props.type == "animation");
-    for (auto it = commonProps.begin(); it != commonProps.end(); ++it) {
-        if (merged.contains(it.key())) continue;
-        if (noVisualType && (it.key() == "colors" || it.key() == "text-shadow" ||
-                             it.key() == "font" || it.key() == "font-size"))
-            continue;
-        merged[it.key()] = it.value();
-    }
+    for (auto it = commonProps.begin(); it != commonProps.end(); ++it)
+        if (!merged.contains(it.key())) merged[it.key()] = it.value();
 
     // 跳过：布局/资源/嵌套复杂对象/事件类；caption/enabled/visible 固定区已有
     // （schema 键名已统一 kebab——skip 名单同步 kebab）
@@ -957,23 +982,25 @@ void CanvasPane::rebuildDynamicRows() {
         // 颜色组展开：colors.<组>.<态> → 运行时 "组[.态]"（normal 省略后缀，键名点号风格）
         // 行先放占位 Button（背景=当前色+hex 文本），点击才创建 ColorPicker（3.5s 构建惰性化）
         if (key == "colors" && spec.is_object()) {
-            static const char* kGroups[] = { "background", "border", "text", "textShadow" };
-            static const char* kStates[] = { "normal", "hover", "pressed", "disabled" };
-            for (const char* grp : kGroups) {
+            // P0-26 schema 重构：按类型 def 声明的态子集生成（colors-full 四态/
+            // colors-menu 三态/colors-basic1 单态……），未声明组不生成
+            const auto colorGroups =
+                resolveColorGroups((*m_schema)["$defs"], def);
+            for (const auto& [grpName, states] : colorGroups) {
                 // win-frame：title 阴影四态色设计上不生效——整组跳过
-                if (m_schemaType == "win-frame" && std::strcmp(grp, "textShadow") == 0)
+                if (m_schemaType == "win-frame" && grpName == "text-shadow")
                     continue;
-                const std::string gk = jsonKeyToProp(grp);   // textShadow → text-shadow
-                for (const char* st : kStates) {
+                const std::string gk = grpName;   // schema 子组名即运行时组键（text-shadow）
+                for (const std::string& st : states) {
                     // 背景色入动态区（固定区背景色行已退役——schema 驱动统一）；
                     // win-frame 无 hover/pressed 状态机（窗口语义）——不可达槽跳过
                     // （text.normal/disabled 可达保留）
-                    if (m_schemaType == "win-frame" && std::strcmp(grp, "text") == 0 &&
-                        (std::strcmp(st, "hover") == 0 || std::strcmp(st, "pressed") == 0))
+                    if (m_schemaType == "win-frame" && grpName == "text" &&
+                        (st == "hover" || st == "pressed"))
                         continue;
-                    const std::string prop = gk + (std::strcmp(st, "normal") == 0
-                        ? std::string() : ("." + std::string(st)));
-                    const std::string lbl = std::string(grp) + "." + st;
+                    const std::string prop = gk + (st == "normal"
+                        ? std::string() : ("." + st));
+                    const std::string lbl = grpName + "." + st;
                     // 内部文本 Label 的暴露键按类型分派：WinFrame 用其专有 title-label
                     // （caption-label 不为其发明新键——92 键一致性），其余用 caption-label
                     const char* capKey = (m_schemaType == "win-frame")
@@ -981,7 +1008,7 @@ void CanvasPane::rebuildDynamicRows() {
                     // 回读：text/textShadow 组的实际色在内部 Label 上
                     // （Button 基类字段不反映直控结果）——从其读
                     UIColor cc;
-                    if ((std::strcmp(grp, "text") == 0 || std::strcmp(grp, "textShadow") == 0) && m_ui) {
+                    if ((grpName == "text" || grpName == "text-shadow") && m_ui) {
                         void* capH = m_schemaTarget.GetPtr(capKey);
                         cc = capH ? m_viewport->FromHandle(capH).GetColor(prop.c_str())
                                   : m_schemaTarget.GetColor(prop.c_str());
@@ -997,19 +1024,19 @@ void CanvasPane::rebuildDynamicRows() {
                     // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
                     Control cp = m_ui->CreateColorPicker(2.0f, y, 120.0f, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
-                                   [this, prop, gk, grp, st, capKey](const Event& e) {
+                                   [this, prop, gk, grpName, st, capKey](const Event& e) {
                         if (!m_schemaTarget.IsValid()) return;
                         const UIColor c = e.GetChangedColor();
                         // text/textShadow 组：直控内部 caption Label
                         // （GetPtr("caption-label")——Button 单色 setter 不同步 caption 的绕行回收）
-                        if ((std::strcmp(grp, "text") == 0 || std::strcmp(grp, "textShadow") == 0) && m_ui) {
+                        if ((grpName == "text" || grpName == "text-shadow") && m_ui) {
                             void* capH = m_schemaTarget.GetPtr(capKey);
                             if (capH) {
                                 // caption 属于被设计控件子树（子视口实例）——
                                 // FromHandle 须用子视口域（主实例域会 validate 失败落空）
                                 auto cap = m_viewport->FromHandle(capH);
-                                const std::string capProp = gk + (std::strcmp(st, "normal") == 0
-                                    ? std::string() : ("." + std::string(st)));
+                                const std::string capProp = gk + (st == "normal"
+                                    ? std::string() : ("." + st));
                                 cap.SetColor(capProp.c_str(), c);
                                 // CheckBox recreate 丢 caption 状态——存 extended（拖动结束恢复用）
                                 ControlModel* m2 = findModel(m_selectedId);
@@ -1050,9 +1077,7 @@ void CanvasPane::rebuildDynamicRows() {
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
-        // animation def 的 path 键 → 引擎运行时键 animation（LuotiAni 分发/读回均为此键）
-        if (key == "path" && m_schemaType == "animation")
-            prop = PropertyNames::kAnimation;
+        // （path→animation 特判已删：引擎 P0-24 别名生效，path 即运行时键）
         makeLabel(key);
 
         if (t == "string") {
