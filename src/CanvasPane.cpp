@@ -501,7 +501,7 @@ static bool controlSpec(const std::string& tb, float& w, float& h,
         { "tStatus", 220, 28,  "状态栏",       "status" },
         { "tAni",    120, 120, "动画",        "ani" },
         { "tDialog", 240, 150, "对话框",      "dlg" },
-        { "tCtx",    140, 80,  "右键菜单(占位)","ctx" },
+        { "tCtx",    140, 80,  "右键菜单",     "ctx" },
         { "tImgBtn", 48,  48,  "图片按钮",    "imgbtn" },
         { "tPopup",  160, 100, "弹窗(占位)",  "popup" },
         { "tConfirm", 200, 100, "确认框(占位)", "confirm" },
@@ -550,6 +550,8 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
     else if (tb == "tList")   ctl = m_viewport->CreateListView(x, y, w, h);
     else if (tb == "tTree")   ctl = m_viewport->CreateTreeView(x, y, w, h);
     else if (tb == "tSplit")  ctl = m_viewport->CreateSplitter(x, y, w, h, 0);
+    else if (tb == "tTabs")   ctl = m_viewport->CreateTabControl(x, y, w, h);
+    else if (tb == "tCtx")    ctl = m_viewport->CreateContextMenu(x, y, w, h);
     else if (tb == "tMenu")   ctl = m_viewport->CreateMenuBar(x, y, w, h);
     else if (tb == "tWin")
         ctl = m_viewport->CreateWinFrame(cap, x, y, w, h);
