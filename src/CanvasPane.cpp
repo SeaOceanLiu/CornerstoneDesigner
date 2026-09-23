@@ -498,9 +498,9 @@ static bool controlSpec(const std::string& tb, float& w, float& h,
         { "tNum",    110, 28,  "数字输入",    "num" },
         { "tColor",  80,  32,  "颜色",        "color" },
         { "tMenu",   220, 28,  "菜单",        "menu" },
-        { "tStatus", 220, 28,  "状态栏(占位)", "status" },
+        { "tStatus", 220, 28,  "状态栏",       "status" },
         { "tAni",    120, 120, "动画",        "ani" },
-        { "tDialog", 240, 150, "对话框(占位)", "dlg" },
+        { "tDialog", 240, 150, "对话框",      "dlg" },
         { "tCtx",    140, 80,  "右键菜单(占位)","ctx" },
         { "tImgBtn", 48,  48,  "图片按钮",    "imgbtn" },
         { "tPopup",  160, 100, "弹窗(占位)",  "popup" },
@@ -551,8 +551,14 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
     else if (tb == "tTree")   ctl = m_viewport->CreateTreeView(x, y, w, h);
     else if (tb == "tSplit")  ctl = m_viewport->CreateSplitter(x, y, w, h, 0);
     else if (tb == "tMenu")   ctl = m_viewport->CreateMenuBar(x, y, w, h);
-    else if (tb == "tWin" || tb == "tDialog")
+    else if (tb == "tWin")
         ctl = m_viewport->CreateWinFrame(cap, x, y, w, h);
+    else if (tb == "tDialog")
+        // 真实 Dialog 控件（引擎探针实证 colors 生效；此前占位映射 WinFrame
+        // 致"背景被内容面板遮挡"误判——组合语义非引擎缺陷）
+        ctl = m_viewport->CreateDialog(u8"确定", u8"取消", x, y, w, h);
+    else if (tb == "tStatus")
+        ctl = m_viewport->CreateStatusBar(x, y, w, h);
     else if (tb == "tImage" || tb == "tImgBtn")
         ctl = m_viewport->CreateImage("provider:dc_canvas_grid", x, y, w, h);
     else if (tb == "tAni") {
