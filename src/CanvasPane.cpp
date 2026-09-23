@@ -523,7 +523,7 @@ static std::string controlTypeOf(const std::string& tb) {
         { "tList", "list-view" }, { "tTree", "tree-view" }, { "tNum", "numeric-up-down" },
         { "tColor", "color-picker" }, { "tMenu", "menu-bar" }, { "tStatus", "status-bar" },
         { "tAni", "animation" }, { "tDialog", "dialog" }, { "tCtx", "context-menu" },
-        { "tImgBtn", "image-button" }, { "tPopup", "popup" }, { "tConfirm", "confirm-popup" },
+        { "tImgBtn", "button" },   // ImageButton 无独立 schema def——按 button def 编辑（资源行设三态图） { "tPopup", "popup" }, { "tConfirm", "confirm-popup" },
     };
     for (const auto& m : kMap)
         if (tb == m.first) return m.second;
@@ -551,8 +551,11 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
     else if (tb == "tTree")   ctl = m_viewport->CreateTreeView(x, y, w, h);
     else if (tb == "tSplit")  ctl = m_viewport->CreateSplitter(x, y, w, h, 0);
     else if (tb == "tTabs")   ctl = m_viewport->CreateTabControl(x, y, w, h);
-    else if (tb == "tCtx")    ctl = m_viewport->CreateContextMenu(x, y, w, h);
-    else if (tb == "tMenu")   ctl = m_viewport->CreateMenuBar(x, y, w, h);
+    else if (tb == "tCtx") {
+        ctl = m_viewport->CreateContextMenu(x, y, w, h);
+        // 引擎右键菜单语义创建后默认隐藏（显示经 popup 调用）——设计器编辑态常显
+        if (ctl.IsValid()) ctl.SetBool(PropertyNames::kVisible, 1);
+    } else if (tb == "tMenu")   ctl = m_viewport->CreateMenuBar(x, y, w, h);
     else if (tb == "tWin")
         ctl = m_viewport->CreateWinFrame(cap, x, y, w, h);
     else if (tb == "tDialog")
