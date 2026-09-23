@@ -502,7 +502,6 @@ static bool controlSpec(const std::string& tb, float& w, float& h,
         { "tAni",    120, 120, "动画",        "ani" },
         { "tDialog", 240, 150, "对话框",      "dlg" },
         { "tCtx",    140, 80,  "右键菜单",     "ctx" },
-        { "tImgBtn", 48,  48,  "图片按钮",    "imgbtn" },
         { "tPopup",  160, 100, "弹窗(占位)",  "popup" },
         { "tConfirm", 200, 100, "确认框(占位)", "confirm" },
     };
@@ -523,7 +522,7 @@ static std::string controlTypeOf(const std::string& tb) {
         { "tList", "list-view" }, { "tTree", "tree-view" }, { "tNum", "numeric-up-down" },
         { "tColor", "color-picker" }, { "tMenu", "menu-bar" }, { "tStatus", "status-bar" },
         { "tAni", "animation" }, { "tDialog", "dialog" }, { "tCtx", "context-menu" },
-        { "tImgBtn", "button" },   // ImageButton 无独立 schema def——按 button def 编辑（资源行设三态图） { "tPopup", "popup" }, { "tConfirm", "confirm-popup" },
+        { "tPopup", "popup" }, { "tConfirm", "confirm-popup" },
     };
     for (const auto& m : kMap)
         if (tb == m.first) return m.second;
@@ -564,7 +563,7 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
         ctl = m_viewport->CreateDialog(u8"确定", u8"取消", x, y, w, h);
     else if (tb == "tStatus")
         ctl = m_viewport->CreateStatusBar(x, y, w, h);
-    else if (tb == "tImage" || tb == "tImgBtn")
+    else if (tb == "tImage")
         ctl = m_viewport->CreateImage("provider:dc_canvas_grid", x, y, w, h);
     else if (tb == "tAni") {
         // 缺省动画（assets 必备文件）：创建即加载——空路径创建引擎不支持
