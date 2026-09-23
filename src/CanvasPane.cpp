@@ -773,14 +773,9 @@ void CanvasPane::onColorPicked(unsigned char r, unsigned char g, unsigned char b
 
 // ── Schema 驱动动态属性区 ──
 
-// JSON 键（camelCase）→ 运行时属性名（kebab-case）；特例覆盖引擎简写命名。
+// JSON 键（camelCase）→ 运行时属性名（kebab-case）。
+// （92 键统一后 camelCase 特例映射已清空——schema 键即运行时键）
 static std::string jsonKeyToProp(const std::string& key) {
-    static const std::pair<const char*, const char*> kSpecial[] = {
-        { "checkColor", "check" },       { "crossColor", "cross" },
-        { "indeterminateColor", "indeterminate" }, { "boxBorderColor", "box-border" },
-    };
-    for (const auto& s : kSpecial)
-        if (key == s.first) return s.second;
     std::string out;
     for (char c : key) {
         if (std::isupper(static_cast<unsigned char>(c))) {
