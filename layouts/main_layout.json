@@ -523,14 +523,6 @@
                                                                 }
                                                             },
                                                             {
-                                                                "id": "tImgBtn",
-                                                                "label": "图片按钮 ImageButton",
-                                                                "leadingControl": {
-                                                                    "type": "image",
-                                                                    "image": "gen/icons/image-button.svg"
-                                                                }
-                                                            },
-                                                            {
                                                                 "id": "tPopup",
                                                                 "label": "弹层 Popup",
                                                                 "leadingControl": {
