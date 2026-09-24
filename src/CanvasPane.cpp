@@ -582,8 +582,8 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
             ctl.SetBool(PropertyNames::kVisible, 1);
         }
     } else if (tb == "tConfirm") {
-        // P0-27d：真实 ConfirmPopup（同 Popup 编辑态语义）
-        ctl = m_viewport->CreateConfirmPopup(u8"确定", u8"取消", x, y, w, h);
+        // P0-27d：真实 ConfirmPopup（confirmText 单参数签名；同 Popup 编辑态语义）
+        ctl = m_viewport->CreateConfirmPopup(u8"确定", x, y, w, h);
         if (ctl.IsValid()) {
             ctl.SetBool("close-on-click-outside", 0);
             ctl.SetBool("close-on-esc", 0);
