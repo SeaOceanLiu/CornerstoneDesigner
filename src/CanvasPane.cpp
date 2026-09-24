@@ -502,8 +502,8 @@ static bool controlSpec(const std::string& tb, float& w, float& h,
         { "tAni",    120, 120, "动画",        "ani" },
         { "tDialog", 240, 150, "对话框",      "dlg" },
         { "tCtx",    140, 80,  "右键菜单",     "ctx" },
-        { "tPopup",  160, 100, "弹窗(占位)",  "popup" },
-        { "tConfirm", 200, 100, "确认框(占位)", "confirm" },
+        { "tPopup",  160, 100, "弹窗",        "popup" },
+        { "tConfirm", 200, 100, "确认框",      "confirm" },
     };
     for (const auto& s : kSpecs) {
         if (tb == s.id) { w = s.w; h = s.h; caption = s.cap; prefix = s.pfx; return true; }
@@ -552,16 +552,44 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
     else if (tb == "tTabs")   ctl = m_viewport->CreateTabControl(x, y, w, h);
     else if (tb == "tCtx") {
         ctl = m_viewport->CreateContextMenu(x, y, w, h);
-        // 引擎右键菜单语义创建后默认隐藏（显示经 popup 调用）——设计器编辑态常显
-        if (ctl.IsValid()) ctl.SetBool(PropertyNames::kVisible, 1);
+        // 引擎右键菜单语义创建后默认隐藏（显示经 popup 调用）——设计器编辑态常显；
+        // P0-28：关闭 dismiss 语义（外部点击/Esc 不隐藏——取消选择不再消失）
+        if (ctl.IsValid()) {
+            ctl.SetBool("close-on-click-outside", 0);
+            ctl.SetBool("close-on-esc", 0);
+            ctl.SetBool(PropertyNames::kVisible, 1);
+        }
     } else if (tb == "tMenu")   ctl = m_viewport->CreateMenuBar(x, y, w, h);
     else if (tb == "tWin")
         ctl = m_viewport->CreateWinFrame(cap, x, y, w, h);
-    else if (tb == "tDialog")
+    else if (tb == "tDialog") {
         // 真实 Dialog 控件（引擎探针实证 colors 生效；此前占位映射 WinFrame
-        // 致"背景被内容面板遮挡"误判——组合语义非引擎缺陷）
+        // 致"背景被内容面板遮挡"误判——组合语义非引擎缺陷）；
+        // P0-28：关闭 dismiss 语义（编辑态常显）
         ctl = m_viewport->CreateDialog(u8"确定", u8"取消", x, y, w, h);
-    else if (tb == "tStatus")
+        if (ctl.IsValid()) {
+            ctl.SetBool("close-on-click-outside", 0);
+            ctl.SetBool("close-on-esc", 0);
+        }
+    }
+    else if (tb == "tPopup") {
+        // P0-27d：真实 Popup（不自动 open——编辑态显式 visible；引擎清单
+        // P0-28：close-on-click-outside/close-on-esc 关闭 dismiss 语义）
+        ctl = m_viewport->CreatePopup(x, y, w, h);
+        if (ctl.IsValid()) {
+            ctl.SetBool("close-on-click-outside", 0);
+            ctl.SetBool("close-on-esc", 0);
+            ctl.SetBool(PropertyNames::kVisible, 1);
+        }
+    } else if (tb == "tConfirm") {
+        // P0-27d：真实 ConfirmPopup（同 Popup 编辑态语义）
+        ctl = m_viewport->CreateConfirmPopup(u8"确定", u8"取消", x, y, w, h);
+        if (ctl.IsValid()) {
+            ctl.SetBool("close-on-click-outside", 0);
+            ctl.SetBool("close-on-esc", 0);
+            ctl.SetBool(PropertyNames::kVisible, 1);
+        }
+    } else if (tb == "tStatus")
         ctl = m_viewport->CreateStatusBar(x, y, w, h);
     else if (tb == "tImage")
         ctl = m_viewport->CreateImage("provider:dc_canvas_grid", x, y, w, h);
