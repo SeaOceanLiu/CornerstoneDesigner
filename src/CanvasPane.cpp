@@ -1244,17 +1244,30 @@ void CanvasPane::rebuildDynamicRows() {
     // （Button 资源 5 行已删——引擎 P0-19 schema 补齐 normal/hover/pressed/
     // disabled-image + animation 后由通用 string 行生成，读回/写回/清理全兼容）
 
-    // 文字阴影统一段（label/button/win-frame——用户视角一致的"文字阴影"配置）：
-    // enabled 走各控件路径（label 自身 shadow / button text-shadow-enable /
-    // win-frame title 的 shadow）；offset 走内部 Label 直控（caption/title-label）
-    if (m_schemaType == "label" || m_schemaType == "button" || m_schemaType == "check-box" ||
-        m_schemaType == "win-frame") {
+    // 文字阴影统一段（def 驱动：P0-26 schema 声明 shadow 的类型全覆盖）：
+    // enabled：label/button/check-box 自身键（引擎分发 Label→setShadow /
+    //   Button→textShadowEnable / CheckBox→宿主+caption 同步）；win-frame 经
+    //   title-label 直控；其余类型自身键（引擎 P0-26 补齐的内部 Label 转发：
+    //   valueLabel/closedLabel/textLabel/渲染助手）
+    // offset：label 自身 / button+check-box+win-frame 内部 Label 直控 / 其余自身键
+    // 例外：list-view/tree-view 的阴影为 item 级专用键（cell/item-text-shadow），
+    //   通用 shadow 键不适用——暂不生成（后续单独行）
+    {
+        const bool hasShadow = def.contains("properties") &&
+                               def["properties"].contains("shadow");
+        const bool isListLike = (m_schemaType == "list-view" ||
+                                 m_schemaType == "tree-view");
+        if (hasShadow && !isListLike) {
         const bool isLabelT = (m_schemaType == "label");
+        const bool legacyInner = (m_schemaType == "button" ||
+                                  m_schemaType == "check-box" ||
+                                  m_schemaType == "win-frame");
         const char* attLabelKey = (m_schemaType == "win-frame")
             ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel;
-        // 阴影目标（offset 属性所在控件）：label 自身；button/win-frame 内部 Label
+        // 阴影目标（offset 属性所在控件）：label 自身；legacy 三类型内部 Label；
+        // 其余类型自身键（引擎转发）
         Control shTarget = m_schemaTarget;
-        if (!isLabelT) {
+        if (legacyInner && !isLabelT) {
             void* h = m_schemaTarget.GetPtr(attLabelKey);
             if (h) shTarget = m_viewport->FromHandle(h);
         }
@@ -1302,9 +1315,10 @@ void CanvasPane::rebuildDynamicRows() {
             const float v = shTarget.IsValid() ? shTarget.GetFloat(kOffProp[oi]) : 0.0f;
             nud.SetFloat(PropertyNames::kValue, v);
             nud.SetCallback(PropertyNames::kEventValueChanged,
-                            [this, attLabelKey, oi](const Event& e2) {
+                            [this, legacyInner, attLabelKey, oi](const Event& e2) {
                 if (!m_schemaTarget.IsValid()) return;
-                if (m_schemaType == "label") {
+                if (m_schemaType == "label" || !legacyInner) {
+                    // label 自身；其余 def 驱动类型走自身键（引擎 P0-26 转发内部 Label）
                     m_schemaTarget.SetFloat(kOffProp[oi], e2.GetValueChanged());
                     return;
                 }
@@ -1317,6 +1331,7 @@ void CanvasPane::rebuildDynamicRows() {
             y += ctlH + rowGap;
             ++rows;
             genKeys += " " + std::string(kOff[oi]);
+        }
         }
     }
 
