@@ -277,7 +277,7 @@
                                 "w": 240,
                                 "h": 744
                             },
-                            "flowWeight": 0,
+                            "flow-weight": 0,
                             "colors": {
                                 "border": {
                                     "normal": "#404040FF"
@@ -288,7 +288,7 @@
                                     "type": "tab-control",
                                     "id": "toolboxTabs",
                                     "position": "top",
-                                    "fontSize": 20,
+                                    "font-size": 20,
                                     "tabs": [
                                         {
                                             "title": "工具箱",
@@ -630,8 +630,6 @@
                             "orientation": "vertical",
                             "thickness": 6,
                             "ratio": 0.2,
-                            "minFirst": 100,
-                            "minSecond": 100,
                             "first-linked": "toolboxPanel",
                             "second-linked": "canvasArea"
                         },
@@ -645,7 +643,7 @@
                                 "w": 720,
                                 "h": 744
                             },
-                            "flowWeight": 1,
+                            "flow-weight": 1,
                             "colors": {
                                 "border": {
                                     "normal": "#404040FF"
@@ -719,7 +717,7 @@
                                                     "value": "200%"
                                                 }
                                             ],
-                                            "selectedIndex": 3
+                                            "selected-index": 3
                                         },
                                         {
                                             "type": "button",
@@ -780,7 +778,7 @@
                                                 "name": "HarmonyOS_Sans_SC_Regular",
                                                 "size": 16
                                             },
-                                            "checkState": "checked"
+                                            "check-state": "checked"
                                         },
                                         {
                                             "type": "check-box",
@@ -796,7 +794,7 @@
                                                 "name": "HarmonyOS_Sans_SC_Regular",
                                                 "size": 16
                                             },
-                                            "checkState": "checked"
+                                            "check-state": "checked"
                                         },
                                         {
                                             "type": "combo-box",
@@ -837,7 +835,7 @@
                                                     "value": "底对齐"
                                                 }
                                             ],
-                                            "selectedIndex": 0
+                                            "selected-index": 0
                                         },
                                         {
                                             "type": "panel",
@@ -847,7 +845,7 @@
                                                 "w": 0,
                                                 "h": 32
                                             },
-                                            "flowWeight": 1,
+                                            "flow-weight": 1,
                                             "layout": {
                                                 "type": "h-flow",
                                                 "gap": 0
@@ -879,8 +877,6 @@
                             "orientation": "vertical",
                             "thickness": 6,
                             "ratio": 0.8,
-                            "minFirst": 100,
-                            "minSecond": 100,
                             "first-linked": "canvasArea",
                             "second-linked": "propertyPanel"
                         },
@@ -893,7 +889,7 @@
                                 "w": 240,
                                 "h": 744
                             },
-                            "flowWeight": 0,
+                            "flow-weight": 0,
                             "colors": {
                                 "border": {
                                     "normal": "#404040FF"
@@ -1197,7 +1193,7 @@
                                                                         "value": "fill"
                                                                     }
                                                                 ],
-                                                                "selectedIndex": 0,
+                                                                "selected-index": 0,
                                                                 "rect": {
                                                                     "x": 0,
                                                                     "y": 0,
@@ -1528,7 +1524,7 @@
                                                                     "w": 0,
                                                                     "h": 32
                                                                 },
-                                                                "flowWeight": 1,
+                                                                "flow-weight": 1,
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
                                                                     "size": 16
@@ -1599,7 +1595,7 @@
                                                                         "value": "onSplitterMoved"
                                                                     }
                                                                 ],
-                                                                "selectedIndex": 0
+                                                                "selected-index": 0
                                                             }
                                                         ]
                                                     },
@@ -1625,7 +1621,7 @@
                                                                     "w": 0,
                                                                     "h": 32
                                                                 },
-                                                                "flowWeight": 1,
+                                                                "flow-weight": 1,
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
                                                                     "size": 16
@@ -1908,7 +1904,7 @@
                             ]
                         }
                     ],
-                    "flowWeight": 1,
+                    "flow-weight": 1,
                     "layout": {
                         "type": "h-flow",
                         "gap": 0
@@ -1923,7 +1919,7 @@
                         "w": 1200,
                         "h": 28
                     },
-                    "fontSize": 20,
+                    "font-size": 20,
                     "items": [
                         {
                             "id": "statusHint",

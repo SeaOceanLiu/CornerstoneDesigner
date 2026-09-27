@@ -836,6 +836,7 @@ static std::map<std::string, std::vector<std::string>> resolveColorGroups(
         { "state-color-4",  { "normal", "hover", "pressed", "disabled" } },
         { "state-color-3d", { "normal", "hover", "disabled" } },
         { "state-color-3p", { "normal", "hover", "pressed" } },
+        { "state-color-2",  { "normal", "hover" } },
         { "state-color-1",  { "normal" } },
     };
     if (!typeDef.contains("properties") || !typeDef["properties"].contains("colors"))
@@ -935,7 +936,7 @@ void CanvasPane::rebuildDynamicRows() {
         "type", "id", "name", "rect", "scale", "margin", "layout", "anchor",
         "events", "context-menu", "actors", "luotiAni", "caption-label",
         "file", "resourceId", "providerName",   // 解析期键（引擎无运行时 setter）
-        "font", "match-parent-rect", "debug-draw",
+        "match-parent-rect", "debug-draw",
         "expand", "offset", "size", "style", "alignment",
         "check-state", "vertical-align", "popup", "position",
         "caption", "enabled", "visible",
