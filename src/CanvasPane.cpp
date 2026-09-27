@@ -1021,9 +1021,8 @@ void CanvasPane::rebuildDynamicRows() {
             const auto colorGroups =
                 resolveColorGroups((*m_schema)["$defs"], def);
             for (const auto& [grpName, states] : colorGroups) {
-                // win-frame：title 阴影四态色设计上不生效——整组跳过
-                if (m_schemaType == "win-frame" && grpName == "text-shadow")
-                    continue;
+                // （win-frame text-shadow 旧过滤已移除：引擎 P0-26 后 title 阴影
+                // 四态色经 title-label 可达——槽位写回经 capKey 分派下方处理）
                 const std::string gk = grpName;   // schema 子组名即运行时组键（text-shadow）
                 for (const std::string& st : states) {
                     // 背景色入动态区（固定区背景色行已退役——schema 驱动统一）；
@@ -1106,7 +1105,11 @@ void CanvasPane::rebuildDynamicRows() {
             continue;
         }
 
-        if (t != "string" && t != "number" && t != "integer" && t != "boolean") continue;
+        // font 对象键特判：字体名 string 行（引擎 kFont 运行时分发——
+        // P032_37 批 button/check-box/win-frame 等补齐；对象结构经引擎处理）
+        std::string effT = t;
+        if (key == "font" && effT == "object") effT = "string";
+        if (effT != "string" && effT != "number" && effT != "integer" && effT != "boolean") continue;
 
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
@@ -1114,7 +1117,7 @@ void CanvasPane::rebuildDynamicRows() {
         // （path→animation 特判已删：引擎 P0-24 别名生效，path 即运行时键）
         makeLabel(key);
 
-        if (t == "string") {
+        if (effT == "string") {
             // TextArea：多行值（如 Label 文本含换行）直接输入真实换行，
             // 无需转义；行高 40 容两行，超出内部滚动
             Control ta = m_ui->CreateTextArea(0, 0, rowW, 40.0f);
@@ -1193,7 +1196,7 @@ void CanvasPane::rebuildDynamicRows() {
             m_dynamicRows.push_back(ta);
             m_dynamicRowY.push_back(y);
             y += 40.0f + rowGap;
-        } else if (t == "number" || t == "integer") {
+        } else if (effT == "number" || effT == "integer") {
             Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, 26.0f);
             nud.SetRect(2.0f, y, rowW, 26.0f);
             // 按 schema 类型分派（引擎已归一：font-size 全控件 Int 域、
