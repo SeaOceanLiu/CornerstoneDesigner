@@ -1343,7 +1343,8 @@ void CanvasPane::rebuildDynamicRows() {
         // 通用行组归属：字体相关→字体及阴影、border-visible→边框色、其余→常规
         std::string owner = "常规";
         if (key == "text" || key == "font" || prop == "font-size") owner = "字体及阴影";
-        else if (key == "border-visible") owner = "边框色";
+        // （border-visible 归常规：若归边框色，其字母序先于 colors 段，会与
+        //   colors.border 子组的"边框色"标题重复）
         if (lastOwner != owner) { makeGroupHeader(owner); lastOwner = owner; }
         if (groupCollapsed(owner)) continue;   // 收起：不创建该组行
 
