@@ -947,9 +947,6 @@ void CanvasPane::rebuildDynamicRows() {
     };
 
     const UIRect box = m_propDynamic.GetRect();    // 容器实际尺寸（v-flow 排布后）
-    std::printf("[DBG-dyn] propDynamic rect=(%g,%g,%g,%g)\n",
-                box.x, box.y, box.w, box.h);
-    std::fflush(stdout);
     const float viewH = box.h, barW = 12.0f;
     const float viewRowsH = viewH;                 // 行区全高（滚动条浮于右侧）
 
