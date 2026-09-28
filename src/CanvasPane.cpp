@@ -1123,6 +1123,18 @@ void CanvasPane::rebuildDynamicRows() {
         std::printf("[DBG-dyn] kvs=%zu colorsPseudo: %s\n", kvs.size(), dbg.c_str());
         std::fflush(stdout);
     }
+    {   // [诊断] kvs 键集与 font 键存在性
+        bool hasFont = false, hasFontSize = false;
+        std::string dbg;
+        for (const auto& kv : kvs) {
+            if (kv.first == "font") hasFont = true;
+            if (kv.first == "font-size") hasFontSize = true;
+            dbg += kv.first + " ";
+        }
+        std::printf("[DBG-dyn] kvs=%zu font=%d font-size=%d keys: %s\n",
+                    kvs.size(), hasFont ? 1 : 0, hasFontSize ? 1 : 0, dbg.c_str());
+        std::fflush(stdout);
+    }
     auto groupOf = [](const std::string& key) -> int {
         if (key == "colors@background") return 0;                    // 背景色
         if (key == "colors@border") return 1;                        // 边框色
@@ -1379,11 +1391,10 @@ void CanvasPane::rebuildDynamicRows() {
         }
 
         // font 对象键特判：字体名 string 行（引擎 kFont 运行时分发——
-        // P032_37 批 button/check-box/win-frame 等补齐；对象结构经引擎处理）
-        // font 对象键特判：字体名 string 行（引擎 kFont 运行时分发——
-        // P032_37 批 button/check-box/win-frame 等补齐；对象结构经引擎处理）
+        // P032_37 批 button/check-box/win-frame 等补齐；font 为 $ref(font-spec)
+        // 无 type 字段——按 key 判定而非 type）
         std::string effT = t;
-        if (key == "font" && effT == "object") effT = "string";
+        if (key == "font") effT = "string";
         if (effT != "string" && effT != "number" && effT != "integer" && effT != "boolean") continue;
 
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
