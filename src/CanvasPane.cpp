@@ -957,11 +957,13 @@ void CanvasPane::rebuildDynamicRows() {
     m_fixedWidthRows.clear();
     m_captionEditor = Control();
     m_schemaTarget = Control();
+    m_rowRefreshers.clear();
     const auto t1 = std::chrono::steady_clock::now();
     if (!m_propDynamic.IsValid()) return;
     const ControlModel* m = findModel(m_selectedId);
     if (!m) {   // 未选中：动态区留空（滚动条一并隐藏）
         if (m_dynScroll.IsValid()) m_dynScroll.SetBool(PropertyNames::kVisible, false);
+        m_rowsBuiltSig.clear();
         return;
     }
     const PlacedControl* pc = placedById(m->props.id);
@@ -972,6 +974,21 @@ void CanvasPane::rebuildDynamicRows() {
     if (!defs.contains(m->props.type)) return;
     const nlohmann::json& def = defs[m->props.type];
     if (!def.contains("properties")) return;
+
+    // E 方案快路径：同类型行集相同（schema 确定）——跳过销毁重建，仅执行各行
+    // 刷值闭包（读选中控件当前值回填行显示，毫秒级）
+    if (m_rowsBuiltSig == m->props.type && !m_rowRefreshers.empty()) {
+        m_schemaTarget = pc->ctl;
+        m_propSync = true;   // 程序化回填不触发联动回调
+        for (auto& fn : m_rowRefreshers)
+            if (fn) fn();
+        m_propSync = false;
+        applyDynScroll(m_dynScroll.GetFloat(PropertyNames::kValue));
+        std::printf("[DBG-perf] refresh-only (sig=%s, refreshers=%zu)\n",
+                    m_rowsBuiltSig.c_str(), m_rowRefreshers.size());
+        std::fflush(stdout);
+        return;
+    }
 
     // 合并 common（allOf $ref）与类型自有属性
     // （P0-26 重构后 common 仅真通用键：id/enabled/visible/margin/scale/rect 等）
@@ -1161,6 +1178,22 @@ void CanvasPane::rebuildDynamicRows() {
                     y += ctlH + rowGap;
                     ++rows;
                     genKeys += " " + lbl;
+                    // E：刷值闭包（同类型复用时重读色值回填槽）
+                    m_rowRefreshers.push_back([this, cp, prop, grpName, gk, st, capKey]() mutable {
+                        UIColor cc2;
+                        if ((grpName == "text" || grpName == "text-shadow") && m_ui) {
+                            void* capH = m_schemaTarget.GetPtr(capKey);
+                            cc2 = capH ? m_viewport->FromHandle(capH).GetColor(prop.c_str())
+                                       : m_schemaTarget.GetColor(prop.c_str());
+                        } else {
+                            cc2 = m_schemaTarget.GetColor(prop.c_str());
+                        }
+                        char hex2[12];
+                        std::snprintf(hex2, sizeof(hex2), "#%02X%02X%02X%02X",
+                                      cc2.r, cc2.g, cc2.b, cc2.a);
+                        cp.SetColor(prop.c_str(), cc2);
+                        cp.SetString(PropertyNames::kTextContent, hex2);
+                    });
                     });   // msColor
                 }
             }
@@ -1210,6 +1243,21 @@ void CanvasPane::rebuildDynamicRows() {
                 }
             }
             ta.SetString(PropertyNames::kTextContent, v);
+            // E：刷值闭包（同类型复用时重读选中控件值回填）
+            m_rowRefreshers.push_back([this, ta, prop, viaLabel, innerKey]() mutable {
+                std::string rv;
+                if (viaLabel) {
+                    void* h = m_schemaTarget.GetPtr(innerKey);
+                    rv = h ? m_viewport->FromHandle(h).GetString(PropertyNames::kCaption) : "";
+                } else {
+                    rv = m_schemaTarget.GetString(prop.c_str());
+                    if (rv.empty() && isPathLikeProp(prop)) {
+                        if (ControlModel* m2 = findModel(m_selectedId))
+                            rv = m2->props.extended.value(prop, "");
+                    }
+                }
+                ta.SetString(PropertyNames::kTextContent, rv);
+            });
             // 文本行（caption/title）与固定区"文本"行双向同步
             const bool isCaptionRow = (prop == PropertyNames::kCaption || prop == "title");
             if (isCaptionRow) m_captionEditor = ta;
@@ -1274,6 +1322,13 @@ void CanvasPane::rebuildDynamicRows() {
             if (v <= 0 && (prop == "font-size" || prop == "caption-size"))
                 v = m->props.extended.value("font-size", 0.0f);
             if (v > 0) nud.SetFloat(PropertyNames::kValue, v);
+            m_rowRefreshers.push_back([this, nud, prop, isInt, fsFallback = m->props.extended.value("font-size", 0.0f)]() mutable {
+                float rv = isInt ? (float)m_schemaTarget.GetInt(prop.c_str())
+                                 : m_schemaTarget.GetFloat(prop.c_str());
+                if (rv <= 0 && (prop == "font-size" || prop == "caption-size"))
+                    rv = fsFallback;
+                if (rv > 0) nud.SetFloat(PropertyNames::kValue, rv);
+            });
             nud.SetCallback(PropertyNames::kEventValueChanged,
                             [this, prop, isInt](const Event& e) {
                                 if (!m_schemaTarget.IsValid()) return;
@@ -1300,6 +1355,10 @@ void CanvasPane::rebuildDynamicRows() {
             // 勾选状态回填（引擎 getter 补齐后 text-shadow-enable 等可读回）
             cb.SetBool(PropertyNames::kChecked,
                        m_schemaTarget.GetBool(prop.c_str()));
+            m_rowRefreshers.push_back([this, cb, prop]() mutable {
+                cb.SetBool(PropertyNames::kChecked,
+                           m_schemaTarget.GetBool(prop.c_str()));
+            });
             m_propDynamic.AddChild(cb);
             m_dynamicRows.push_back(cb);
             m_dynamicRowY.push_back(y);
@@ -1351,6 +1410,13 @@ void CanvasPane::rebuildDynamicRows() {
             else if (m_schemaType == "button") on = m_schemaTarget.GetBool(PropertyNames::kShadow);
             else on = shTarget.IsValid() && shTarget.GetBool(PropertyNames::kShadow);
             cb.SetBool(PropertyNames::kChecked, on);
+            m_rowRefreshers.push_back([this, cb]() mutable {
+                const bool ron = m_schemaType == "win-frame"
+                    ? [&] { void* h = m_schemaTarget.GetPtr(PropertyNames::kTitleLabel);
+                            return h && m_viewport->FromHandle(h).GetBool(PropertyNames::kShadow); }()
+                    : m_schemaTarget.GetBool(PropertyNames::kShadow);
+                cb.SetBool(PropertyNames::kChecked, ron);
+            });
             cb.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e2) {
                 const bool on2 = e2.GetCheckState() != 0;
                 if (m_schemaType == "win-frame") {
@@ -1383,6 +1449,16 @@ void CanvasPane::rebuildDynamicRows() {
             nud.SetFloat(PropertyNames::kRangeMax, kShadowRange);
             const float v = shTarget.IsValid() ? shTarget.GetFloat(kOffProp[oi]) : 0.0f;
             nud.SetFloat(PropertyNames::kValue, v);
+            m_rowRefreshers.push_back([this, nud, legacyInner, attLabelKey, oi]() mutable {
+                float rv = 0.0f;
+                if (m_schemaType == "label" || !legacyInner) {
+                    rv = m_schemaTarget.GetFloat(kOffProp[oi]);
+                } else {
+                    void* h = m_schemaTarget.GetPtr(attLabelKey);
+                    if (h) rv = m_viewport->FromHandle(h).GetFloat(kOffProp[oi]);
+                }
+                nud.SetFloat(PropertyNames::kValue, rv);
+            });
             nud.SetCallback(PropertyNames::kEventValueChanged,
                             [this, legacyInner, attLabelKey, oi](const Event& e2) {
                 if (!m_schemaTarget.IsValid()) return;
@@ -1413,6 +1489,7 @@ void CanvasPane::rebuildDynamicRows() {
     std::printf("[DBG-perf]   by-type: label=%lld textArea=%lld color=%lld nud=%lld check=%lld other=%lldms\n",
                 msLabel, msTextArea, msColor, msNud, msCheck, msOther);
     std::fflush(stdout);
+    m_rowsBuiltSig = m_schemaType;   // 行集就绪：同类型切换走 refresh 快路径
     m_dynScrollMax = (y + kPropInsetX) - viewRowsH;
     if (m_dynScrollMax < 0) m_dynScrollMax = 0;
     m_dynScroll.SetFloat(PropertyNames::kRangeMax, m_dynScrollMax > 0 ? m_dynScrollMax : 1.0f);
