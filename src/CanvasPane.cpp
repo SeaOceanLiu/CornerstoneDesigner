@@ -1365,7 +1365,7 @@ void CanvasPane::rebuildDynamicRows() {
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
-        // 通用行组归属：字体相关→字体及阴影、border-visible→边框色、其余→常规
+        if (key == "border-visible") continue;   // 已并入边框色组（槽后开关行）——通用循环不生成
         std::string owner = "常规";
         if (key == "text" || key == "font" || prop == "font-size") owner = "字体及阴影";
         // （border-visible 归常规：若归边框色，其字母序先于 colors 段，会与
