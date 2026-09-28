@@ -10,6 +10,7 @@
 //   owner；子视口初始化时是资源 provider 的指针拷贝，挂载后再创建才能解析）。
 
 #include "Designer/CanvasPane.h"
+#include "Designer/ConstDef.h"
 
 #include "Designer/ControlModel.h"
 
@@ -128,6 +129,42 @@ std::vector<unsigned char> buildGridTilePng(int tilePx, int cellPx) {
 constexpr int kTileCells = 4;                  // 每瓦片 4×4 格（减少每帧平铺绘制调用数）
 constexpr int kMaxTilePx = 512;                // 瓦片尺寸上限（防缩放档过大）
 
+// ── 属性面板：动态行排版节奏（统一相对位置：描述行 + 控件行 + 组间距）──
+constexpr float kPropLblFont = 16.0f;          // 描述行字号
+constexpr float kPropLblH = 22.0f;             // 描述行高
+constexpr float kPropCtlH = 26.0f;             // 控件行高
+constexpr float kPropGapLbl = 2.0f;            // 描述行与控件行间距
+constexpr float kPropRowGap = 8.0f;            // 行组间距
+constexpr float kPropTextAreaH = 40.0f;        // 文本输入行高（容两行，超出内部滚动）
+constexpr float kPropCheckH = 24.0f;           // 勾选行高
+constexpr float kPropInsetX = 2.0f;            // 行控件左边距
+constexpr float kPropRowInset = 16.0f;         // 行宽左右留白合计（右侧滚动条通道）
+constexpr float kPropBarW = 12.0f;             // 动态区滚动条宽（浮于行区右侧）
+constexpr float kPropScrollHideBand = 40.0f;   // 滚动隐藏缓冲带（行移出视口上/下沿的判定余量）
+constexpr float kColorRowW = 120.0f;           // 颜色槽行宽（固定，不随面板伸缩）
+constexpr float kShadowStep = 0.5f;            // 阴影偏移步进
+constexpr float kShadowRange = 50.0f;          // 阴影偏移范围（±）
+
+// 属性面板深色主题（编程创建控件无主题：显式与深色面板协调）
+constexpr UIColor kPropPanelBg{0x1E, 0x1E, 0x1E, 255};
+constexpr UIColor kPropPanelText{0xE0, 0xE0, 0xE0, 255};
+constexpr UIColor kPropPanelBorder{0x40, 0x40, 0x40, 255};
+constexpr UIColor kPropPanelBorderFocus{0x4A, 0x90, 0xD9, 255};
+
+// ── 画布/工具箱 ──
+constexpr float kToolboxColorRowW = 120.0f;    // 工具箱颜色项宽
+constexpr int kTreeItemH = 28;                 // 控件树行高
+constexpr float kResizeEpsilon = 0.5f;         // resize 缘判定像素容差（几何等价阈值）
+constexpr float kDefaultFontPx = 16.0f;        // 控件字号读失败时的回落缺省（引擎缺省字号）
+constexpr float kMinContentH = 8.0f;           // 资源面板内容高度下限（钳制）
+constexpr float kZoomMax = 2.0f;               // 画布缩放上限
+constexpr float kSliderMin = 0.0f;             // Slider 工具项创建参数：范围/缺省值
+constexpr float kSliderMax = 100.0f;
+constexpr float kSliderDefault = 50.0f;
+constexpr float kCascStep = 16.0f;             // 放置瀑布偏移步长（避免完全重叠）
+constexpr int kCascMod = 8;                    // 瀑布偏移取模周期
+constexpr float kPropDynHDefault = 440.0f;     // 动态行区兜底高（与布局声明一致）
+
 // 路径类属性（资源/文件引用）：值中任何换行/空白都非合法路径成分——
 // TextArea 多行文本天然携带换行（尾随或误回车），写回前必须清理，
 // 否则引擎 loadFromFile 以 'xxx.png\n' 打开必然失败
@@ -165,7 +202,7 @@ namespace Designer {
 // 读失败（0）回落 16（引擎缺省字号）。
 static float readFontPx(const Control& ctl) {
     const float v = (float)ctl.GetInt(PropertyNames::kFontSize);
-    return v > 0 ? v : 16.0f;
+    return v > 0 ? v : kDefaultFontPx;
 }
 static void writeFontPx(Control& ctl, float px) {
     ctl.SetInt(PropertyNames::kFontSize, (int)px);
@@ -225,7 +262,7 @@ void CanvasPane::refreshLayout() {
     float top = m_toolbarH;
     m_contentW = area.w;
     m_contentH = area.h - top;
-    if (m_contentH < 8.0f) m_contentH = 8.0f;
+    if (m_contentH < kMinContentH) m_contentH = kMinContentH;
 
     if (!m_viewport) {
         m_viewport = m_ui->CreateViewport(m_areaX, m_areaY + top, m_contentW, m_contentH);
@@ -321,8 +358,8 @@ void CanvasPane::registerFonts() {
 void CanvasPane::styleControl(const std::string& toolboxId, Control ctl) {
     const UIStateColor face{ UIColor{0xFA, 0xFA, 0xFA, 255}, UIColor{0xE8, 0xF0, 0xFE, 255},
                              UIColor{0xD8, 0xD8, 0xD8, 255}, UIColor{0xF0, 0xF0, 0xF0, 255} };
-    const UIStateColor border{ UIColor{0xB0, 0xB0, 0xB0, 255}, UIColor{0x4A, 0x90, 0xD9, 255},
-                               UIColor{0x4A, 0x90, 0xD9, 255}, UIColor{0xC0, 0xC0, 0xC0, 255} };
+    const UIStateColor border{ UIColor{0xB0, 0xB0, 0xB0, 255}, kPropPanelBorderFocus,
+                               kPropPanelBorderFocus, UIColor{0xC0, 0xC0, 0xC0, 255} };
     const UIStateColor text{ UIColor{0x33, 0x33, 0x33, 255}, UIColor{0x33, 0x33, 0x33, 255},
                              UIColor{0x33, 0x33, 0x33, 255}, UIColor{0x99, 0x99, 0x99, 255} };
     // 阴影色显式设置：引擎缺省纯白（ConstDef DEFAULT_TEXT_SHADOW_*），浅色面上不可见
@@ -355,7 +392,7 @@ void CanvasPane::TickLayout(float deltaSeconds) {
 
 void CanvasPane::SetZoom(float zoom) {
     if (zoom < 0.25f) zoom = 0.25f;
-    if (zoom > 2.0f) zoom = 2.0f;
+    if (zoom > kZoomMax) zoom = kZoomMax;
     if (zoom == m_zoom) return;
     m_zoom = zoom;
     // 画布缩放交给引擎（画布语义）：控件逻辑 rect 不变，drawRect/字号由
@@ -367,7 +404,7 @@ void CanvasPane::SetZoom(float zoom) {
 }
 
 void CanvasPane::SetGridCellSize(float px) {
-    if (px < 8.0f) px = 8.0f;
+    if (px < ConstDef::kSnapThreshold) px = ConstDef::kSnapThreshold;
     if (px == m_gridCell) return;
     m_gridCell = px;
     rebuildGridTile();
@@ -540,7 +577,7 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
     else if (tb == "tEdit")   ctl = m_viewport->CreateEditBox(x, y, w, h);
     else if (tb == "tArea")   ctl = m_viewport->CreateTextArea(x, y, w, h);
     else if (tb == "tBar")    ctl = m_viewport->CreateProgressBar(x, y, w, h);
-    else if (tb == "tSlider") ctl = m_viewport->CreateSlider(x, y, w, h, 0.0f, 100.0f, 50.0f);
+    else if (tb == "tSlider") ctl = m_viewport->CreateSlider(x, y, w, h, kSliderMin, kSliderMax, kSliderDefault);
     else if (tb == "tScroll") ctl = m_viewport->CreateScrollBar(x, y, w, h, 0);
     else if (tb == "tShape")  ctl = m_viewport->CreateShape(x, y, w, h);
     else if (tb == "tNum")    ctl = m_viewport->CreateNumericUpDown(x, y, w, h);
@@ -612,7 +649,7 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
     if (!controlSpec(toolboxId, w, h, caption, prefix)) return;
 
     // 瀑布偏移避免完全重叠
-    float casc = (float)(m_seq % 8) * 16.0f;
+    float casc = (float)(m_seq % kCascMod) * kCascStep;
     float x = cx - w / 2 + casc;
     float y = cy - h / 2 + casc;
     if (m_snapEnabled) {
@@ -947,7 +984,7 @@ void CanvasPane::rebuildDynamicRows() {
     };
 
     const UIRect box = m_propDynamic.GetRect();    // 容器实际尺寸（v-flow 排布后）
-    const float viewH = box.h, barW = 12.0f;
+    const float viewH = box.h, barW = kPropBarW;
     const float viewRowsH = viewH;                 // 行区全高（滚动条浮于右侧）
 
     // 滚动条：首次创建常驻（orientation=0 垂直；position-changed → applyDynScroll）
@@ -955,7 +992,7 @@ void CanvasPane::rebuildDynamicRows() {
         m_dynScroll = m_ui->CreateScrollBar(box.w - barW, 0.0f, barW, viewH, 0);
         m_dynScroll.SetFloat(PropertyNames::kRangeMin, 0.0f);
         m_dynScroll.SetFloat(PropertyNames::kPageSize, viewRowsH);
-        m_dynScroll.SetFloat(PropertyNames::kStepSize, 24.0f);
+        m_dynScroll.SetFloat(PropertyNames::kStepSize, kPropCheckH);
     m_dynScroll.SetCallback(PropertyNames::kEventPositionChanged,
                             [this](const Event& e) { applyDynScroll(e.GetValueChanged()); });
     m_propDynamic.AddChild(m_dynScroll);
@@ -978,16 +1015,17 @@ void CanvasPane::rebuildDynamicRows() {
         m_propColor.SetBool(PropertyNames::kVisible, false);   // 已退役：动态区背景色槽替代
     const bool textIsCaption = (m_schemaType == "label" || m_schemaType == "button" ||
                                 m_schemaType == "check-box" || m_schemaType == "image-button");
-    float y = 2.0f;
+    float y = kPropInsetX;
     int rows = 0;
     std::string genKeys;
     // 动态行排版节奏（统一相对位置：描述行 22 + 2 + 控件行 26 + 组间距 8）
-    const float lblFont = 16.0f, lblH = 22.0f, ctlH = 26.0f, gapLbl = 2.0f, rowGap = 8.0f;
-    const float rowW = box.w - 16.0f;   // 右侧留滚动条通道
+    const float lblFont = kPropLblFont, lblH = kPropLblH, ctlH = kPropCtlH,
+          gapLbl = kPropGapLbl, rowGap = kPropRowGap;
+    const float rowW = box.w - kPropRowInset;   // 右侧留滚动条通道
     auto makeLabel = [&](const std::string& label) {
         Control lb = m_ui->CreateLabel(label, lblFont, 0, 0, rowW, lblH);
         lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
-        lb.SetRect(2.0f, y, rowW, lblH);
+        lb.SetRect(kPropInsetX, y, rowW, lblH);
         m_propDynamic.AddChild(lb);
         m_dynamicRows.push_back(lb);
         m_dynamicRowY.push_back(y);
@@ -1055,7 +1093,7 @@ void CanvasPane::rebuildDynamicRows() {
 
                     // 颜色槽：直建 ColorPicker（引擎惰性化——关闭态秒建、弹窗首次打开才构建）
                     // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
-                    Control cp = m_ui->CreateColorPicker(2.0f, y, 120.0f, ctlH, hex);
+                    Control cp = m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
                                    [this, prop, gk, grpName, st, capKey](const Event& e) {
                         if (!m_schemaTarget.IsValid()) return;
@@ -1120,18 +1158,15 @@ void CanvasPane::rebuildDynamicRows() {
         if (effT == "string") {
             // TextArea：多行值（如 Label 文本含换行）直接输入真实换行，
             // 无需转义；行高 40 容两行，超出内部滚动
-            Control ta = m_ui->CreateTextArea(0, 0, rowW, 40.0f);
-            ta.SetRect(2.0f, y, rowW, 40.0f);
+            Control ta = m_ui->CreateTextArea(0, 0, rowW, kPropTextAreaH);
+            ta.SetRect(kPropInsetX, y, rowW, kPropTextAreaH);
             // 编程创建无主题：显式深色面板协调样式
             ta.SetStateColor(PropertyNames::kBackground,
-                             UIStateColor{ UIColor{0x1E, 0x1E, 0x1E, 255}, UIColor{0x1E, 0x1E, 0x1E, 255},
-                                           UIColor{0x1E, 0x1E, 0x1E, 255}, UIColor{0x1E, 0x1E, 0x1E, 255} });
+                             UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
             ta.SetStateColor(PropertyNames::kText,
-                             UIStateColor{ UIColor{0xE0, 0xE0, 0xE0, 255}, UIColor{0xE0, 0xE0, 0xE0, 255},
-                                           UIColor{0xE0, 0xE0, 0xE0, 255}, UIColor{0xE0, 0xE0, 0xE0, 255} });
+                             UIStateColor{kPropPanelText, kPropPanelText, kPropPanelText, kPropPanelText});
             ta.SetStateColor(PropertyNames::kBorder,
-                             UIStateColor{ UIColor{0x40, 0x40, 0x40, 255}, UIColor{0x4A, 0x90, 0xD9, 255},
-                                           UIColor{0x4A, 0x90, 0xD9, 255}, UIColor{0x40, 0x40, 0x40, 255} });
+                             UIStateColor{kPropPanelBorder, kPropPanelBorderFocus, kPropPanelBorderFocus, kPropPanelBorder});
             // 内部文本 Label 键分派：check-box（无 caption 属性分发）与 win-frame
             // （title 键）经其内部 Label 直控（Label caption 读写完整）；其余直设属性
             const bool viaLabel = (m_schemaType == "check-box" || m_schemaType == "win-frame");
@@ -1195,10 +1230,10 @@ void CanvasPane::rebuildDynamicRows() {
             m_propDynamic.AddChild(ta);
             m_dynamicRows.push_back(ta);
             m_dynamicRowY.push_back(y);
-            y += 40.0f + rowGap;
+            y += kPropTextAreaH + rowGap;
         } else if (effT == "number" || effT == "integer") {
-            Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, 26.0f);
-            nud.SetRect(2.0f, y, rowW, 26.0f);
+            Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, kPropCtlH);
+            nud.SetRect(kPropInsetX, y, rowW, kPropCtlH);
             // 按 schema 类型分派（引擎已归一：font-size 全控件 Int 域、
             // number 类走 Float 域）；读失败（0）→ 放置记录的 font-size 兜底
             const bool isInt = (t == "integer");
@@ -1224,8 +1259,8 @@ void CanvasPane::rebuildDynamicRows() {
             m_dynamicRowY.push_back(y);
             y += ctlH + rowGap;
         } else {
-            Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, 24.0f);
-            cb.SetRect(2.0f, y, rowW, 24.0f);
+            Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, kPropCheckH);
+            cb.SetRect(kPropInsetX, y, rowW, kPropCheckH);
             cb.SetBool(PropertyNames::kTriState, false);   // bool 属性两态（引擎缺省三态循环）
             // CheckBox 不发 click，发 check-changed（intVal=CheckState 枚举）
             cb.SetCallback(PropertyNames::kEventCheckChanged,
@@ -1279,7 +1314,7 @@ void CanvasPane::rebuildDynamicRows() {
         makeLabel("shadow.enabled");
         {
             Control cb = m_ui->CreateCheckBox("shadow.enabled", 0, 0, rowW, ctlH);
-            cb.SetRect(2.0f, y, rowW, ctlH);
+            cb.SetRect(kPropInsetX, y, rowW, ctlH);
             cb.SetBool(PropertyNames::kTriState, false);
             bool on = false;
             if (m_schemaType == "label") on = m_schemaTarget.GetBool(PropertyNames::kShadow);
@@ -1311,11 +1346,11 @@ void CanvasPane::rebuildDynamicRows() {
         for (int oi = 0; oi < 2; ++oi) {
             makeLabel(kOff[oi]);
             Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, ctlH);
-            nud.SetRect(2.0f, y, rowW, ctlH);
-            nud.SetFloat(PropertyNames::kStep, 0.5f);
+            nud.SetRect(kPropInsetX, y, rowW, ctlH);
+            nud.SetFloat(PropertyNames::kStep, kShadowStep);
             nud.SetInt(PropertyNames::kDecimals, 1);
-            nud.SetFloat(PropertyNames::kRangeMin, -50.0f);
-            nud.SetFloat(PropertyNames::kRangeMax, 50.0f);
+            nud.SetFloat(PropertyNames::kRangeMin, -kShadowRange);
+            nud.SetFloat(PropertyNames::kRangeMax, kShadowRange);
             const float v = shTarget.IsValid() ? shTarget.GetFloat(kOffProp[oi]) : 0.0f;
             nud.SetFloat(PropertyNames::kValue, v);
             nud.SetCallback(PropertyNames::kEventValueChanged,
@@ -1339,7 +1374,7 @@ void CanvasPane::rebuildDynamicRows() {
         }
     }
 
-    m_dynScrollMax = (y + 2.0f) - viewRowsH;
+    m_dynScrollMax = (y + kPropInsetX) - viewRowsH;
     if (m_dynScrollMax < 0) m_dynScrollMax = 0;
     m_dynScroll.SetFloat(PropertyNames::kRangeMax, m_dynScrollMax > 0 ? m_dynScrollMax : 1.0f);
     m_dynScroll.SetFloat(PropertyNames::kValue, 0.0f);
@@ -1353,7 +1388,7 @@ void CanvasPane::rebuildDynamicRows() {
 // 滚轮滚动动态区（mouse-wheel 事件载荷 scrollY 驱动；+1 向上 → 内容下移）
 void CanvasPane::ScrollDynamicBy(float scrollY) {
     if (!m_dynScroll.IsValid() || m_dynScrollMax <= 0) return;
-    float v = m_dynScroll.GetFloat(PropertyNames::kValue) - scrollY * 24.0f;
+    float v = m_dynScroll.GetFloat(PropertyNames::kValue) - scrollY * kPropCheckH;
     if (v < 0) v = 0;
     if (v > m_dynScrollMax) v = m_dynScrollMax;
     m_dynScroll.SetFloat(PropertyNames::kValue, v);   // setValue → position-changed → applyDynScroll
@@ -1377,10 +1412,10 @@ static UIColor hexToColor(const std::string& hex) {
 void CanvasPane::syncDynamicWidth() {
     if (!m_propDynamic.IsValid() || !m_dynScroll.IsValid()) return;
     const UIRect box = m_propDynamic.GetRect();
-    if (box.w <= 16.0f || box.w == m_seenDynW) return;
+    if (box.w <= kPropRowInset || box.w == m_seenDynW) return;
     m_seenDynW = box.w;
-    const float rowW = box.w - 16.0f;   // 右侧留滚动条通道
-    m_dynScroll.SetRect(box.w - 12.0f, 0.0f, 12.0f, box.h);
+    const float rowW = box.w - kPropRowInset;   // 右侧留滚动条通道
+    m_dynScroll.SetRect(box.w - kPropBarW, 0.0f, kPropBarW, box.h);
     for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
         if (!m_dynamicRows[i].IsValid()) continue;
         if (m_fixedWidthRows.count(i)) continue;   // ColorPicker 行宽固定 120
@@ -1391,14 +1426,14 @@ void CanvasPane::syncDynamicWidth() {
 
 void CanvasPane::applyDynScroll(float value) {
     const float viewH = m_propDynamic.IsValid() ? m_propDynamic.GetRect().h
-                                                : 288.0f;   // 容器实际高（随布局）
+                                                : kPropDynHDefault;  // 兜底：与布局声明 propDynamic 高一致
     for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
         if (!m_dynamicRows[i].IsValid() || i >= m_dynamicRowY.size()) continue;
         const float vy = m_dynamicRowY[i] - value;
         const UIRect r = m_dynamicRows[i].GetRect();
         m_dynamicRows[i].SetRect(r.x, vy, r.w, r.h);
         // clip-children 已开启但绘制仍可穿透（引擎嵌套 clip 语义），超界隐藏兜底
-        m_dynamicRows[i].SetBool(PropertyNames::kVisible, vy > -40.0f && vy < viewH);
+        m_dynamicRows[i].SetBool(PropertyNames::kVisible, vy > -kPropScrollHideBand && vy < viewH);
     }
 }
 
@@ -1438,7 +1473,7 @@ int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
     const SRect& p = m->props.rect;   // 上帧 filter 输出（已贴网格）——锚定边推断基准
 
     // 纯移动（尺寸未变，Move 手柄/选框拖拽）：量化位置即可
-    if (std::fabs(w - p.w) < 0.5f && std::fabs(h - p.h) < 0.5f) {
+    if (std::fabs(w - p.w) < kResizeEpsilon && std::fabs(h - p.h) < kResizeEpsilon) {
         x = std::round(x / g) * g;
         y = std::round(y / g) * g;
         return 1;
@@ -1450,8 +1485,8 @@ int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
     h = std::round(h / g) * g;
     if (w < g) w = g;
     if (h < g) h = g;
-    const bool leftFixed = std::fabs(x - p.x) < 0.5f;   // 左缘未动（SE/E/S 族）
-    const bool topFixed  = std::fabs(y - p.y) < 0.5f;   // 上缘未动（SE/E/S 族）
+    const bool leftFixed = std::fabs(x - p.x) < kResizeEpsilon;   // 左缘未动（SE/E/S 族）
+    const bool topFixed  = std::fabs(y - p.y) < kResizeEpsilon;   // 上缘未动（SE/E/S 族）
     if (!leftFixed) x = (p.x + p.w) - w;
     if (!topFixed)  y = (p.y + p.h) - h;
     return 1;
