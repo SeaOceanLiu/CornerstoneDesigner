@@ -1003,7 +1003,7 @@ void CanvasPane::rebuildDynamicRows() {
         "type", "id", "name", "rect", "scale", "margin", "layout", "anchor",
         "events", "context-menu", "actors", "luotiAni", "caption-label",
         "file", "resourceId", "providerName",   // 解析期键（引擎无运行时 setter）
-        "match-parent-rect", "debug-draw",
+        "border-visible", "match-parent-rect", "debug-draw",
         "expand", "offset", "size", "style", "alignment",
         "check-state", "vertical-align", "popup", "position",
         "caption", "enabled", "visible",
@@ -1227,6 +1227,7 @@ void CanvasPane::rebuildDynamicRows() {
                                         : "字体及阴影";
                 if (lastOwner != owner) { makeGroupHeader(owner); lastOwner = owner; }
                 if (groupCollapsed(owner)) continue;   // 收起：不创建该组色槽
+                const bool isBorderGrp = (grpName == "border");
                 // （win-frame text-shadow 旧过滤已移除：引擎 P0-26 后 title 阴影
                 // 四态色经 title-label 可达——槽位写回经 capKey 分派下方处理）
                 const std::string gk = grpName;   // schema 子组名即运行时组键（text-shadow）
@@ -1323,6 +1324,31 @@ void CanvasPane::rebuildDynamicRows() {
                         cp.SetColor(prop.c_str(), cc2);
                         cp.SetString(PropertyNames::kTextContent, hex2);
                     });
+                    // 边框色组：槽后附 border-visible 开关（边框开关随边框组折叠）
+                    if (isBorderGrp) {
+                        makeLabel("border-visible");
+                        Control bvc = m_ui->CreateCheckBox("border-visible", 0, 0, rowW, ctlH);
+                        bvc.SetRect(kPropInsetX, y, rowW, ctlH);
+                        bvc.SetBool(PropertyNames::kTriState, false);
+                        bvc.SetBool(PropertyNames::kChecked,
+                                    m_schemaTarget.GetBool("border-visible"));
+                        m_rowRefreshers.push_back([this, bvc]() mutable {
+                            bvc.SetBool(PropertyNames::kChecked,
+                                        m_schemaTarget.GetBool("border-visible"));
+                        });
+                        bvc.SetCallback(PropertyNames::kEventCheckChanged,
+                                        [this](const Event& e) {
+                            if (m_schemaTarget.IsValid())
+                                m_schemaTarget.SetBool("border-visible",
+                                                       e.GetCheckState() != 0);
+                        });
+                        m_propDynamic.AddChild(bvc);
+                        m_dynamicRows.push_back(bvc);
+                        m_dynamicRowY.push_back(y);
+                        y += ctlH + rowGap;
+                        ++rows;
+                        genKeys += " border-visible";
+                    }
                     // 字体及阴影组续：shadow 行紧随 text/text-shadow 槽（同组连续不重复标题）
                     if (grpName == "text-shadow") renderShadowRows();
                     });   // msColor
