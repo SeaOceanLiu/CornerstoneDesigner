@@ -1410,6 +1410,8 @@ void CanvasPane::rebuildDynamicRows() {
                 (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count(),
                 (long long)std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - t1).count(),
                 rows);
+    std::printf("[DBG-perf]   by-type: label=%lld textArea=%lld color=%lld nud=%lld check=%lld other=%lldms\n",
+                msLabel, msTextArea, msColor, msNud, msCheck, msOther);
     std::fflush(stdout);
     m_dynScrollMax = (y + kPropInsetX) - viewRowsH;
     if (m_dynScrollMax < 0) m_dynScrollMax = 0;
