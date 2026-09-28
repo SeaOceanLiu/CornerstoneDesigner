@@ -1131,6 +1131,96 @@ void CanvasPane::rebuildDynamicRows() {
             // 子组归属四分组（background→背景色、border→边框色、text/text-shadow→字体及阴影）
             const auto colorGroups =
                 resolveColorGroups((*m_schema)["$defs"], def);
+        const bool hasShadow = def.contains("properties") &&
+                               def["properties"].contains("shadow");
+        const bool isListLike = (m_schemaType == "list-view" ||
+                                 m_schemaType == "tree-view");
+        auto renderShadowRows = [&]() {
+            if (!hasShadow || isListLike || groupCollapsed("字体及阴影")) return;
+            const bool isLabelT = (m_schemaType == "label");
+            const bool legacyInner = (m_schemaType == "button" ||
+                                      m_schemaType == "check-box" ||
+                                      m_schemaType == "win-frame");
+            const char* attLabelKey = (m_schemaType == "win-frame")
+                ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel;
+            Control shTarget = m_schemaTarget;
+            if (legacyInner && !isLabelT) {
+                void* h = m_schemaTarget.GetPtr(attLabelKey);
+                if (h) shTarget = m_viewport->FromHandle(h);
+            }
+            makeLabel("shadow.enabled");
+            {
+                Control cb = m_ui->CreateCheckBox("shadow.enabled", 0, 0, rowW, ctlH);
+                cb.SetRect(kPropInsetX, y, rowW, ctlH);
+                cb.SetBool(PropertyNames::kTriState, false);
+                bool on = false;
+                if (m_schemaType == "label") on = m_schemaTarget.GetBool(PropertyNames::kShadow);
+                else if (m_schemaType == "button") on = m_schemaTarget.GetBool(PropertyNames::kShadow);
+                else on = shTarget.IsValid() && shTarget.GetBool(PropertyNames::kShadow);
+                cb.SetBool(PropertyNames::kChecked, on);
+                m_rowRefreshers.push_back([this, cb]() mutable {
+                    const bool ron = m_schemaType == "win-frame"
+                        ? [&] { void* h = m_schemaTarget.GetPtr(PropertyNames::kTitleLabel);
+                                return h && m_viewport->FromHandle(h).GetBool(PropertyNames::kShadow); }()
+                        : m_schemaTarget.GetBool(PropertyNames::kShadow);
+                    cb.SetBool(PropertyNames::kChecked, ron);
+                });
+                cb.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e2) {
+                    const bool on2 = e2.GetCheckState() != 0;
+                    if (m_schemaType == "win-frame") {
+                        void* h = m_schemaTarget.GetPtr(PropertyNames::kTitleLabel);
+                        if (h) m_viewport->FromHandle(h).SetBool(PropertyNames::kShadow, on2);
+                        return;
+                    }
+                    if (m_schemaTarget.IsValid())
+                        m_schemaTarget.SetBool(PropertyNames::kShadow, on2);
+                });
+                m_propDynamic.AddChild(cb);
+                m_dynamicRows.push_back(cb);
+                m_dynamicRowY.push_back(y);
+                y += ctlH + rowGap;
+                ++rows;
+                genKeys += " shadow.enabled";
+            }
+            static const char* kOff[] = { "shadow.offset.x", "shadow.offset.y" };
+            static const char* kOffProp[] = { "shadow-offset-x", "shadow-offset-y" };
+            for (int oi = 0; oi < 2; ++oi) {
+                makeLabel(kOff[oi]);
+                Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, ctlH);
+                nud.SetRect(kPropInsetX, y, rowW, ctlH);
+                nud.SetFloat(PropertyNames::kStep, kShadowStep);
+                nud.SetFloat(PropertyNames::kRangeMin, -kShadowRange);
+                nud.SetFloat(PropertyNames::kRangeMax, kShadowRange);
+                const float v = shTarget.IsValid() ? shTarget.GetFloat(kOffProp[oi]) : 0.0f;
+                nud.SetFloat(PropertyNames::kValue, v);
+                m_rowRefreshers.push_back([this, nud, legacyInner, attLabelKey, oi]() mutable {
+                    float rv = 0.0f;
+                    if (m_schemaType == "label" || !legacyInner) {
+                        rv = m_schemaTarget.GetFloat(kOffProp[oi]);
+                    } else {
+                        void* h = m_schemaTarget.GetPtr(attLabelKey);
+                        if (h) rv = m_viewport->FromHandle(h).GetFloat(kOffProp[oi]);
+                    }
+                    nud.SetFloat(PropertyNames::kValue, rv);
+                });
+                nud.SetCallback(PropertyNames::kEventValueChanged,
+                                [this, legacyInner, attLabelKey, oi](const Event& e2) {
+                    if (!m_schemaTarget.IsValid()) return;
+                    if (m_schemaType == "label" || !legacyInner) {
+                        m_schemaTarget.SetFloat(kOffProp[oi], e2.GetValueChanged());
+                        return;
+                    }
+                    void* h = m_schemaTarget.GetPtr(attLabelKey);
+                    if (h) m_viewport->FromHandle(h).SetFloat(kOffProp[oi], e2.GetValueChanged());
+                });
+                m_propDynamic.AddChild(nud);
+                m_dynamicRows.push_back(nud);
+                m_dynamicRowY.push_back(y);
+                y += ctlH + rowGap;
+                ++rows;
+                genKeys += " " + std::string(kOff[oi]);
+            }
+        };
             for (const auto& [grpName, states] : colorGroups) {
                 const std::string owner = (grpName == "background") ? "背景色"
                                         : (grpName == "border") ? "边框色"
@@ -1233,6 +1323,8 @@ void CanvasPane::rebuildDynamicRows() {
                         cp.SetColor(prop.c_str(), cc2);
                         cp.SetString(PropertyNames::kTextContent, hex2);
                     });
+                    // 字体及阴影组续：shadow 行紧随 text/text-shadow 槽（同组连续不重复标题）
+                    if (grpName == "text-shadow") renderShadowRows();
                     });   // msColor
                 }
             }
@@ -1426,108 +1518,8 @@ void CanvasPane::rebuildDynamicRows() {
     // offset：label 自身 / button+check-box+win-frame 内部 Label 直控 / 其余自身键
     // 例外：list-view/tree-view 的阴影为 item 级专用键（cell/item-text-shadow），
     //   通用 shadow 键不适用——暂不生成（后续单独行）
-    {
-        const bool hasShadow = def.contains("properties") &&
-                               def["properties"].contains("shadow");
-        const bool isListLike = (m_schemaType == "list-view" ||
-                                 m_schemaType == "tree-view");
-        if (lastOwner != "字体及阴影") { makeGroupHeader("字体及阴影"); lastOwner = "字体及阴影"; }
-        if (hasShadow && !isListLike && !groupCollapsed("字体及阴影")) {
-        const bool isLabelT = (m_schemaType == "label");
-        const bool legacyInner = (m_schemaType == "button" ||
-                                  m_schemaType == "check-box" ||
-                                  m_schemaType == "win-frame");
-        const char* attLabelKey = (m_schemaType == "win-frame")
-            ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel;
-        // 阴影目标（offset 属性所在控件）：label 自身；legacy 三类型内部 Label；
-        // 其余类型自身键（引擎转发）
-        Control shTarget = m_schemaTarget;
-        if (legacyInner && !isLabelT) {
-            void* h = m_schemaTarget.GetPtr(attLabelKey);
-            if (h) shTarget = m_viewport->FromHandle(h);
-        }
-        // enabled 三行/offset 两行
-        makeLabel("shadow.enabled");
-        {
-            Control cb = m_ui->CreateCheckBox("shadow.enabled", 0, 0, rowW, ctlH);
-            cb.SetRect(kPropInsetX, y, rowW, ctlH);
-            cb.SetBool(PropertyNames::kTriState, false);
-            bool on = false;
-            if (m_schemaType == "label") on = m_schemaTarget.GetBool(PropertyNames::kShadow);
-            else if (m_schemaType == "button") on = m_schemaTarget.GetBool(PropertyNames::kShadow);
-            else on = shTarget.IsValid() && shTarget.GetBool(PropertyNames::kShadow);
-            cb.SetBool(PropertyNames::kChecked, on);
-            m_rowRefreshers.push_back([this, cb]() mutable {
-                const bool ron = m_schemaType == "win-frame"
-                    ? [&] { void* h = m_schemaTarget.GetPtr(PropertyNames::kTitleLabel);
-                            return h && m_viewport->FromHandle(h).GetBool(PropertyNames::kShadow); }()
-                    : m_schemaTarget.GetBool(PropertyNames::kShadow);
-                cb.SetBool(PropertyNames::kChecked, ron);
-            });
-            cb.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e2) {
-                const bool on2 = e2.GetCheckState() != 0;
-                if (m_schemaType == "win-frame") {
-                    // win-frame：title Label 直控
-                    void* h = m_schemaTarget.GetPtr(PropertyNames::kTitleLabel);
-                    if (h) m_viewport->FromHandle(h).SetBool(PropertyNames::kShadow, on2);
-                    return;
-                }
-                // label/button/check-box：自身 kShadow（引擎 setBoolProperty 分发：
-                //   Label→setShadow / Button→setTextShadowEnable / CheckBox→宿主+caption 同步）
-                if (m_schemaTarget.IsValid())
-                    m_schemaTarget.SetBool(PropertyNames::kShadow, on2);
-            });
-            m_propDynamic.AddChild(cb);
-            m_dynamicRows.push_back(cb);
-            m_dynamicRowY.push_back(y);
-            y += ctlH + rowGap;
-            ++rows;
-            genKeys += " shadow.enabled";
-        }
-        static const char* kOff[] = { "shadow.offset.x", "shadow.offset.y" };
-        static const char* kOffProp[] = { "shadow-offset-x", "shadow-offset-y" };
-        for (int oi = 0; oi < 2; ++oi) {
-            makeLabel(kOff[oi]);
-            Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, ctlH);
-            nud.SetRect(kPropInsetX, y, rowW, ctlH);
-            nud.SetFloat(PropertyNames::kStep, kShadowStep);
-            nud.SetInt(PropertyNames::kDecimals, 1);
-            nud.SetFloat(PropertyNames::kRangeMin, -kShadowRange);
-            nud.SetFloat(PropertyNames::kRangeMax, kShadowRange);
-            const float v = shTarget.IsValid() ? shTarget.GetFloat(kOffProp[oi]) : 0.0f;
-            nud.SetFloat(PropertyNames::kValue, v);
-            m_rowRefreshers.push_back([this, nud, legacyInner, attLabelKey, oi]() mutable {
-                float rv = 0.0f;
-                if (m_schemaType == "label" || !legacyInner) {
-                    rv = m_schemaTarget.GetFloat(kOffProp[oi]);
-                } else {
-                    void* h = m_schemaTarget.GetPtr(attLabelKey);
-                    if (h) rv = m_viewport->FromHandle(h).GetFloat(kOffProp[oi]);
-                }
-                nud.SetFloat(PropertyNames::kValue, rv);
-            });
-            nud.SetCallback(PropertyNames::kEventValueChanged,
-                            [this, legacyInner, attLabelKey, oi](const Event& e2) {
-                if (!m_schemaTarget.IsValid()) return;
-                if (m_schemaType == "label" || !legacyInner) {
-                    // label 自身；其余 def 驱动类型走自身键（引擎 P0-26 转发内部 Label）
-                    m_schemaTarget.SetFloat(kOffProp[oi], e2.GetValueChanged());
-                    return;
-                }
-                void* h = m_schemaTarget.GetPtr(attLabelKey);
-                if (h) m_viewport->FromHandle(h).SetFloat(kOffProp[oi], e2.GetValueChanged());
-            });
-            m_propDynamic.AddChild(nud);
-            m_dynamicRows.push_back(nud);
-            m_dynamicRowY.push_back(y);
-            y += ctlH + rowGap;
-            ++rows;
-            genKeys += " " + std::string(kOff[oi]);
-        }
-        }
-    }
 
-    const auto tEnd = std::chrono::steady_clock::now();
+        const auto tEnd = std::chrono::steady_clock::now();
     std::printf("[DBG-perf] rebuildDynamicRows total=%lldms (destroy=%lldms build=%lldms) rows=%d\n",
                 (long long)std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - t0).count(),
                 (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count(),
