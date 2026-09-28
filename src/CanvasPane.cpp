@@ -1106,13 +1106,32 @@ void CanvasPane::rebuildDynamicRows() {
     // 先收集再排序：nlohmann 对象按字母序遍历，资源/路径类键（animation、
     // 四态图等）会被普通属性切断——聚尾生成（用户视角的属性分组）
     std::vector<std::pair<std::string, const nlohmann::json*>> kvs;
-    for (auto it = merged.begin(); it != merged.end(); ++it)
+    for (auto it = merged.begin(); it != merged.end(); ++it) {
+        // colors 键按子组拆伪键（colors@background 等）——分组排序后同组连续呈现
+        if (it.key() == "colors") {
+            const auto cg = resolveColorGroups((*m_schema)["$defs"], def);
+            for (const auto& [grpName, states] : cg)
+                kvs.push_back({"colors@" + grpName, &it.value()});
+            continue;
+        }
         kvs.push_back({it.key(), &it.value()});
-    std::stable_partition(kvs.begin(), kvs.end(), [](const auto& kv) {
-        return !isPathLikeProp(jsonKeyToProp(kv.first));
+    }
+    auto groupOf = [](const std::string& key) -> int {
+        if (key == "colors@background") return 0;                    // 背景色
+        if (key == "colors@border") return 1;                        // 边框色
+        if (key == "colors@text" || key == "colors@text-shadow") return 2;  // 字体及阴影
+        std::string p0 = jsonKeyToProp(key);
+        if (key == "text" || key == "font" || p0 == "font-size") return 2;
+        return 3;                                                    // 常规
+    };
+    std::stable_sort(kvs.begin(), kvs.end(), [&](const auto& a, const auto& b) {
+        const int ga = groupOf(a.first), gb = groupOf(b.first);
+        if (ga != gb) return ga < gb;
+        return !isPathLikeProp(jsonKeyToProp(a.first)) &&
+               isPathLikeProp(jsonKeyToProp(b.first));   // 组内：资源/路径类聚尾
     });
     for (const auto& kv : kvs) {
-        const std::string key = kv.first;
+        std::string key = kv.first;
         bool skip = false;
         for (const char* s : kSkip)
             if (key == s) { skip = true; break; }
@@ -1121,6 +1140,11 @@ void CanvasPane::rebuildDynamicRows() {
             skip = true;   // Button 无 image 运行时分发（资源入口是四态图/animation）
         if (skip) continue;
         const nlohmann::json& spec = *kv.second;
+        std::string colorSubGrp;   // colors 伪键的子组名（非伪键为空）
+        if (key.rfind("colors@", 0) == 0) {
+            colorSubGrp = key.substr(7);
+            key = "colors";
+        }
         const std::string t = spec.value("type", "");
 
         // 颜色组展开：colors.<组>.<态> → 运行时 "组[.态]"（normal 省略后缀，键名点号风格）
@@ -1129,14 +1153,21 @@ void CanvasPane::rebuildDynamicRows() {
             // P0-26 schema 重构：按类型 def 声明的态子集生成（colors-full 四态/
             // colors-menu 三态/colors-basic1 单态……），未声明组不生成；
             // 子组归属四分组（background→背景色、border→边框色、text/text-shadow→字体及阴影）
-            const auto colorGroups =
+            const auto colorGroupsAll =
                 resolveColorGroups((*m_schema)["$defs"], def);
+            const std::string owner = (colorSubGrp == "background") ? "背景色"
+                                    : (colorSubGrp == "border") ? "边框色"
+                                    : "字体及阴影";
+            if (groupCollapsed(owner)) continue;   // 收起：不创建该组色槽
+            auto itg = colorGroupsAll.find(colorSubGrp);
+            if (itg == colorGroupsAll.end()) continue;
+            const auto& [grpName, states] = *itg;
         const bool hasShadow = def.contains("properties") &&
                                def["properties"].contains("shadow");
         const bool isListLike = (m_schemaType == "list-view" ||
                                  m_schemaType == "tree-view");
         auto renderShadowRows = [&]() {
-            if (!hasShadow || isListLike || groupCollapsed("字体及阴影")) return;
+            if (!hasShadow || isListLike) return;
             const bool isLabelT = (m_schemaType == "label");
             const bool legacyInner = (m_schemaType == "button" ||
                                       m_schemaType == "check-box" ||
@@ -1221,138 +1252,10 @@ void CanvasPane::rebuildDynamicRows() {
                 genKeys += " " + std::string(kOff[oi]);
             }
         };
-            for (const auto& [grpName, states] : colorGroups) {
-                const std::string owner = (grpName == "background") ? "背景色"
-                                        : (grpName == "border") ? "边框色"
-                                        : "字体及阴影";
-                if (lastOwner != owner) { makeGroupHeader(owner); lastOwner = owner; }
-                if (groupCollapsed(owner)) continue;   // 收起：不创建该组色槽
-                // （win-frame text-shadow 旧过滤已移除：引擎 P0-26 后 title 阴影
-                // 四态色经 title-label 可达——槽位写回经 capKey 分派下方处理）
-                const std::string gk = grpName;   // schema 子组名即运行时组键（text-shadow）
-                for (const std::string& st : states) {
-                    // 背景色入动态区（固定区背景色行已退役——schema 驱动统一）；
-                    // win-frame 无 hover/pressed 状态机（窗口语义）——不可达槽跳过
-                    // （text.normal/disabled 可达保留）
-                    if (m_schemaType == "win-frame" && grpName == "text" &&
-                        (st == "hover" || st == "pressed"))
-                        continue;
-                    const std::string prop = gk + (st == "normal"
-                        ? std::string() : ("." + st));
-                    const std::string lbl = grpName + "." + st;
-                    // 内部文本 Label 的暴露键按类型分派：WinFrame 用其专有 title-label
-                    // （caption-label 不为其发明新键——92 键一致性），其余用 caption-label
-                    const char* capKey = (m_schemaType == "win-frame")
-                        ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel;
-                    // 回读：text/textShadow 组的实际色在内部 Label 上
-                    // （Button 基类字段不反映直控结果）——从其读
-                    UIColor cc;
-                    if ((grpName == "text" || grpName == "text-shadow") && m_ui) {
-                        void* capH = m_schemaTarget.GetPtr(capKey);
-                        cc = capH ? m_viewport->FromHandle(capH).GetColor(prop.c_str())
-                                  : m_schemaTarget.GetColor(prop.c_str());
-                    } else {
-                        cc = m_schemaTarget.GetColor(prop.c_str());
-                    }
-                    char hex[12];
-                    std::snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X",
-                                  cc.r, cc.g, cc.b, cc.a);
-                    makeLabel(lbl);
 
-                    // 颜色槽：直建 ColorPicker（引擎惰性化——关闭态秒建、弹窗首次打开才构建）
-                    // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
-                    sw(msColor, [&] {
-                    Control cp = m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
-                    cp.SetCallback(PropertyNames::kEventColorChanged,
-                                   [this, prop, gk, grpName, st, capKey](const Event& e) {
-                        if (!m_schemaTarget.IsValid()) return;
-                        const UIColor c = e.GetChangedColor();
-                        // text/textShadow 组：直控内部 caption Label
-                        // （GetPtr("caption-label")——Button 单色 setter 不同步 caption 的绕行回收）
-                        if ((grpName == "text" || grpName == "text-shadow") && m_ui) {
-                            void* capH = m_schemaTarget.GetPtr(capKey);
-                            if (capH) {
-                                // caption 属于被设计控件子树（子视口实例）——
-                                // FromHandle 须用子视口域（主实例域会 validate 失败落空）
-                                auto cap = m_viewport->FromHandle(capH);
-                                const std::string capProp = gk + (st == "normal"
-                                    ? std::string() : ("." + st));
-                                cap.SetColor(capProp.c_str(), c);
-                                // CheckBox recreate 丢 caption 状态——存 extended（拖动结束恢复用）
-                                ControlModel* m2 = findModel(m_selectedId);
-                                if (m2) {
-                                    char hex8[12];
-                                    std::snprintf(hex8, sizeof(hex8), "#%02X%02X%02X%02X",
-                                                  c.r, c.g, c.b, c.a);
-                                    m2->props.extended[prop + "-color"] = hex8;
-                                }
-                                return;
-                            }
-                        }
-                        m_schemaTarget.SetColor(prop.c_str(), c);   // 兜底（无 caption 控件等）
-                        {
-                            ControlModel* m2 = findModel(m_selectedId);
-                            if (m2) {
-                                char hex8[12];
-                                std::snprintf(hex8, sizeof(hex8), "#%02X%02X%02X%02X",
-                                              c.r, c.g, c.b, c.a);
-                                m2->props.extended[prop + "-color"] = hex8;
-                            }
-                        }
-                    });
-                    m_fixedWidthRows.insert(m_dynamicRows.size());
-                    m_propDynamic.AddChild(cp);
-                    m_dynamicRows.push_back(cp);
-                    m_dynamicRowY.push_back(y);
-                    y += ctlH + rowGap;
-                    ++rows;
-                    genKeys += " " + lbl;
-                    // E：刷值闭包（同类型复用时重读色值回填槽）
-                    m_rowRefreshers.push_back([this, cp, prop, grpName, gk, st, capKey]() mutable {
-                        UIColor cc2;
-                        if ((grpName == "text" || grpName == "text-shadow") && m_ui) {
-                            void* capH = m_schemaTarget.GetPtr(capKey);
-                            cc2 = capH ? m_viewport->FromHandle(capH).GetColor(prop.c_str())
-                                       : m_schemaTarget.GetColor(prop.c_str());
-                        } else {
-                            cc2 = m_schemaTarget.GetColor(prop.c_str());
-                        }
-                        char hex2[12];
-                        std::snprintf(hex2, sizeof(hex2), "#%02X%02X%02X%02X",
-                                      cc2.r, cc2.g, cc2.b, cc2.a);
-                        cp.SetColor(prop.c_str(), cc2);
-                        cp.SetString(PropertyNames::kTextContent, hex2);
-                    });
-                    });   // msColor
-                }
-                // 子组尾（每子组一次，槽循环外）：border-visible 开关（边框组）/
-                // shadow 行（字体及阴影组——紧随 text-shadow 槽，同组连续不重复标题）
-                if (grpName == "border") {
-                    makeLabel("border-visible");
-                    Control bvc = m_ui->CreateCheckBox("border-visible", 0, 0, rowW, ctlH);
-                    bvc.SetRect(kPropInsetX, y, rowW, ctlH);
-                    bvc.SetBool(PropertyNames::kTriState, false);
-                    bvc.SetBool(PropertyNames::kChecked,
-                                m_schemaTarget.GetBool("border-visible"));
-                    m_rowRefreshers.push_back([this, bvc]() mutable {
-                        bvc.SetBool(PropertyNames::kChecked,
-                                    m_schemaTarget.GetBool("border-visible"));
-                    });
-                    bvc.SetCallback(PropertyNames::kEventCheckChanged,
-                                    [this](const Event& e) {
-                        if (m_schemaTarget.IsValid())
-                            m_schemaTarget.SetBool("border-visible",
-                                                   e.GetCheckState() != 0);
-                    });
-                    m_propDynamic.AddChild(bvc);
-                    m_dynamicRows.push_back(bvc);
-                    m_dynamicRowY.push_back(y);
-                    y += ctlH + rowGap;
-                    ++rows;
-                    genKeys += " border-visible";
-                }
-                if (grpName == "text-shadow") renderShadowRows();
-            }
+            // 字体及阴影组续：shadow 行紧随 text/text-shadow 槽（同组连续不重复标题）
+            if (colorSubGrp == "text-shadow") renderShadowRows();
+
             continue;
         }
 
