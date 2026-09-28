@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include <chrono>
 #include <vector>
 
 namespace {
@@ -948,6 +949,7 @@ void CanvasPane::SetDynamicPropsContainer(Control box) {
 // 初始叠放根因——行 y 手动累加；底部 ScrollBar 做"窗口滚动"（超界行隐藏，
 // 等效裁剪——引擎 panel 无裁剪能力）。
 void CanvasPane::rebuildDynamicRows() {
+    const auto t0 = std::chrono::steady_clock::now();
     for (Control& c : m_dynamicRows)
         if (c.IsValid()) c.Destroy();
     m_dynamicRows.clear();
@@ -955,7 +957,7 @@ void CanvasPane::rebuildDynamicRows() {
     m_fixedWidthRows.clear();
     m_captionEditor = Control();
     m_schemaTarget = Control();
-
+    const auto t1 = std::chrono::steady_clock::now();
     if (!m_propDynamic.IsValid()) return;
     const ControlModel* m = findModel(m_selectedId);
     if (!m) {   // 未选中：动态区留空（滚动条一并隐藏）
@@ -1385,6 +1387,13 @@ void CanvasPane::rebuildDynamicRows() {
         }
     }
 
+    const auto tEnd = std::chrono::steady_clock::now();
+    std::printf("[DBG-perf] rebuildDynamicRows total=%lldms (destroy=%lldms build=%lldms) rows=%d\n",
+                (long long)std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - t0).count(),
+                (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count(),
+                (long long)std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - t1).count(),
+                rows);
+    std::fflush(stdout);
     m_dynScrollMax = (y + kPropInsetX) - viewRowsH;
     if (m_dynScrollMax < 0) m_dynScrollMax = 0;
     m_dynScroll.SetFloat(PropertyNames::kRangeMax, m_dynScrollMax > 0 ? m_dynScrollMax : 1.0f);
