@@ -947,6 +947,9 @@ void CanvasPane::rebuildDynamicRows() {
     };
 
     const UIRect box = m_propDynamic.GetRect();    // 容器实际尺寸（v-flow 排布后）
+    std::printf("[DBG-dyn] propDynamic rect=(%g,%g,%g,%g)\n",
+                box.x, box.y, box.w, box.h);
+    std::fflush(stdout);
     const float viewH = box.h, barW = 12.0f;
     const float viewRowsH = viewH;                 // 行区全高（滚动条浮于右侧）
 
@@ -1390,7 +1393,8 @@ void CanvasPane::syncDynamicWidth() {
 }
 
 void CanvasPane::applyDynScroll(float value) {
-    const float viewH = 288.0f;
+    const float viewH = m_propDynamic.IsValid() ? m_propDynamic.GetRect().h
+                                                : 288.0f;   // 容器实际高（随布局）
     for (size_t i = 0; i < m_dynamicRows.size(); ++i) {
         if (!m_dynamicRows[i].IsValid() || i >= m_dynamicRowY.size()) continue;
         const float vy = m_dynamicRowY[i] - value;
