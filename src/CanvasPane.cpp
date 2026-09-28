@@ -1397,6 +1397,46 @@ void CanvasPane::rebuildDynamicRows() {
         if (key == "font") effT = "string";
         if (effT != "string" && effT != "number" && effT != "integer" && effT != "boolean") continue;
 
+        // font 对象键：字体名 ComboBox（注册字体清单枚举——防手输拼写错误；
+        // 写回/读回经引擎 P0-46 string 别名通道 → Enum）
+        if (key == "font") {
+            makeLabel(key);
+            Control fcb = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
+            static const char* kFontNames[] = {
+                "HarmonyOS_Sans_SC_Regular", "HarmonyOS_Sans_SC_Thin", "Asul-Bold",
+                "MapleMono-NF-CN-Regular", "Muyao-Softbrush", "Quando-Regular",
+            };
+            enum { kFontNameCount = 6 };
+            const std::string cur = m_schemaTarget.GetString(PropertyNames::kFont);
+            int curIdx = -1;
+            for (int i = 0; i < kFontNameCount; ++i) {
+                m_ui->ComboBoxAddItem(fcb, kFontNames[i], kFontNames[i]);
+                if (cur == kFontNames[i]) curIdx = i;
+            }
+            if (curIdx >= 0) fcb.SetInt(PropertyNames::kSelectedIndex, curIdx);
+            m_rowRefreshers.push_back([this, fcb]() mutable {
+                const std::string cur2 = m_schemaTarget.GetString(PropertyNames::kFont);
+                for (int i = 0; i < kFontNameCount; ++i)
+                    if (cur2 == kFontNames[i]) {
+                        fcb.SetInt(PropertyNames::kSelectedIndex, i);
+                        break;
+                    }
+            });
+            fcb.SetCallback(PropertyNames::kEventSelectionChanged,
+                            [this, fcb](const Event&) mutable {
+                const int idx = fcb.GetInt(PropertyNames::kSelectedIndex);
+                if (idx >= 0 && idx < kFontNameCount && m_schemaTarget.IsValid())
+                    m_schemaTarget.SetString(PropertyNames::kFont, kFontNames[idx]);
+            });
+            m_propDynamic.AddChild(fcb);
+            m_dynamicRows.push_back(fcb);
+            m_dynamicRowY.push_back(y);
+            y += ctlH + rowGap;
+            ++rows;
+            genKeys += " font";
+            continue;
+        }
+
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
