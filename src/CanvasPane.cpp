@@ -1084,6 +1084,7 @@ void CanvasPane::rebuildDynamicRows() {
         return m_collapsedGroups.count(name) != 0;
     };
     bool commonHeaderDone = false;   // 常规组标题哨兵（colors 段后首个通用行前插入）
+    std::string lastOwner;           // 当前属性分组（组切换时插组标题行）
     long long msLabel = 0, msTextArea = 0, msColor = 0, msNud = 0, msCheck = 0, msOther = 0;
     auto sw = [](long long& acc, const auto& fn) {
         const auto s = std::chrono::steady_clock::now();
@@ -1125,13 +1126,17 @@ void CanvasPane::rebuildDynamicRows() {
         // 颜色组展开：colors.<组>.<态> → 运行时 "组[.态]"（normal 省略后缀，键名点号风格）
         // 行先放占位 Button（背景=当前色+hex 文本），点击才创建 ColorPicker（3.5s 构建惰性化）
         if (key == "colors" && spec.is_object()) {
-            makeGroupHeader("颜色");
-            if (groupCollapsed("颜色")) continue;   // 收起：不创建色槽行
             // P0-26 schema 重构：按类型 def 声明的态子集生成（colors-full 四态/
-            // colors-menu 三态/colors-basic1 单态……），未声明组不生成
+            // colors-menu 三态/colors-basic1 单态……），未声明组不生成；
+            // 子组归属四分组（background→背景色、border→边框色、text/text-shadow→字体及阴影）
             const auto colorGroups =
                 resolveColorGroups((*m_schema)["$defs"], def);
             for (const auto& [grpName, states] : colorGroups) {
+                const std::string owner = (grpName == "background") ? "背景色"
+                                        : (grpName == "border") ? "边框色"
+                                        : "字体及阴影";
+                if (lastOwner != owner) { makeGroupHeader(owner); lastOwner = owner; }
+                if (groupCollapsed(owner)) continue;   // 收起：不创建该组色槽
                 // （win-frame text-shadow 旧过滤已移除：引擎 P0-26 后 title 阴影
                 // 四态色经 title-label 可达——槽位写回经 capKey 分派下方处理）
                 const std::string gk = grpName;   // schema 子组名即运行时组键（text-shadow）
@@ -1239,12 +1244,17 @@ void CanvasPane::rebuildDynamicRows() {
         std::string effT = t;
         if (key == "font" && effT == "object") effT = "string";
         if (effT != "string" && effT != "number" && effT != "integer" && effT != "boolean") continue;
-        if (!commonHeaderDone) { makeGroupHeader("常规"); commonHeaderDone = true; }
-        if (groupCollapsed("常规")) continue;   // 常规组折叠：通用行不创建
 
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
+        // 通用行组归属：字体相关→字体及阴影、border-visible→边框色、其余→常规
+        std::string owner = "常规";
+        if (key == "text" || key == "font" || prop == "font-size") owner = "字体及阴影";
+        else if (key == "border-visible") owner = "边框色";
+        if (lastOwner != owner) { makeGroupHeader(owner); lastOwner = owner; }
+        if (groupCollapsed(owner)) continue;   // 收起：不创建该组行
+
         // （path→animation 特判已删：引擎 P0-24 别名生效，path 即运行时键）
         makeLabel(key);
 
@@ -1421,8 +1431,8 @@ void CanvasPane::rebuildDynamicRows() {
                                def["properties"].contains("shadow");
         const bool isListLike = (m_schemaType == "list-view" ||
                                  m_schemaType == "tree-view");
-        makeGroupHeader("阴影");
-        if (hasShadow && !isListLike && !groupCollapsed("阴影")) {
+        if (lastOwner != "字体及阴影") { makeGroupHeader("字体及阴影"); lastOwner = "字体及阴影"; }
+        if (hasShadow && !isListLike && !groupCollapsed("字体及阴影")) {
         const bool isLabelT = (m_schemaType == "label");
         const bool legacyInner = (m_schemaType == "button" ||
                                   m_schemaType == "check-box" ||

@@ -175,7 +175,8 @@ private:
     // 跳过销毁重建，仅执行各行刷值闭包（读控件当前值回填行显示）
     std::vector<std::function<void()>> m_rowRefreshers;
     std::string m_rowsBuiltSig;                 // 已建行集的类型签名（空=未建）
-    std::set<std::string> m_collapsedGroups;    // 折叠的属性分组（该组行不创建）
+    std::set<std::string> m_collapsedGroups = {
+        "背景色", "边框色", "字体及阴影", "常规"};   // 缺省全收起：初次创建/切换控件只建 4 个组标题行（快）
     Control m_propColor;           // 颜色（color-changed 事件回调：onOK 确认触发）
     std::string m_lastColorHex;    // 上次回填/已应用的颜色（echo 抑制）
     void onColorPicked(unsigned char r, unsigned char g, unsigned char b);
