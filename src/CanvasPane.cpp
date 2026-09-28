@@ -1130,6 +1130,7 @@ void CanvasPane::rebuildDynamicRows() {
         return !isPathLikeProp(jsonKeyToProp(a.first)) &&
                isPathLikeProp(jsonKeyToProp(b.first));   // 组内：资源/路径类聚尾
     });
+    int lastGroup = -1;   // 当前已呈现组序号（-1=尚未）
     for (const auto& kv : kvs) {
         std::string key = kv.first;
         bool skip = false;
@@ -1140,6 +1141,14 @@ void CanvasPane::rebuildDynamicRows() {
             skip = true;   // Button 无 image 运行时分发（资源入口是四态图/animation）
         if (skip) continue;
         const nlohmann::json& spec = *kv.second;
+        // 组切换：按排序组序号呈现组标题（同组连续→仅一次；折叠组跳过行创建）
+        const int grp = groupOf(kv.first);
+        static const char* kGroupNames[] = { "背景色", "边框色", "字体及阴影", "常规" };
+        if (lastGroup != grp) {
+            makeGroupHeader(kGroupNames[grp]);
+            lastGroup = grp;
+        }
+        if (m_collapsedGroups.count(kGroupNames[grp])) continue;   // 收起：不创建该组行
         std::string colorSubGrp;   // colors 伪键的子组名（非伪键为空）
         if (key.rfind("colors@", 0) == 0) {
             colorSubGrp = key.substr(7);
@@ -1269,12 +1278,6 @@ void CanvasPane::rebuildDynamicRows() {
         std::string prop = jsonKeyToProp(key);
         if (key == "text" && textIsCaption) prop = PropertyNames::kCaption;
         if (key == "border-visible") continue;   // 已并入边框色组（槽后开关行）——通用循环不生成
-        std::string owner = "常规";
-        if (key == "text" || key == "font" || prop == "font-size") owner = "字体及阴影";
-        // （border-visible 归常规：若归边框色，其字母序先于 colors 段，会与
-        //   colors.border 子组的"边框色"标题重复）
-        if (lastOwner != owner) { makeGroupHeader(owner); lastOwner = owner; }
-        if (groupCollapsed(owner)) continue;   // 收起：不创建该组行
 
         // （path→animation 特判已删：引擎 P0-24 别名生效，path 即运行时键）
         makeLabel(key);
