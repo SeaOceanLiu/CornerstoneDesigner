@@ -267,6 +267,7 @@ void App::bindToolbar() {
 
     auto gridCtl = m_ui->FindControl("tb_grid");
     if (gridCtl.IsValid()) {
+        gridCtl.SetBool(PropertyNames::kTriState, false);   // 两态开关
         gridCtl.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
             m_canvas->SetGridVisible(e.GetCheckState() != 0);
         });
@@ -274,6 +275,7 @@ void App::bindToolbar() {
 
     auto snapCtl = m_ui->FindControl("tb_snap");
     if (snapCtl.IsValid()) {
+        snapCtl.SetBool(PropertyNames::kTriState, false);   // 两态开关
         snapCtl.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
             m_canvas->SetSnapEnabled(e.GetCheckState() != 0);
         });

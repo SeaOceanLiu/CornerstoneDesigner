@@ -94,18 +94,29 @@ std::vector<unsigned char> zlibWrapStored(const std::vector<unsigned char>& raw)
     return out;
 }
 
-// 网格瓦片：tilePx×tilePx，白底 + #303030 1px 线（每 cellPx 一条，左上边界对齐）。
+constexpr int kGridDotStep = 4;                // 网格点线：沿线每 4px 一个点（交点处必有）
+constexpr unsigned char kGridLineR = 0xB0;     // 网格线浅灰（避免干扰控件边界色判断）
+constexpr unsigned char kGridLineG = 0xB0;
+constexpr unsigned char kGridLineB = 0xB0;
+constexpr unsigned char kGridLineA = 0xC0;
+
+// 网格瓦片：tilePx×tilePx，白底 + 浅灰点线（每 cellPx 一条，左上边界对齐）。
 // 平铺后线在 0, cellPx, 2*cellPx… 处连续；瓦片右/下边缘不画线（由下一瓦片左/上边界提供）。
-std::vector<unsigned char> buildGridTilePng(int tilePx, int cellPx) {
+// showLines=false 生成纯白瓦片（网格开关经瓦片重生成实现——白底/背景色保持）。
+std::vector<unsigned char> buildGridTilePng(int tilePx, int cellPx, bool showLines) {
     std::vector<unsigned char> raw;
     raw.reserve((size_t)tilePx * ((size_t)tilePx * 4 + 1));
     for (int y = 0; y < tilePx; ++y) {
         raw.push_back(0);   // filter 0
         bool yLine = (y % cellPx == 0);
         for (int x = 0; x < tilePx; ++x) {
-            bool line = yLine || (x % cellPx == 0);
-            if (line) { raw.push_back(0x30); raw.push_back(0x30); raw.push_back(0x30); raw.push_back(0xC0); }
-            else { raw.push_back(0xFF); raw.push_back(0xFF); raw.push_back(0xFF); raw.push_back(0xFF); }
+            const bool line = showLines && (yLine || (x % cellPx == 0));
+            if (line && (x + y) % kGridDotStep == 0) {   // 沿线点阵（交点处必有）
+                raw.push_back(kGridLineR); raw.push_back(kGridLineG);
+                raw.push_back(kGridLineB); raw.push_back(kGridLineA);
+            } else {
+                raw.push_back(0xFF); raw.push_back(0xFF); raw.push_back(0xFF); raw.push_back(0xFF);
+            }
         }
     }
     std::vector<unsigned char> idat = zlibWrapStored(raw);
@@ -288,7 +299,7 @@ void CanvasPane::registerGridTile() {
         tilePx = cellPx * kTileCells;
     }
 
-    std::vector<unsigned char> png = buildGridTilePng(tilePx, cellPx);
+    std::vector<unsigned char> png = buildGridTilePng(tilePx, cellPx, m_gridVisible);
     if (png.empty()) return;
     if (!m_ui->RegisterResource("dc_canvas_grid", png.data(), png.size())) {
         std::printf("[CanvasPane] RegisterResource grid tile failed\n");
@@ -308,7 +319,7 @@ void CanvasPane::createGridImage() {
         return;
     }
     m_grid.SetEnum(PropertyNames::kScaleType, PropertyNames::kScaleTypeTile);
-    m_grid.SetBool(PropertyNames::kVisible, m_gridVisible);
+    m_grid.SetBool(PropertyNames::kVisible, true);   // Image 恒可见（网格开关经瓦片重生成）
 }
 
 // 重建网格瓦片（缩放档/gridCell 变化）。
@@ -413,7 +424,7 @@ void CanvasPane::SetGridCellSize(float px) {
 void CanvasPane::SetGridVisible(bool visible) {
     if (visible == m_gridVisible) return;
     m_gridVisible = visible;
-    if (m_grid.IsValid()) m_grid.SetBool(PropertyNames::kVisible, m_gridVisible);
+    rebuildGridTile();   // 重生成瓦片（带线/纯白）——仅去网格线、白底背景保持
 }
 
 void CanvasPane::SetContent(std::unique_ptr<ControlModel> root) {
