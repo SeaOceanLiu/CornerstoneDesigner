@@ -1323,35 +1323,35 @@ void CanvasPane::rebuildDynamicRows() {
                         cp.SetColor(prop.c_str(), cc2);
                         cp.SetString(PropertyNames::kTextContent, hex2);
                     });
-                    // 字体及阴影组续：shadow 行紧随 text/text-shadow 槽（同组连续不重复标题）
-                    if (grpName == "text-shadow") renderShadowRows();
-                    // 边框色组：槽后附 border-visible 开关（每子组一次，随边框组折叠）
-                    if (grpName == "border") {
-                        makeLabel("border-visible");
-                        Control bvc = m_ui->CreateCheckBox("border-visible", 0, 0, rowW, ctlH);
-                        bvc.SetRect(kPropInsetX, y, rowW, ctlH);
-                        bvc.SetBool(PropertyNames::kTriState, false);
-                        bvc.SetBool(PropertyNames::kChecked,
-                                    m_schemaTarget.GetBool("border-visible"));
-                        m_rowRefreshers.push_back([this, bvc]() mutable {
-                            bvc.SetBool(PropertyNames::kChecked,
-                                        m_schemaTarget.GetBool("border-visible"));
-                        });
-                        bvc.SetCallback(PropertyNames::kEventCheckChanged,
-                                        [this](const Event& e) {
-                            if (m_schemaTarget.IsValid())
-                                m_schemaTarget.SetBool("border-visible",
-                                                       e.GetCheckState() != 0);
-                        });
-                        m_propDynamic.AddChild(bvc);
-                        m_dynamicRows.push_back(bvc);
-                        m_dynamicRowY.push_back(y);
-                        y += ctlH + rowGap;
-                        ++rows;
-                        genKeys += " border-visible";
-                    }
                     });   // msColor
                 }
+                // 子组尾（每子组一次，槽循环外）：border-visible 开关（边框组）/
+                // shadow 行（字体及阴影组——紧随 text-shadow 槽，同组连续不重复标题）
+                if (grpName == "border") {
+                    makeLabel("border-visible");
+                    Control bvc = m_ui->CreateCheckBox("border-visible", 0, 0, rowW, ctlH);
+                    bvc.SetRect(kPropInsetX, y, rowW, ctlH);
+                    bvc.SetBool(PropertyNames::kTriState, false);
+                    bvc.SetBool(PropertyNames::kChecked,
+                                m_schemaTarget.GetBool("border-visible"));
+                    m_rowRefreshers.push_back([this, bvc]() mutable {
+                        bvc.SetBool(PropertyNames::kChecked,
+                                    m_schemaTarget.GetBool("border-visible"));
+                    });
+                    bvc.SetCallback(PropertyNames::kEventCheckChanged,
+                                    [this](const Event& e) {
+                        if (m_schemaTarget.IsValid())
+                            m_schemaTarget.SetBool("border-visible",
+                                                   e.GetCheckState() != 0);
+                    });
+                    m_propDynamic.AddChild(bvc);
+                    m_dynamicRows.push_back(bvc);
+                    m_dynamicRowY.push_back(y);
+                    y += ctlH + rowGap;
+                    ++rows;
+                    genKeys += " border-visible";
+                }
+                if (grpName == "text-shadow") renderShadowRows();
             }
             continue;
         }
