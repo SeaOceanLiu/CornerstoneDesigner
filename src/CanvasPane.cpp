@@ -1035,7 +1035,15 @@ void CanvasPane::rebuildDynamicRows() {
     const float lblFont = kPropLblFont, lblH = kPropLblH, ctlH = kPropCtlH,
           gapLbl = kPropGapLbl, rowGap = kPropRowGap;
     const float rowW = box.w - kPropRowInset;   // 右侧留滚动条通道
+    long long msLabel = 0, msTextArea = 0, msColor = 0, msNud = 0, msCheck = 0, msOther = 0;
+    auto sw = [](long long& acc, const auto& fn) {
+        const auto s = std::chrono::steady_clock::now();
+        fn();
+        acc += std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - s).count();
+    };
     auto makeLabel = [&](const std::string& label) {
+        sw(msLabel, [&] {
         Control lb = m_ui->CreateLabel(label, lblFont, 0, 0, rowW, lblH);
         lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
         lb.SetRect(kPropInsetX, y, rowW, lblH);
@@ -1043,6 +1051,7 @@ void CanvasPane::rebuildDynamicRows() {
         m_dynamicRows.push_back(lb);
         m_dynamicRowY.push_back(y);
         y += lblH + gapLbl;
+        });
     };
     // 先收集再排序：nlohmann 对象按字母序遍历，资源/路径类键（animation、
     // 四态图等）会被普通属性切断——聚尾生成（用户视角的属性分组）
@@ -1106,6 +1115,7 @@ void CanvasPane::rebuildDynamicRows() {
 
                     // 颜色槽：直建 ColorPicker（引擎惰性化——关闭态秒建、弹窗首次打开才构建）
                     // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
+                    sw(msColor, [&] {
                     Control cp = m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
                                    [this, prop, gk, grpName, st, capKey](const Event& e) {
@@ -1151,6 +1161,7 @@ void CanvasPane::rebuildDynamicRows() {
                     y += ctlH + rowGap;
                     ++rows;
                     genKeys += " " + lbl;
+                    });   // msColor
                 }
             }
             continue;
@@ -1171,6 +1182,7 @@ void CanvasPane::rebuildDynamicRows() {
         if (effT == "string") {
             // TextArea：多行值（如 Label 文本含换行）直接输入真实换行，
             // 无需转义；行高 40 容两行，超出内部滚动
+            sw(msTextArea, [&] {
             Control ta = m_ui->CreateTextArea(0, 0, rowW, kPropTextAreaH);
             ta.SetRect(kPropInsetX, y, rowW, kPropTextAreaH);
             // 编程创建无主题：显式深色面板协调样式
@@ -1244,7 +1256,9 @@ void CanvasPane::rebuildDynamicRows() {
             m_dynamicRows.push_back(ta);
             m_dynamicRowY.push_back(y);
             y += kPropTextAreaH + rowGap;
+            });   // msTextArea
         } else if (effT == "number" || effT == "integer") {
+            sw(msNud, [&] {
             Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, kPropCtlH);
             nud.SetRect(kPropInsetX, y, rowW, kPropCtlH);
             // 按 schema 类型分派（引擎已归一：font-size 全控件 Int 域、
@@ -1271,7 +1285,9 @@ void CanvasPane::rebuildDynamicRows() {
             m_dynamicRows.push_back(nud);
             m_dynamicRowY.push_back(y);
             y += ctlH + rowGap;
+            });   // msNud
         } else {
+            sw(msCheck, [&] {
             Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, kPropCheckH);
             cb.SetRect(kPropInsetX, y, rowW, kPropCheckH);
             cb.SetBool(PropertyNames::kTriState, false);   // bool 属性两态（引擎缺省三态循环）
@@ -1288,6 +1304,7 @@ void CanvasPane::rebuildDynamicRows() {
             m_dynamicRows.push_back(cb);
             m_dynamicRowY.push_back(y);
             y += ctlH + rowGap;
+            });   // msCheck
         }
         ++rows;
         genKeys += " " + key;
