@@ -1045,13 +1045,45 @@ void CanvasPane::rebuildDynamicRows() {
         m_propColor.SetBool(PropertyNames::kVisible, false);   // 已退役：动态区背景色槽替代
     const bool textIsCaption = (m_schemaType == "label" || m_schemaType == "button" ||
                                 m_schemaType == "check-box" || m_schemaType == "image-button");
+
     float y = kPropInsetX;
-    int rows = 0;
-    std::string genKeys;
     // 动态行排版节奏（统一相对位置：描述行 22 + 2 + 控件行 26 + 组间距 8）
     const float lblFont = kPropLblFont, lblH = kPropLblH, ctlH = kPropCtlH,
           gapLbl = kPropGapLbl, rowGap = kPropRowGap;
     const float rowW = box.w - kPropRowInset;   // 右侧留滚动条通道
+
+    int rows = 0;
+    std::string genKeys;
+    // 分类折叠：分组标题行（扁平按钮）——点击展开/收起，收起组不创建行
+    // （E 签名含折叠状态：切换组时重建、状态不变时同类 refresh 复用不受影响）
+    auto makeGroupHeader = [&](const std::string& name) {
+        const bool collapsed = m_collapsedGroups.count(name) != 0;
+        Control hb = m_ui->CreateButton(
+            std::string(collapsed ? "▸ " : "▾ ") + name, 0, 0, rowW, kPropCtlH);
+        hb.SetStateColor(PropertyNames::kBackground,
+                         UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
+        hb.SetStateColor(PropertyNames::kBorder,
+                         UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
+        hb.SetStateColor(PropertyNames::kText,
+                         UIStateColor{UIColor{0xB8, 0xB8, 0xB8, 255}, UIColor{0xE8, 0xE8, 0xE8, 255},
+                                      UIColor{0xE8, 0xE8, 0xE8, 255}, UIColor{0x90, 0x90, 0x90, 255}});
+        hb.SetRect(kPropInsetX, y, rowW, kPropCtlH);
+        hb.SetCallback(PropertyNames::kEventClick, [this, name](const Event&) {
+            if (m_collapsedGroups.count(name)) m_collapsedGroups.erase(name);
+            else m_collapsedGroups.insert(name);
+            rebuildDynamicRows();   // 重排：仅创建展开组的行
+        });
+        m_propDynamic.AddChild(hb);
+        m_dynamicRows.push_back(hb);
+        m_dynamicRowY.push_back(y);
+        y += ctlH + kPropRowGap;
+        ++rows;
+        genKeys += " [组:" + name + (collapsed ? "|收" : "|开") + "]";
+    };
+    auto groupCollapsed = [&](const std::string& name) {
+        return m_collapsedGroups.count(name) != 0;
+    };
+    bool commonHeaderDone = false;   // 常规组标题哨兵（colors 段后首个通用行前插入）
     long long msLabel = 0, msTextArea = 0, msColor = 0, msNud = 0, msCheck = 0, msOther = 0;
     auto sw = [](long long& acc, const auto& fn) {
         const auto s = std::chrono::steady_clock::now();
@@ -1093,6 +1125,8 @@ void CanvasPane::rebuildDynamicRows() {
         // 颜色组展开：colors.<组>.<态> → 运行时 "组[.态]"（normal 省略后缀，键名点号风格）
         // 行先放占位 Button（背景=当前色+hex 文本），点击才创建 ColorPicker（3.5s 构建惰性化）
         if (key == "colors" && spec.is_object()) {
+            makeGroupHeader("颜色");
+            if (groupCollapsed("颜色")) continue;   // 收起：不创建色槽行
             // P0-26 schema 重构：按类型 def 声明的态子集生成（colors-full 四态/
             // colors-menu 三态/colors-basic1 单态……），未声明组不生成
             const auto colorGroups =
@@ -1205,6 +1239,8 @@ void CanvasPane::rebuildDynamicRows() {
         std::string effT = t;
         if (key == "font" && effT == "object") effT = "string";
         if (effT != "string" && effT != "number" && effT != "integer" && effT != "boolean") continue;
+        if (!commonHeaderDone) { makeGroupHeader("常规"); commonHeaderDone = true; }
+        if (groupCollapsed("常规")) continue;   // 常规组折叠：通用行不创建
 
         // schema 键 → 运行时属性：kebab 规则 + 引擎命名差异特例
         std::string prop = jsonKeyToProp(key);
@@ -1385,7 +1421,8 @@ void CanvasPane::rebuildDynamicRows() {
                                def["properties"].contains("shadow");
         const bool isListLike = (m_schemaType == "list-view" ||
                                  m_schemaType == "tree-view");
-        if (hasShadow && !isListLike) {
+        makeGroupHeader("阴影");
+        if (hasShadow && !isListLike && !groupCollapsed("阴影")) {
         const bool isLabelT = (m_schemaType == "label");
         const bool legacyInner = (m_schemaType == "button" ||
                                   m_schemaType == "check-box" ||
@@ -1489,7 +1526,12 @@ void CanvasPane::rebuildDynamicRows() {
     std::printf("[DBG-perf]   by-type: label=%lld textArea=%lld color=%lld nud=%lld check=%lld other=%lldms\n",
                 msLabel, msTextArea, msColor, msNud, msCheck, msOther);
     std::fflush(stdout);
-    m_rowsBuiltSig = m_schemaType;   // 行集就绪：同类型切换走 refresh 快路径
+    // 行集就绪：签名含折叠状态（切换折叠 → 重建展开组；状态不变同类 → refresh 快路径）
+    {
+        std::string coll;
+        for (const auto& g : m_collapsedGroups) coll += g + ",";
+        m_rowsBuiltSig = m_schemaType + "|" + coll;
+    }
     m_dynScrollMax = (y + kPropInsetX) - viewRowsH;
     if (m_dynScrollMax < 0) m_dynScrollMax = 0;
     m_dynScroll.SetFloat(PropertyNames::kRangeMax, m_dynScrollMax > 0 ? m_dynScrollMax : 1.0f);
