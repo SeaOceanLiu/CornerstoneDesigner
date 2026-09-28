@@ -876,7 +876,7 @@
                             "id": "splitter2",
                             "orientation": "vertical",
                             "thickness": 6,
-                            "ratio": 0.8,
+                            "ratio": 0.75,
                             "first-linked": "canvasArea",
                             "second-linked": "propertyPanel"
                         },
