@@ -144,7 +144,7 @@ bool App::init() {
         UICornerstone::UICornerstone::Config{}
             .WithBackend("sdl3")
             .WithResourceRoot(exeRelative("assets"))
-            .WithWindow("CornerstoneDesigner", 1200, 800)
+            .WithWindow("CornerstoneDesigner", 1920, 1080)
             .WithWindowFlags(UIWindowFlags::Resizable));
     if (!m_ui) {
         std::printf("[App] Create failed\n");
@@ -345,7 +345,7 @@ int App::run(int autoSeconds) {
         m_ui->Present();
 
         if (frame == 0) {
-            std::printf("[App] skeleton running (1200x800)\n");
+            std::printf("[App] skeleton running (1920x1080)\n");
         }
         frame++;
     }
