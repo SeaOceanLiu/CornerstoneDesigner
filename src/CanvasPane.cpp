@@ -1416,6 +1416,9 @@ void CanvasPane::rebuildDynamicRows() {
             if (curIdx >= 0) fcb.SetInt(PropertyNames::kSelectedIndex, curIdx);
             m_rowRefreshers.push_back([this, fcb]() mutable {
                 const std::string cur2 = m_schemaTarget.GetString(PropertyNames::kFont);
+                std::printf("[DBG-font] refresh readback=%s
+", cur2.c_str());
+                std::fflush(stdout);
                 for (int i = 0; i < kFontNameCount; ++i)
                     if (cur2 == kFontNames[i]) {
                         fcb.SetInt(PropertyNames::kSelectedIndex, i);
@@ -1425,8 +1428,14 @@ void CanvasPane::rebuildDynamicRows() {
             fcb.SetCallback(PropertyNames::kEventSelectionChanged,
                             [this, fcb](const Event&) mutable {
                 const int idx = fcb.GetInt(PropertyNames::kSelectedIndex);
-                if (idx >= 0 && idx < kFontNameCount && m_schemaTarget.IsValid())
+                if (idx >= 0 && idx < kFontNameCount && m_schemaTarget.IsValid()) {
                     m_schemaTarget.SetString(PropertyNames::kFont, kFontNames[idx]);
+                    const std::string rb = m_schemaTarget.GetString(PropertyNames::kFont);
+                    std::printf("[DBG-font] write=%s readback=%s match=%d
+",
+                                kFontNames[idx], rb.c_str(), rb == kFontNames[idx] ? 1 : 0);
+                    std::fflush(stdout);
+                }
             });
             m_propDynamic.AddChild(fcb);
             m_dynamicRows.push_back(fcb);
