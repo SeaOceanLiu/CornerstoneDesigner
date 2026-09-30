@@ -1430,7 +1430,7 @@ void CanvasPane::rebuildDynamicRows() {
                 }
                 const std::string cur2 = m_schemaTarget.GetString(PropertyNames::kFont);
                 for (int i = 0; i < kFontNameCount; ++i)
-                    if (cur2 == kFontNames[i]) {
+                    if (ieqNoCase(cur2, kFontNames[i])) {
                         fcb.SetInt(PropertyNames::kSelectedIndex, i);
                         break;
                     }
@@ -1442,7 +1442,7 @@ void CanvasPane::rebuildDynamicRows() {
                     m_schemaTarget.SetString(PropertyNames::kFont, kFontNames[idx]);
                     const std::string rb = m_schemaTarget.GetString(PropertyNames::kFont);
                     std::printf("[DBG-font] write=%s readback=%s match=%d\n",
-                                kFontNames[idx], rb.c_str(), rb == kFontNames[idx] ? 1 : 0);
+                                kFontNames[idx], rb.c_str(), ieqNoCase(rb, kFontNames[idx]) ? 1 : 0);
                     std::fflush(stdout);
                 }
             });
