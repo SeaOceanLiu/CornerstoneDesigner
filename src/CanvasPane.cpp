@@ -1415,10 +1415,21 @@ void CanvasPane::rebuildDynamicRows() {
             }
             if (curIdx >= 0) fcb.SetInt(PropertyNames::kSelectedIndex, curIdx);
             m_rowRefreshers.push_back([this, fcb]() mutable {
+                // [临时绕行 P0-48] selection-changed 回调未触发——refresh 时读
+                // ComboBox 选中项变化则写回（引擎修复后恢复事件直写）
+                const int sel = fcb.GetInt(PropertyNames::kSelectedIndex);
+                if (sel >= 0 && sel < kFontNameCount) {
+                    const std::string selName = kFontNames[sel];
+                    const std::string cur = m_schemaTarget.GetString(PropertyNames::kFont);
+                    if (cur != selName) {
+                        m_schemaTarget.SetString(PropertyNames::kFont, selName);
+                        std::printf("[DBG-font] poll write=%s (was %s)
+",
+                                    selName.c_str(), cur.c_str());
+                        std::fflush(stdout);
+                    }
+                }
                 const std::string cur2 = m_schemaTarget.GetString(PropertyNames::kFont);
-                std::printf("[DBG-font] refresh readback=%s
-", cur2.c_str());
-                std::fflush(stdout);
                 for (int i = 0; i < kFontNameCount; ++i)
                     if (cur2 == kFontNames[i]) {
                         fcb.SetInt(PropertyNames::kSelectedIndex, i);
