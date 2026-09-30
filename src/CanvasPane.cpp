@@ -1441,8 +1441,7 @@ void CanvasPane::rebuildDynamicRows() {
                 if (idx >= 0 && idx < kFontNameCount && m_schemaTarget.IsValid()) {
                     m_schemaTarget.SetString(PropertyNames::kFont, kFontNames[idx]);
                     const std::string rb = m_schemaTarget.GetString(PropertyNames::kFont);
-                    std::printf("[DBG-font] write=%s readback=%s match=%d
-",
+                    std::printf("[DBG-font] write=%s readback=%s match=%d\n",
                                 kFontNames[idx], rb.c_str(), rb == kFontNames[idx] ? 1 : 0);
                     std::fflush(stdout);
                 }
