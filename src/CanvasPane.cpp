@@ -1420,7 +1420,7 @@ void CanvasPane::rebuildDynamicRows() {
             int curIdx = -1;
             for (int i = 0; i < kFontNameCount; ++i) {
                 m_ui->ComboBoxAddItem(fcb, kFontNames[i], kFontNames[i]);
-                if (cur == kFontNames[i]) curIdx = i;
+                if (ieqNoCase(cur, kFontNames[i])) curIdx = i;
             }
             if (curIdx >= 0) fcb.SetInt(PropertyNames::kSelectedIndex, curIdx);
             m_rowRefreshers.push_back([this, fcb]() mutable {
