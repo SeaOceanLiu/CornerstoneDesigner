@@ -177,6 +177,15 @@ constexpr float kCascStep = 16.0f;             // 放置瀑布偏移步长（避
 constexpr int kCascMod = 8;                    // 瀑布偏移取模周期
 constexpr float kPropDynHDefault = 440.0f;     // 动态行区兜底高（与布局声明一致）
 
+// 字体名大小写不敏感比较（引擎 P0-46 读回枚举名小写化——清单为驼峰原名）
+bool ieqNoCase(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (std::tolower((unsigned char)a[i]) != std::tolower((unsigned char)b[i]))
+            return false;
+    return true;
+}
+
 // 路径类属性（资源/文件引用）：值中任何换行/空白都非合法路径成分——
 // TextArea 多行文本天然携带换行（尾随或误回车），写回前必须清理，
 // 否则引擎 loadFromFile 以 'xxx.png\n' 打开必然失败
