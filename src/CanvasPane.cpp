@@ -1415,12 +1415,13 @@ void CanvasPane::rebuildDynamicRows() {
                 "HarmonyOS_Sans_SC_Regular", "HarmonyOS_Sans_SC_Thin", "Asul-Bold",
                 "MapleMono-NF-CN-Regular", "Muyao-Softbrush", "Quando-Regular",
             };
-            enum { kFontNameCount = 6 };
+            enum { kFontNameCount = 7 };   // 0="(缺省)"（font 未设置），1..6=字体名
             const std::string cur = m_schemaTarget.GetString(PropertyNames::kFont);
-            int curIdx = -1;
+            int curIdx = 0;   // 空=缺省
             for (int i = 0; i < kFontNameCount; ++i) {
-                m_ui->ComboBoxAddItem(fcb, kFontNames[i], kFontNames[i]);
-                if (ieqNoCase(cur, kFontNames[i])) curIdx = i;
+                const char* nm = (i == 0) ? "(缺省)" : kFontNames[i - 1];
+                m_ui->ComboBoxAddItem(fcb, nm, nm);
+                if (i > 0 && ieqNoCase(cur, kFontNames[i - 1])) curIdx = i;
             }
             if (curIdx >= 0) fcb.SetInt(PropertyNames::kSelectedIndex, curIdx);
             m_rowRefreshers.push_back([this, fcb]() mutable {
