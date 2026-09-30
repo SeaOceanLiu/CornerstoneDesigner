@@ -1423,8 +1423,7 @@ void CanvasPane::rebuildDynamicRows() {
                     const std::string cur = m_schemaTarget.GetString(PropertyNames::kFont);
                     if (cur != selName) {
                         m_schemaTarget.SetString(PropertyNames::kFont, selName);
-                        std::printf("[DBG-font] poll write=%s (was %s)
-",
+                        std::printf("[DBG-font] poll write=%s (was %s)\n",
                                     selName.c_str(), cur.c_str());
                         std::fflush(stdout);
                     }
