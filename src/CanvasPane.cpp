@@ -22,6 +22,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cctype>
 #include <cstring>
 #include <algorithm>
 #include <chrono>
@@ -1159,6 +1160,20 @@ void CanvasPane::rebuildDynamicRows() {
                isPathLikeProp(jsonKeyToProp(b.first));   // 组内：资源/路径类聚尾
     });
     int lastGroup = -1;   // 当前已呈现组序号（-1=尚未）
+    // 类型标识行（选中控件类型一目了然——首字母大写的 schema 类型名）
+    if (!m_schemaType.empty()) {
+        std::string typeName = m_schemaType;
+        typeName[0] = std::toupper((unsigned char)typeName[0]);
+        Control lb = m_ui->CreateLabel(typeName, kPropLblFont, 0, 0, rowW, kPropLblH);
+        lb.SetColor(PropertyNames::kText, UIColor{0xE8, 0xE8, 0xE8, 255});
+        lb.SetRect(kPropInsetX, y, rowW, kPropLblH);
+        m_propDynamic.AddChild(lb);
+        m_dynamicRows.push_back(lb);
+        m_dynamicRowY.push_back(y);
+        y += kPropLblH + kPropRowGap;
+        ++rows;
+        genKeys += " [类型:" + typeName + "]";
+    }
     for (const auto& kv : kvs) {
         std::string key = kv.first;
         bool skip = false;
