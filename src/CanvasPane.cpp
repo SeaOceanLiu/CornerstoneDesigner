@@ -682,14 +682,20 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
                 const std::string& ht = hitPc->model->props.type;
                 const bool container = (ht == "panel" || ht == "win-frame" ||
                                         ht == "popup" || ht == "dialog");
+                std::printf("[DBG-place] hit-and-place\n");
+                std::fflush(stdout);
                 if (container) {
                     if (ht == "win-frame") {
                         void* h = hitPc->ctl.GetPtr("client-panel");
+                        std::printf("[DBG-place] client-panel handle\n", h);
+                        std::fflush(stdout);
                         if (h) {
                             targetParent = m_viewport->FromHandle(h);
                             targetParentId = hitId + "/client-panel";
                             parentOffX = hitPc->ctl.GetRect().x;
                             parentOffY = hitPc->ctl.GetRect().y;
+                            std::printf("[DBG-place] FromHandle valid\n");
+                            std::fflush(stdout);
                         }
                     } else {
                         targetParent = hitPc->ctl;
@@ -723,10 +729,15 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
     styleControl(toolboxId, ctl);   // 编程创建无主题样式：显式浅色面/深字/描边
 
     // P1-a 容器挂载：AddChild 到容器 + 坐标换算为容器局部（rect 记账同步）
+    std::printf("[DBG-place] target-valid=%d parent=%s\n",
+                targetParent.IsValid() ? 1 : 0, targetParentId.c_str());
+    std::fflush(stdout);
     if (targetParent.IsValid()) {
         m_ui->AddChild(targetParent, ctl);
         ctl.SetRect(x - parentOffX, y - parentOffY, w, h);
         model->props.rect = { x - parentOffX, y - parentOffY, w, h };
+        std::printf("[DBG-place] AddChild done\n");
+        std::fflush(stdout);
     }
     m_items.push_back({ std::move(model), ctl, targetParentId });   // P1-a：容器子控件记账
     std::printf("[Canvas] placed %s id=%s at (%.0f,%.0f)\n",
