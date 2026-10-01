@@ -1411,36 +1411,30 @@ void CanvasPane::rebuildDynamicRows() {
         if (key == "font") {
             makeLabel(key);
             Control fcb = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
-            // 引擎字体枚举清单 API（单一数据源——P047_48 批 2.3）
+            // 引擎字体枚举清单 API（单一数据源——P047_48 批 2.3）；
+            // P0-47 扩展：kFont 未设置时引擎读回实际生效的缺省字体名——
+            // 无需"(缺省)"虚拟项，直接按读回名匹配选中
             const auto fontNames = UICornerstone::UICornerstone::GetFontNames();
-            const int fontNameCount = (int)fontNames.size();
-            enum { kDefaultFontIdx = 0 };   // 0="(缺省)"（font 未设置），1..N=字体名
-            const int fontNameCountTotal = fontNameCount + 1;
             const std::string cur = m_schemaTarget.GetString(PropertyNames::kFont);
-            int curIdx = 0;   // 空=缺省
-            m_ui->ComboBoxAddItem(fcb, "(缺省)", "");
-            for (int i = 0; i < fontNameCount; ++i) {
+            int curIdx = 0;
+            for (int i = 0; i < (int)fontNames.size(); ++i) {
                 m_ui->ComboBoxAddItem(fcb, fontNames[i], fontNames[i]);
-                if (ieqNoCase(cur, fontNames[i])) curIdx = i + 1;
+                if (ieqNoCase(cur, fontNames[i])) curIdx = i;
             }
-            if (curIdx >= 0) fcb.SetInt(PropertyNames::kSelectedIndex, curIdx);
+            fcb.SetInt(PropertyNames::kSelectedIndex, curIdx);
             m_rowRefreshers.push_back([this, fcb, fontNames]() mutable {
                 const std::string cur2 = m_schemaTarget.GetString(PropertyNames::kFont);
-                if (cur2.empty()) {
-                    fcb.SetInt(PropertyNames::kSelectedIndex, kDefaultFontIdx);
-                    return;
-                }
                 for (int i = 0; i < (int)fontNames.size(); ++i)
                     if (ieqNoCase(cur2, fontNames[i])) {
-                        fcb.SetInt(PropertyNames::kSelectedIndex, i + 1);
+                        fcb.SetInt(PropertyNames::kSelectedIndex, i);
                         break;
                     }
             });
             fcb.SetCallback(PropertyNames::kEventSelectionChanged,
                             [this, fcb, fontNames](const Event&) mutable {
                 const int idx = fcb.GetInt(PropertyNames::kSelectedIndex);
-                if (idx > 0 && idx <= (int)fontNames.size() && m_schemaTarget.IsValid()) {
-                    m_schemaTarget.SetString(PropertyNames::kFont, fontNames[idx - 1]);
+                if (idx >= 0 && idx < (int)fontNames.size() && m_schemaTarget.IsValid()) {
+                    m_schemaTarget.SetString(PropertyNames::kFont, fontNames[idx]);
                 }
             });
             m_propDynamic.AddChild(fcb);
