@@ -670,6 +670,38 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
     const char* prefix = "ctl";
     if (!controlSpec(toolboxId, w, h, caption, prefix)) return;
 
+    // P1-a 容器解析：点击命中容器类控件 → 放置目标为其内容面板/自身（07 §4.2）
+    // WinFrame 严格 ClientPanel（子控件只能放入内容区）；坐标换算为容器局部
+    std::string targetParentId;      // 空=画布根
+    Control targetParent;            // 有效=容器挂载（AddChild）；无效=bench 根（工厂默认）
+    float parentOffX = 0.0f, parentOffY = 0.0f;
+    {
+        std::string hitId;
+        if (hitTest(cx, cy, hitId)) {
+            if (auto* hitPc = placedById(hitId)) {
+                const std::string& ht = hitPc->model->props.type;
+                const bool container = (ht == "panel" || ht == "win-frame" ||
+                                        ht == "popup" || ht == "dialog");
+                if (container) {
+                    if (ht == "win-frame") {
+                        void* h = hitPc->ctl.GetPtr("client-panel");
+                        if (h) {
+                            targetParent = m_viewport->FromHandle(h);
+                            targetParentId = hitId + "/client-panel";
+                            parentOffX = hitPc->ctl.GetRect().x;
+                            parentOffY = hitPc->ctl.GetRect().y;
+                        }
+                    } else {
+                        targetParent = hitPc->ctl;
+                        targetParentId = hitId;
+                        parentOffX = hitPc->ctl.GetRect().x;
+                        parentOffY = hitPc->ctl.GetRect().y;
+                    }
+                }
+            }
+        }
+    }
+
     // 瀑布偏移避免完全重叠
     float casc = (float)(m_seq % kCascMod) * kCascStep;
     float x = cx - w / 2 + casc;
@@ -690,7 +722,13 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
     if (!ctl.IsValid()) return;
     styleControl(toolboxId, ctl);   // 编程创建无主题样式：显式浅色面/深字/描边
 
-    m_items.push_back({ std::move(model), ctl });
+    // P1-a 容器挂载：AddChild 到容器 + 坐标换算为容器局部（rect 记账同步）
+    if (targetParent.IsValid()) {
+        m_ui->AddChild(targetParent, ctl);
+        ctl.SetRect(x - parentOffX, y - parentOffY, w, h);
+        model->props.rect = { x - parentOffX, y - parentOffY, w, h };
+    }
+    m_items.push_back({ std::move(model), ctl, targetParentId });   // P1-a：容器子控件记账
     std::printf("[Canvas] placed %s id=%s at (%.0f,%.0f)\n",
                 m_items.back().model->props.type.c_str(),
                 m_items.back().model->props.id.c_str(), x, y);
@@ -708,8 +746,23 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
     selectItem(m_items.back().model->props.id);
 }
 
-bool CanvasPane::hitTest(float cx, float cy, std::string& outId) const {
+bool CanvasPane::hitTest(float cx, float cy, std::string& outId) {
+    // 轮 1：容器子控件优先（深度语义；全局 rect = 父容器原点 + 局部 rect）
     for (auto it = m_items.rbegin(); it != m_items.rend(); ++it) {
+        if (it->parentId.empty()) continue;
+        auto* par = placedById(it->parentId);
+        if (!par) continue;
+        const SRect& lr = it->model->props.rect;
+        const float gx = par->ctl.GetRect().x + lr.x;
+        const float gy = par->ctl.GetRect().y + lr.y;
+        if (cx >= gx && cx < gx + lr.w && cy >= gy && cy < gy + lr.h) {
+            outId = it->model->props.id;
+            return true;
+        }
+    }
+    // 轮 2：顶层控件
+    for (auto it = m_items.rbegin(); it != m_items.rend(); ++it) {
+        if (!it->parentId.empty()) continue;
         const SRect& r = it->model->props.rect;
         if (cx >= r.x && cx < r.x + r.w && cy >= r.y && cy < r.y + r.h) {
             outId = it->model->props.id;

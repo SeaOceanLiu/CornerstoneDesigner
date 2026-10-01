@@ -140,6 +140,7 @@ private:
     struct PlacedControl {
         std::unique_ptr<ControlModel> model;
         Control ctl;
+        std::string parentId;        // 容器子控件：父容器 id（空=画布根）
     };
 
     void refreshLayout();          // 同步视口与网格 Image rect（零重建）
@@ -153,7 +154,7 @@ private:
     void placeControl(const std::string& toolboxId, float cx, float cy);
     Control createViewportControl(const std::string& toolboxId, float x, float y,
                                   float w, float h, ControlModel& model) const;
-    bool hitTest(float cx, float cy, std::string& outId) const;
+    bool hitTest(float cx, float cy, std::string& outId);   // 非 const：子控件命中需 placedById（非 const）
     ControlModel* findModel(const std::string& id);
     PlacedControl* placedById(const std::string& id);
     void selectItem(const std::string& id);
