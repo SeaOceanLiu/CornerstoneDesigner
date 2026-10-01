@@ -1916,6 +1916,13 @@ void CanvasPane::tickInput() {
     // 按下沿：选中控件手柄带让给 HandleControl（拖拽 resize）；控件命中 → 选中并
     // 拖动；空白 → 取消选中
     if (downEdge && inVp) {
+        // P1-a 放置模式：工具箱单击选中工具后，画布点击 → 放置于点击处（含容器解析）
+        if (!m_pendingPlaceTool.empty()) {
+            placeControl(m_pendingPlaceTool, cx, cy);
+            m_pendingPlaceTool.clear();
+            m_mouseWasDown = down;
+            return;
+        }
         // 手柄精确让区：HandleHitTest 命中 → HandleControl 接管拖拽；未命中
         // （本体/空白）走设计器逻辑——本体边缘（非手柄处）恢复移动能力
         if (m_selectedId.empty() == false && m_selHandle.IsValid()) {
@@ -2027,6 +2034,8 @@ void CanvasPane::SetToolboxTree(Control tree) {
                 return;
             }
         }
+        // 单击工具：进入放置待定（画布点击放置——P1-a 容器解析生效）；双击：画布中央放置（既有习惯）
+        m_pendingPlaceTool = id;
         m_lastToolId = id;
         m_lastToolTime = now;
     });

@@ -204,6 +204,7 @@ private:
     Control m_canvasTree;          // 控件树（主实例 tvTree）
     bool    m_treeSync = false;    // 编程式树操作中（抑制 select 回调回环）
     std::string m_lastToolId;
+    std::string m_pendingPlaceTool;   // 放置待定工具 id（画布点击放置——P1-a）
     std::chrono::steady_clock::time_point m_lastToolTime;
     int   m_seq = 0;
     MouseSourceFn m_mouseSource;
