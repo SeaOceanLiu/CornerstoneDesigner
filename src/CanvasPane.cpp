@@ -1411,49 +1411,36 @@ void CanvasPane::rebuildDynamicRows() {
         if (key == "font") {
             makeLabel(key);
             Control fcb = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
-            static const char* kFontNames[] = {
-                "HarmonyOS_Sans_SC_Regular", "HarmonyOS_Sans_SC_Thin", "Asul-Bold",
-                "MapleMono-NF-CN-Regular", "Muyao-Softbrush", "Quando-Regular",
-            };
-            enum { kFontNameCount = 7 };   // 0="(缺省)"（font 未设置），1..6=字体名
+            // 引擎字体枚举清单 API（单一数据源——P047_48 批 2.3）
+            const auto fontNames = UICornerstone::UICornerstone::GetFontNames();
+            const int fontNameCount = (int)fontNames.size();
+            enum { kDefaultFontIdx = 0 };   // 0="(缺省)"（font 未设置），1..N=字体名
+            const int fontNameCountTotal = fontNameCount + 1;
             const std::string cur = m_schemaTarget.GetString(PropertyNames::kFont);
             int curIdx = 0;   // 空=缺省
-            for (int i = 0; i < kFontNameCount; ++i) {
-                const char* nm = (i == 0) ? "(缺省)" : kFontNames[i - 1];
-                m_ui->ComboBoxAddItem(fcb, nm, nm);
-                if (i > 0 && ieqNoCase(cur, kFontNames[i - 1])) curIdx = i;
+            m_ui->ComboBoxAddItem(fcb, "(缺省)", "");
+            for (int i = 0; i < fontNameCount; ++i) {
+                m_ui->ComboBoxAddItem(fcb, fontNames[i], fontNames[i]);
+                if (ieqNoCase(cur, fontNames[i])) curIdx = i + 1;
             }
             if (curIdx >= 0) fcb.SetInt(PropertyNames::kSelectedIndex, curIdx);
-            m_rowRefreshers.push_back([this, fcb]() mutable {
-                // [临时绕行 P0-48] selection-changed 回调未触发——refresh 时读
-                // ComboBox 选中项变化则写回（引擎修复后恢复事件直写）
-                const int sel = fcb.GetInt(PropertyNames::kSelectedIndex);
-                if (sel >= 0 && sel < kFontNameCount) {
-                    const std::string selName = kFontNames[sel];
-                    const std::string cur = m_schemaTarget.GetString(PropertyNames::kFont);
-                    if (cur != selName) {
-                        m_schemaTarget.SetString(PropertyNames::kFont, selName);
-                        std::printf("[DBG-font] poll write=%s (was %s)\n",
-                                    selName.c_str(), cur.c_str());
-                        std::fflush(stdout);
-                    }
-                }
+            m_rowRefreshers.push_back([this, fcb, fontNames]() mutable {
                 const std::string cur2 = m_schemaTarget.GetString(PropertyNames::kFont);
-                for (int i = 0; i < kFontNameCount; ++i)
-                    if (ieqNoCase(cur2, kFontNames[i])) {
-                        fcb.SetInt(PropertyNames::kSelectedIndex, i);
+                if (cur2.empty()) {
+                    fcb.SetInt(PropertyNames::kSelectedIndex, kDefaultFontIdx);
+                    return;
+                }
+                for (int i = 0; i < (int)fontNames.size(); ++i)
+                    if (ieqNoCase(cur2, fontNames[i])) {
+                        fcb.SetInt(PropertyNames::kSelectedIndex, i + 1);
                         break;
                     }
             });
             fcb.SetCallback(PropertyNames::kEventSelectionChanged,
-                            [this, fcb](const Event&) mutable {
+                            [this, fcb, fontNames](const Event&) mutable {
                 const int idx = fcb.GetInt(PropertyNames::kSelectedIndex);
-                if (idx >= 0 && idx < kFontNameCount && m_schemaTarget.IsValid()) {
-                    m_schemaTarget.SetString(PropertyNames::kFont, kFontNames[idx]);
-                    const std::string rb = m_schemaTarget.GetString(PropertyNames::kFont);
-                    std::printf("[DBG-font] write=%s readback=%s match=%d\n",
-                                kFontNames[idx], rb.c_str(), ieqNoCase(rb, kFontNames[idx]) ? 1 : 0);
-                    std::fflush(stdout);
+                if (idx > 0 && idx <= (int)fontNames.size() && m_schemaTarget.IsValid()) {
+                    m_schemaTarget.SetString(PropertyNames::kFont, fontNames[idx - 1]);
                 }
             });
             m_propDynamic.AddChild(fcb);
