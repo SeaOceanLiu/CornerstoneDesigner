@@ -290,7 +290,15 @@ void App::bindToolbar() {
     if (snapCtl.IsValid()) {
         snapCtl.SetBool(PropertyNames::kTriState, false);   // 两态开关
         snapCtl.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
-            m_canvas->SetSnapEnabled(e.GetCheckState() != 0);
+            m_canvas->SetSnapEnabled(e.GetCheckState() != 0);   // 吸附到网格
+        });
+    }
+
+    auto alignCtl = m_ui->FindControl("tb_alignctl");
+    if (alignCtl.IsValid()) {
+        alignCtl.SetBool(PropertyNames::kTriState, false);   // 两态开关
+        alignCtl.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
+            m_canvas->SetAlignEnabled(e.GetCheckState() != 0);   // 吸附到控件（智能对齐）
         });
     }
 

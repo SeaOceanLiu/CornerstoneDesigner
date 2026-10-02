@@ -804,11 +804,27 @@
                                         {
                                             "type": "check-box",
                                             "id": "tb_snap",
-                                            "caption": "对齐",
+                                            "caption": "网格吸附",
                                             "rect": {
                                                 "x": 0,
                                                 "y": 0,
-                                                "w": 68,
+                                                "w": 84,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            },
+                                            "check-state": "checked"
+                                        },
+                                        {
+                                            "type": "check-box",
+                                            "id": "tb_alignctl",
+                                            "caption": "控件吸附",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 84,
                                                 "h": 32
                                             },
                                             "font": {

@@ -1849,13 +1849,13 @@ int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
     // 未命中轴回退网格；对齐与网格均未命中时不改动
     if (std::fabs(w - p.w) < kResizeEpsilon && std::fabs(h - p.h) < kResizeEpsilon) {
         bool hitX = false, hitY = false;
-        if (m_snapEnabled) applyAlignSnap(x, y, w, h, hitX, hitY);
-        if (m_snapEnabled) {
+        if (m_alignEnabled) applyAlignSnap(x, y, w, h, hitX, hitY);   // 吸附到控件（独立）
+        if (m_snapEnabled) {                                          // 吸附到网格（独立）
             if (!hitX) x = std::round(x / g) * g;
             if (!hitY) y = std::round(y / g) * g;
             return 1;
         }
-        return 0;
+        return (m_alignEnabled && (hitX || hitY)) ? 1 : 0;
     }
     if (!m_snapEnabled) return 0;
 
@@ -1947,9 +1947,9 @@ void CanvasPane::tickInput() {
         if (!m) { m_dragId.clear(); m_mouseWasDown = down; return; }
         if (down) {
             float nx = cx - m_dragOffX, ny = cy - m_dragOffY;   // 画布全局目标
-            // 智能对齐吸附（优先于网格）：与其它控件的边缘/中心最小差；命中显示参考线
+            // 智能对齐吸附（优先于网格；独立开关 m_alignEnabled）：边缘/中心最小差；命中显示参考线
             float lineX = -1.0f, lineY = -1.0f;
-            {
+            if (m_alignEnabled) {
                 const float w = m->props.rect.w, h = m->props.rect.h;
                 const float dXs[3] = { nx, nx + w * 0.5f, nx + w };
                 const float dYs[3] = { ny, ny + h * 0.5f, ny + h };

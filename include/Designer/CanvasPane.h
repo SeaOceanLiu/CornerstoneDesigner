@@ -106,8 +106,10 @@ public:
     void SetGridVisible(bool visible);
     bool IsGridVisible() const { return m_gridVisible; }
     void SetGridCellSize(float px);
-    void SetSnapEnabled(bool snap) { m_snapEnabled = snap; }
+    void SetSnapEnabled(bool snap) { m_snapEnabled = snap; }      // 吸附到网格
     bool IsSnapEnabled() const { return m_snapEnabled; }
+    void SetAlignEnabled(bool on) { m_alignEnabled = on; }        // 吸附到控件（智能对齐）
+    bool IsAlignEnabled() const { return m_alignEnabled; }
 
     // 内容：渲染 ControlModel 树为画布控件（交互阶段接入）。
     void SetContent(std::unique_ptr<ControlModel> root);
@@ -238,7 +240,8 @@ private:
     float m_zoom = 1.0f;
     bool  m_gridVisible = true;
     float m_gridCell = 40.0f;      // 画布逻辑坐标网格间距
-    bool  m_snapEnabled = true;
+    bool  m_snapEnabled = true;    // 吸附到网格
+    bool  m_alignEnabled = true;   // 吸附到控件（智能对齐——独立开关）
 
     std::unique_ptr<ControlModel> m_root;
     ClickHandler m_clickHandler;
