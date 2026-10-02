@@ -35,6 +35,8 @@ private:
     void syncRootToWindow();            // 检测窗口尺寸变化 → root SetRect 触发布局重排
     void setupCanvas();                 // canvasArea → CanvasPane（子视口 + 网格覆盖层）
     void bindToolbar();                 // 画布工具栏控件 → CanvasPane 交互接线
+    void togglePreview();               // 设计↔预览切换（工具栏按钮/菜单 F5；同步按钮标题）
+    void syncZoomCombo();               // 缩放档下拉同步（命中档位选中/非档位清空）
 
     // SDL3.dll 动态解析（UICS 未暴露窗口尺寸查询；窗口 resize 需要主动同步 root）
     struct SdlApi {
@@ -54,6 +56,7 @@ private:
         void* windowHandle();       // SDL_GetWindows[0]
         bool pollMouse(float& x, float& y);   // 返回左键是否按下；填充窗口坐标
         bool pollDeleteKey();                 // Delete 键按下沿（每帧调一次）
+        bool pollF5Key();                     // F5 键按下沿（预览切换；每帧调一次）
         bool pollCtrl();                      // Ctrl 按住态（多选修饰键；每帧调一次）
     };
     SdlApi m_sdl;
@@ -61,6 +64,7 @@ private:
     std::unique_ptr<UICornerstone::UICornerstone> m_ui;  // 主实例（设计器自身 UI；预览为其内子视口）
     std::unique_ptr<CanvasPane> m_canvas;                // 中央画布（子视口 + 网格覆盖层）
     bool m_exitRequested = false;
+    bool m_zoomComboSync = false;          // 缩放档下拉程序化同步中（抑制回调）
     std::string m_lastError;
     int m_lastWinW = 0, m_lastWinH = 0;    // 上次已同步的窗口尺寸
 };

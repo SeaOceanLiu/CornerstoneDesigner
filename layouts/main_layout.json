@@ -758,7 +758,7 @@
                                         {
                                             "type": "button",
                                             "id": "tb_zoom_100",
-                                            "caption": "1:1",
+                                            "caption": "100%",
                                             "rect": {
                                                 "x": 0,
                                                 "y": 0,
@@ -935,7 +935,7 @@
                                             "rect": {
                                                 "x": 0,
                                                 "y": 0,
-                                                "w": 68,
+                                                "w": 88,
                                                 "h": 32
                                             },
                                             "font": {
@@ -2015,6 +2015,20 @@
                         "y": 0,
                         "w": 1200,
                         "h": 28
+                    },
+                    "colors": {
+                        "background": {
+                            "normal": "#007ACCFF",
+                            "hover": "#037FD0FF",
+                            "pressed": "#037FD0FF",
+                            "disabled": "#007ACCFF"
+                        },
+                        "text": {
+                            "normal": "#EBEBEBFF",
+                            "hover": "#FFFFFFFF",
+                            "pressed": "#FFFFFFFF",
+                            "disabled": "#A0A0A0FF"
+                        }
                     },
                     "font-size": 20,
                     "items": [

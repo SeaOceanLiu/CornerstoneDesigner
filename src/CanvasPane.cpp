@@ -453,6 +453,7 @@ void CanvasPane::SetZoom(float zoom) {
     rebuildGridTile();   // 瓦片纹理按新物理密度重建 + image-resource 重载
     if (m_grid.IsValid())
         m_grid.SetRect(0, 0, m_contentW / m_zoom, m_contentH / m_zoom);   // rect 抵消（铺满）
+    refreshStatusRight();   // 状态栏缩放百分比同步
 }
 
 void CanvasPane::SetGridCellSize(float px) {
@@ -466,6 +467,7 @@ void CanvasPane::SetGridVisible(bool visible) {
     if (visible == m_gridVisible) return;
     m_gridVisible = visible;
     rebuildGridTile();   // 重生成瓦片（带线/纯白）——仅去网格线、白底背景保持
+    refreshStatusRight();   // 状态栏网格开关状态同步
 }
 
 void CanvasPane::SetContent(std::unique_ptr<ControlModel> root) {
@@ -780,6 +782,7 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
         refreshPlaceTargetHint();   // 通道①命中已更新目标 → 状态栏同步
     }
     m_items.push_back({ std::move(model), ctl, targetParentId });   // P1-a：容器子控件记账
+    refreshStatusRight();   // 状态栏控件数同步
     std::printf("[Canvas] placed %s id=%s at (%.0f,%.0f)\n",
                 m_items.back().model->props.type.c_str(),
                 m_items.back().model->props.id.c_str(), x, y);
@@ -2356,6 +2359,7 @@ int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
 }
 
 void CanvasPane::tickInput() {
+    if (m_previewMode) return;   // 预览模式：设计器交互关闭（控件交互由引擎事件驱动）
     // Delete 键：删除选中控件（键源每帧轮询一次，返回按下沿）
     if (m_keySource && m_keySource()) deleteSelected();
     syncDynamicWidth();   // 动态区宽度跟随（splitter 拖动后滚动条贴边/行宽同步）
@@ -2778,6 +2782,7 @@ void CanvasPane::SetCanvasTree(Control tree) {
 void CanvasPane::SetStatusTarget(Control statusBar) {
     m_statusTarget = statusBar;
     refreshPlaceTargetHint();
+    refreshStatusRight();
 }
 
 // P1-b：容器 id → 挂载父控件（WinFrame 严格 ClientPanel）+ 内容区全局 rect。
@@ -2819,12 +2824,57 @@ void CanvasPane::refreshPlaceTargetHint() {
         m_placeTargetId.clear();
         text += u8"画布根";
     }
-    m_ui->StatusBarSetItemText(m_statusTarget, "statusHint", text);
-    // 引擎 P0-53 过渡：updateStatusItemText 不触发 relayout（段宽仍按旧文本 → 长文本
-    // 溢出压相邻段）——以临时段增删强制重排（同帧内完成，无视觉影响）；引擎修复同步后删除。
+    setStatusHint(text);
+}
+
+// 状态栏段写入 + 强制重排（引擎 P0-53 过渡：updateStatusItemText 不触发 relayout
+// ——临时段增删，同帧完成无视觉影响；引擎修复同步后删除）。
+void CanvasPane::writeStatusItem(const char* itemId, const std::string& text) {
+    if (!m_statusTarget.IsValid() || !m_ui) return;
+    m_ui->StatusBarSetItemText(m_statusTarget, itemId, text);
     static const char* const kProbe = "__relayout_probe";
     m_ui->StatusBarAddItem(m_statusTarget, kProbe, "");
     m_ui->StatusBarRemoveItem(m_statusTarget, kProbe);
+}
+
+void CanvasPane::setStatusHint(const std::string& text) {
+    writeStatusItem("statusHint", text);
+}
+
+// 状态栏右段：缩放/控件数/网格（缩放 ± /1:1 / 档位、网格开关、增删控件时刷新）。
+void CanvasPane::refreshStatusRight() {
+    std::string txt = u8"缩放 " + std::to_string((int)std::lround(m_zoom * 100.0f)) + "%"
+                    + u8"  |  控件 " + std::to_string(m_items.size())
+                    + u8"  |  网格 " + (m_gridVisible ? u8"开" : u8"关");
+    writeStatusItem("statusRight", txt);
+}
+
+// P1 预览模式：设计器交互整体关闭（控件交互由引擎子视口事件驱动——ProcessViewportEvents
+// 常开）；进入清选择/去网格线/清放置与拖动状态；退出恢复网格并重写放置目标提示。
+void CanvasPane::SetPreviewMode(bool on) {
+    if (m_previewMode == on) return;
+    m_previewMode = on;
+    if (on) {
+        selectItem("");                       // 清选择（手柄/次级外框隐藏）
+        if (m_alignV.IsValid()) m_alignV.SetBool(PropertyNames::kVisible, 0);
+        if (m_alignH.IsValid()) m_alignH.SetBool(PropertyNames::kVisible, 0);
+        m_pendingPlaceTool.clear();
+        if (m_dragGhost.IsValid()) { m_dragGhost.Destroy(); m_dragGhost = Control(); }
+        m_dragId.clear();
+        m_dragParentId.clear();
+        m_dragCtl = Control();
+        m_groupDrag = false;
+        m_groupEntries.clear();
+        m_bandActive = false;
+        if (m_bandRect.IsValid()) m_bandRect.SetBool(PropertyNames::kVisible, 0);
+        m_mouseWasDown = false;
+        m_gridVisibleSaved = m_gridVisible;
+        SetGridVisible(false);                // 白纸无网格线（复用网格开关瓦片机制）
+        setStatusHint(u8"预览模式（F5 或工具栏退出）");
+    } else {
+        SetGridVisible(m_gridVisibleSaved);
+        refreshPlaceTargetHint();
+    }
 }
 
 // 画布控件增删/选中 → 树同步（编程式，触发 select 回调被 m_treeSync 抑制）。
@@ -2882,6 +2932,7 @@ void CanvasPane::deleteSelected() {
     }
     selectItem("");   // 取消选中 → 属性面板清零 + 选中框隐藏
     refreshPlaceTargetHint();   // P1-b：目标容器被删 → 提示回画布根
+    refreshStatusRight();       // 状态栏控件数同步
 }
 
 void CanvasPane::SetToolboxTree(Control tree) {

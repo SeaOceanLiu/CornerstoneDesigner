@@ -105,6 +105,19 @@ bool App::SdlApi::pollDeleteKey() {
     return edge;
 }
 
+// F5 键按下沿（SDL_SCANCODE_F5 = 62；预览切换）
+bool App::SdlApi::pollF5Key() {
+    static bool wasDown = false;
+    if (!getKeyboardState) return false;
+    int numkeys = 0;
+    const unsigned char* state = getKeyboardState(&numkeys);
+    if (!state || numkeys <= 62) return false;
+    const bool down = state[62] != 0;
+    const bool edge = down && !wasDown;
+    wasDown = down;
+    return edge;
+}
+
 // Ctrl 按住态（SDL_SCANCODE_LCTRL = 224 / RCTRL = 228；多选修饰键）
 bool App::SdlApi::pollCtrl() {
     if (!getKeyboardState) return false;
@@ -248,6 +261,14 @@ void App::registerActions() {
             m_ui->RegisterAction(name, guard([this](Control) {
                 std::printf("[App] CornerstoneDesigner v0.1 (stage 1 skeleton)\n");
             }));
+        } else if (std::string(name) == "onMenuPreview") {
+            m_ui->RegisterAction(name, guard([this](Control) { togglePreview(); }));   // 预览模式 F5
+        } else if (std::string(name).rfind("onMenuZoom", 0) == 0) {
+            // 视图菜单缩放档（onMenuZoomNN → NN%）——与工具栏档位同路径
+            const float z = std::stof(std::string(name).substr(10)) / 100.0f;
+            m_ui->RegisterAction(name, guard([this, z](Control) {
+                if (m_canvas) { m_canvas->SetZoom(z); syncZoomCombo(); }
+            }));
         } else {
             m_ui->RegisterAction(name, guard(placeholder));
         }
@@ -287,6 +308,7 @@ void App::bindToolbar() {
     if (gridCtl.IsValid()) {
         gridCtl.SetBool(PropertyNames::kTriState, false);   // 两态开关
         gridCtl.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
+            if (m_canvas->IsPreviewMode()) return;   // 预览态：网格为编辑辅助，忽略
             m_canvas->SetGridVisible(e.GetCheckState() != 0);
         });
     }
@@ -335,6 +357,7 @@ void App::bindToolbar() {
     auto zoomCtl = m_ui->FindControl("tb_zoom");
     if (zoomCtl.IsValid()) {
         zoomCtl.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event& e) {
+            if (m_zoomComboSync) return;   // 程序化同步（±/1:1 后）不触发
             m_canvas->SuppressCanvasClickThisFrame();   // 弹层项点击不误触画布
             static const float kZooms[] = { 0.25f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
             int idx = e.GetSelectedIndex();
@@ -345,31 +368,76 @@ void App::bindToolbar() {
     auto zoomIn = m_ui->FindControl("tb_zoom_in");
     if (zoomIn.IsValid()) {
         zoomIn.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
-            float z = m_canvas->GetZoom();
-            m_canvas->SetZoom(z < 2.0f ? z + 0.25f : 2.0f);
+            // 按档位步进（非 ±0.25）——下拉恒命中：取大于当前的最小档
+            static const float kZooms[] = { 0.25f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
+            const float z = m_canvas->GetZoom();
+            float nz = kZooms[5];
+            for (int i = 0; i < 6; ++i)
+                if (kZooms[i] > z + 0.001f) { nz = kZooms[i]; break; }
+            m_canvas->SetZoom(nz);
+            syncZoomCombo();
         });
     }
 
     auto zoomOut = m_ui->FindControl("tb_zoom_out");
     if (zoomOut.IsValid()) {
         zoomOut.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
-            float z = m_canvas->GetZoom();
-            m_canvas->SetZoom(z > 0.25f ? z - 0.25f : 0.25f);
+            // 按档位步进：取小于当前的最大档
+            static const float kZooms[] = { 0.25f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
+            const float z = m_canvas->GetZoom();
+            float nz = kZooms[0];
+            for (int i = 5; i >= 0; --i)
+                if (kZooms[i] < z - 0.001f) { nz = kZooms[i]; break; }
+            m_canvas->SetZoom(nz);
+            syncZoomCombo();
         });
     }
 
     auto zoom100 = m_ui->FindControl("tb_zoom_100");
     if (zoom100.IsValid()) {
         zoom100.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
-            m_canvas->SetZoom(1.0f);
+            m_canvas->SetZoom(1.0f);   // 1:1（实际大小）——重置为 100%
+            syncZoomCombo();
         });
     }
 
     auto preview = m_ui->FindControl("tb_preview");
     if (preview.IsValid()) {
         preview.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
-            std::printf("[App] preview toggle not implemented yet\n");
+            togglePreview();
         });
+    }
+
+    syncZoomCombo();   // 初始档位显示（100%）
+}
+
+// 缩放档下拉同步：命中档位→选中；非档位（±/1:1 步进值）→清空（实际值由状态栏右段显示）。
+void App::syncZoomCombo() {
+    if (!m_canvas) return;
+    auto zc = m_ui->FindControl("tb_zoom");
+    if (!zc.IsValid()) return;
+    static const float kZooms[] = { 0.25f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
+    const float z = m_canvas->GetZoom();
+    int idx = -1;
+    for (int i = 0; i < 6; ++i)
+        if (z > kZooms[i] - 0.001f && z < kZooms[i] + 0.001f) { idx = i; break; }
+    m_zoomComboSync = true;
+    zc.SetInt(PropertyNames::kSelectedIndex, idx);
+    m_zoomComboSync = false;
+}
+
+// 设计↔预览切换：CanvasPane 预览态 + 工具栏按钮标题同步（预览/退出预览）+
+// 编辑辅助控件启停（网格开关/间距/吸附——预览只呈现设计；缩放保留供查看）。
+void App::togglePreview() {
+    if (!m_canvas) return;
+    const bool on = !m_canvas->IsPreviewMode();
+    m_canvas->SetPreviewMode(on);
+    auto pb = m_ui->FindControl("tb_preview");
+    if (pb.IsValid()) pb.SetString(PropertyNames::kCaption, on ? u8"退出预览" : u8"预览");
+    const char* aids[] = { "tb_grid", "cb_gridcell", "tb_snap", "tb_alignctl" };
+    for (const char* id : aids) {
+        auto c = m_ui->FindControl(id);
+        if (c.IsValid()) c.SetBool(PropertyNames::kEnabled, !on);
     }
 }
 
@@ -387,6 +455,7 @@ int App::run(int autoSeconds) {
 
     while (!m_ui->IsQuitRequested() && !m_exitRequested) {
         m_ui->ProcessEvents();
+        if (m_sdl.pollF5Key()) togglePreview();   // 预览模式切换（菜单快捷键 F5）
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
         syncRootToWindow();
 

@@ -91,6 +91,11 @@ public:
     // 防弹层项点击落到画布（SDL 轮询独立于引擎路由）误清选择。
     void SuppressCanvasClickThisFrame() { m_suppressCanvasClick = true; }
 
+    // P1 预览模式（设计↔预览切换）：清选择/去网格线/关设计器交互（控件交互由引擎
+    // 子视口事件驱动）；退出恢复网格与放置目标提示。
+    void SetPreviewMode(bool on);
+    bool IsPreviewMode() const { return m_previewMode; }
+
     // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
     void deleteSelected();
     // 滚轮滚动动态区（mouse-wheel 事件载荷 scrollY；propDynamic 与 tabProperty 双订阅）
@@ -180,6 +185,9 @@ private:
     bool resolveContainer(const std::string& id, Control& outParent, SRect& outContentRect);
     void setPlaceTarget(const std::string& id);   // 更新当前放置目标 + 状态栏提示
     void refreshPlaceTargetHint();
+    void setStatusHint(const std::string& text);  // 状态栏 statusHint 段写入 + 重排（P0-53 过渡）
+    void writeStatusItem(const char* itemId, const std::string& text);   // 状态栏段写入 + 重排
+    void refreshStatusRight();                    // 状态栏右段：缩放/控件数/网格
     // 智能对齐（x/y 为选中控件局部坐标，引用修正）：命中轴吸附+参考线更新；返回命中轴
     void applyAlignSnap(float& x, float& y, float w, float h, bool& hitX, bool& hitY);
     void selectItem(const std::string& id);
@@ -216,6 +224,8 @@ private:
     std::vector<Control> m_selOutlines;         // P2 多选：次级选中外框池（橙 1px 描边）
     Control m_alignCombo;                       // P2 多选：tb_align（≥2 启用）
     bool m_suppressCanvasClick = false;         // 引擎浮层消费点击 → 本帧画布交互跳过
+    bool m_previewMode = false;                 // P1 预览模式（设计器交互关闭）
+    bool m_gridVisibleSaved = true;             // 进入预览前的网格开关（退出恢复）
     // P2 框选（橡皮筋）
     bool  m_bandActive = false;
     bool  m_bandAdditive = false;               // Ctrl 启动：并入当前选择
