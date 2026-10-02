@@ -291,7 +291,7 @@
                                     "font-size": 20,
                                     "colors": {
                                         "text": {
-                                            "normal": "#D0D0D0FF",
+                                            "normal": "#B0B0B0FF",
                                             "hover": "#FFFFFFFF",
                                             "pressed": "#FFFFFFFF",
                                             "disabled": "#808080FF"
@@ -936,7 +936,7 @@
                                     },
                                     "colors": {
                                         "text": {
-                                            "normal": "#D0D0D0FF",
+                                            "normal": "#B0B0B0FF",
                                             "hover": "#FFFFFFFF",
                                             "pressed": "#FFFFFFFF",
                                             "disabled": "#808080FF"
