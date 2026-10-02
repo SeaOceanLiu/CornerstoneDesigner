@@ -139,7 +139,7 @@ std::vector<unsigned char> buildGridTilePng(int tilePx, int cellPx, bool showLin
     return png;
 }
 
-constexpr int kTileCells = 4;                  // 每瓦片 4×4 格（减少每帧平铺绘制调用数）
+constexpr int kTileCells = 4;                  // 每瓦片最大 4×4 格（减少每帧平铺绘制调用数）
 constexpr int kMaxTilePx = 512;                // 瓦片尺寸上限（防缩放档过大）
 
 // ── 属性面板：动态行排版节奏（统一相对位置：描述行 + 控件行 + 组间距）──
@@ -326,11 +326,12 @@ void CanvasPane::registerGridTile() {
     if (!m_ui) return;
     int cellPx = (int)std::ceil(m_gridCell * m_zoom);
     if (cellPx < 2) cellPx = 2;
-    int tilePx = cellPx * kTileCells;
-    while (tilePx > kMaxTilePx && kTileCells > 1) {
-        cellPx = std::max(2, cellPx / 2);
-        tilePx = cellPx * kTileCells;
-    }
+    // 瓦片格数按上限缩减（不得改 cellPx——否则大档位网格间距被压缩，100/200 无区别）：
+    // cellPx×tileCells ≤ kMaxTilePx，至少 1 格（cellPx 超上限时瓦片即单格）
+    int tileCells = kMaxTilePx / cellPx;
+    if (tileCells < 1) tileCells = 1;
+    if (tileCells > kTileCells) tileCells = kTileCells;
+    int tilePx = cellPx * tileCells;
 
     std::vector<unsigned char> png = buildGridTilePng(tilePx, cellPx, m_gridVisible);
     if (png.empty()) return;
@@ -710,13 +711,9 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
                 const std::string& ht = hitPc->model->props.type;
                 const bool container = (ht == "panel" || ht == "win-frame" ||
                                         ht == "popup" || ht == "dialog");
-                std::printf("[DBG-place] hit-and-place\n");
-                std::fflush(stdout);
                 if (container) {
                     if (ht == "win-frame") {
                         void* h = hitPc->ctl.GetPtr("client-panel");
-                        std::printf("[DBG-place] client-panel handle\n", h);
-                        std::fflush(stdout);
                         if (h) {
                             targetParent = m_viewport->FromHandle(h);
                             targetParentId = hitId;   // 存父控件 id（内容区偏移由 globaOriginOf/类型判断补）
@@ -727,8 +724,6 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
                             cgx = wr.x + cr.x; cgy = wr.y + cr.y;
                             parentOffX = cgx;
                             parentOffY = cgy;
-                            std::printf("[DBG-place] FromHandle valid\n");
-                            std::fflush(stdout);
                         }
                     } else {
                         targetParent = hitPc->ctl;
@@ -762,15 +757,10 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
     styleControl(toolboxId, ctl);   // 编程创建无主题样式：显式浅色面/深字/描边
 
     // P1-a 容器挂载：AddChild 到容器 + 坐标换算为容器局部（rect 记账同步）
-    std::printf("[DBG-place] target-valid=%d parent=%s\n",
-                targetParent.IsValid() ? 1 : 0, targetParentId.c_str());
-    std::fflush(stdout);
     if (targetParent.IsValid()) {
         m_ui->AddChild(targetParent, ctl);
         ctl.SetRect(x - parentOffX, y - parentOffY, w, h);
         model->props.rect = { x - parentOffX, y - parentOffY, w, h };
-        std::printf("[DBG-place] AddChild done\n");
-        std::fflush(stdout);
     }
     m_items.push_back({ std::move(model), ctl, targetParentId });   // P1-a：容器子控件记账
     std::printf("[Canvas] placed %s id=%s at (%.0f,%.0f)\n",
@@ -1041,8 +1031,6 @@ void CanvasPane::SetDynamicPropsContainer(Control box) {
     m_propDynamic = box;
     if (m_propDynamic.IsValid()) {
         m_propDynamic.SetBool(PropertyNames::kClipChildren, true);   // 真裁剪（滚动）
-        std::printf("[CLIP] readBack=%d\n",
-                    m_propDynamic.GetBool(PropertyNames::kClipChildren) ? 1 : 0);
         rebuildDynamicRows();
     }
 }
@@ -1054,7 +1042,6 @@ void CanvasPane::SetDynamicPropsContainer(Control box) {
 // 初始叠放根因——行 y 手动累加；底部 ScrollBar 做"窗口滚动"（超界行隐藏，
 // 等效裁剪——引擎 panel 无裁剪能力）。
 void CanvasPane::rebuildDynamicRows() {
-    const auto t0 = std::chrono::steady_clock::now();
     for (Control& c : m_dynamicRows)
         if (c.IsValid()) c.Destroy();
     m_dynamicRows.clear();
@@ -1063,7 +1050,6 @@ void CanvasPane::rebuildDynamicRows() {
     m_captionEditor = Control();
     m_schemaTarget = Control();
     m_rowRefreshers.clear();
-    const auto t1 = std::chrono::steady_clock::now();
     if (!m_propDynamic.IsValid()) return;
     const ControlModel* m = findModel(m_selectedId);
     if (!m) {   // 未选中：动态区留空（滚动条一并隐藏）
@@ -1089,9 +1075,6 @@ void CanvasPane::rebuildDynamicRows() {
             if (fn) fn();
         m_propSync = false;
         applyDynScroll(m_dynScroll.GetFloat(PropertyNames::kValue));
-        std::printf("[DBG-perf] refresh-only (sig=%s, refreshers=%zu)\n",
-                    m_rowsBuiltSig.c_str(), m_rowRefreshers.size());
-        std::fflush(stdout);
         return;
     }
 
@@ -1190,15 +1173,7 @@ void CanvasPane::rebuildDynamicRows() {
     };
     bool commonHeaderDone = false;   // 常规组标题哨兵（colors 段后首个通用行前插入）
     std::string lastOwner;           // 当前属性分组（组切换时插组标题行）
-    long long msLabel = 0, msTextArea = 0, msColor = 0, msNud = 0, msCheck = 0, msOther = 0;
-    auto sw = [](long long& acc, const auto& fn) {
-        const auto s = std::chrono::steady_clock::now();
-        fn();
-        acc += std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - s).count();
-    };
     auto makeLabel = [&](const std::string& label) {
-        sw(msLabel, [&] {
         Control lb = m_ui->CreateLabel(label, lblFont, 0, 0, rowW, lblH);
         lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
         lb.SetRect(kPropInsetX, y, rowW, lblH);
@@ -1206,7 +1181,6 @@ void CanvasPane::rebuildDynamicRows() {
         m_dynamicRows.push_back(lb);
         m_dynamicRowY.push_back(y);
         y += lblH + gapLbl;
-        });
     };
     // 先收集再排序：nlohmann 对象按字母序遍历，资源/路径类键（animation、
     // 四态图等）会被普通属性切断——聚尾生成（用户视角的属性分组）
@@ -1220,25 +1194,6 @@ void CanvasPane::rebuildDynamicRows() {
             continue;
         }
         kvs.push_back({it.key(), &it.value()});
-    }
-    {   // [诊断] 伪键清单
-        std::string dbg;
-        for (const auto& kv : kvs)
-            if (kv.first.rfind("colors@", 0) == 0) dbg += kv.first + " ";
-        std::printf("[DBG-dyn] kvs=%zu colorsPseudo: %s\n", kvs.size(), dbg.c_str());
-        std::fflush(stdout);
-    }
-    {   // [诊断] kvs 键集与 font 键存在性
-        bool hasFont = false, hasFontSize = false;
-        std::string dbg;
-        for (const auto& kv : kvs) {
-            if (kv.first == "font") hasFont = true;
-            if (kv.first == "font-size") hasFontSize = true;
-            dbg += kv.first + " ";
-        }
-        std::printf("[DBG-dyn] kvs=%zu font=%d font-size=%d keys: %s\n",
-                    kvs.size(), hasFont ? 1 : 0, hasFontSize ? 1 : 0, dbg.c_str());
-        std::fflush(stdout);
     }
     auto groupOf = [](const std::string& key) -> int {
         if (key == "colors@background") return 0;                    // 背景色
@@ -1305,16 +1260,9 @@ void CanvasPane::rebuildDynamicRows() {
             const std::string owner = (colorSubGrp == "background") ? "背景色"
                                     : (colorSubGrp == "border") ? "边框色"
                                     : "字体及阴影";
-            std::printf("[DBG-dyn] colorSlot grp=%s collapsed=%d\n",
-                        colorSubGrp.c_str(), groupCollapsed(owner) ? 1 : 0);
-            std::fflush(stdout);
             if (groupCollapsed(owner)) continue;   // 收起：不创建该组色槽
             auto itg = colorGroupsAll.find(colorSubGrp);
-            if (itg == colorGroupsAll.end()) {
-                std::printf("[DBG-dyn] colorGroupsAll miss %s\n", colorSubGrp.c_str());
-                std::fflush(stdout);
-                continue;
-            }
+            if (itg == colorGroupsAll.end()) continue;
             const auto& [grpName, states] = *itg;
         const bool hasShadow = def.contains("properties") &&
                                def["properties"].contains("shadow");
@@ -1440,7 +1388,6 @@ void CanvasPane::rebuildDynamicRows() {
 
                     // 颜色槽：直建 ColorPicker（引擎惰性化——关闭态秒建、弹窗首次打开才构建）
                     // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
-                    sw(msColor, [&] {
                     Control cp = m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
                                    [this, prop, gk, grpName, st, capKey](const Event& e) {
@@ -1502,7 +1449,6 @@ void CanvasPane::rebuildDynamicRows() {
                         cp.SetColor(prop.c_str(), cc2);
                         cp.SetString(PropertyNames::kTextContent, hex2);
                     });
-                    });   // msColor
                 }
             if (colorSubGrp == "text-shadow") renderShadowRows();
 
@@ -1567,7 +1513,6 @@ void CanvasPane::rebuildDynamicRows() {
         if (effT == "string") {
             // TextArea：多行值（如 Label 文本含换行）直接输入真实换行，
             // 无需转义；行高 40 容两行，超出内部滚动
-            sw(msTextArea, [&] {
             Control ta = m_ui->CreateTextArea(0, 0, rowW, kPropTextAreaH);
             ta.SetRect(kPropInsetX, y, rowW, kPropTextAreaH);
             // 编程创建无主题：显式深色面板协调样式
@@ -1656,9 +1601,7 @@ void CanvasPane::rebuildDynamicRows() {
             m_dynamicRows.push_back(ta);
             m_dynamicRowY.push_back(y);
             y += kPropTextAreaH + rowGap;
-            });   // msTextArea
         } else if (effT == "number" || effT == "integer") {
-            sw(msNud, [&] {
             Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, kPropCtlH);
             nud.SetRect(kPropInsetX, y, rowW, kPropCtlH);
             // 按 schema 类型分派（引擎已归一：font-size 全控件 Int 域、
@@ -1692,9 +1635,7 @@ void CanvasPane::rebuildDynamicRows() {
             m_dynamicRows.push_back(nud);
             m_dynamicRowY.push_back(y);
             y += ctlH + rowGap;
-            });   // msNud
         } else {
-            sw(msCheck, [&] {
             Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, kPropCheckH);
             cb.SetRect(kPropInsetX, y, rowW, kPropCheckH);
             cb.SetBool(PropertyNames::kTriState, false);   // bool 属性两态（引擎缺省三态循环）
@@ -1715,7 +1656,6 @@ void CanvasPane::rebuildDynamicRows() {
             m_dynamicRows.push_back(cb);
             m_dynamicRowY.push_back(y);
             y += ctlH + rowGap;
-            });   // msCheck
         }
         ++rows;
         genKeys += " " + key;
@@ -1733,15 +1673,6 @@ void CanvasPane::rebuildDynamicRows() {
     // 例外：list-view/tree-view 的阴影为 item 级专用键（cell/item-text-shadow），
     //   通用 shadow 键不适用——暂不生成（后续单独行）
 
-        const auto tEnd = std::chrono::steady_clock::now();
-    std::printf("[DBG-perf] rebuildDynamicRows total=%lldms (destroy=%lldms build=%lldms) rows=%d\n",
-                (long long)std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - t0).count(),
-                (long long)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count(),
-                (long long)std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - t1).count(),
-                rows);
-    std::printf("[DBG-perf]   by-type: label=%lld textArea=%lld color=%lld nud=%lld check=%lld other=%lldms\n",
-                msLabel, msTextArea, msColor, msNud, msCheck, msOther);
-    std::fflush(stdout);
     // 行集就绪：签名含折叠状态（切换折叠 → 重建展开组；状态不变同类 → refresh 快路径）
     {
         std::string coll;
@@ -1972,13 +1903,6 @@ void CanvasPane::tickInput() {
                 }
                 if (bestX > kAlignThreshold) lineX = -1.0f; else nx += snapDx;
                 if (bestY > kAlignThreshold) lineY = -1.0f; else ny += snapDy;
-                {   // [诊断] 对齐计算值（节流）
-                    static int sDbgTick = 0;
-                    if ((sDbgTick++ % 5) == 0)
-                        std::printf("[DBG-align] best=(%.1f,%.1f) line=(%.0f,%.0f) items=%zu alignV=%d\n",
-                                    bestX, bestY, lineX, lineY, m_items.size(),
-                                    m_alignV.IsValid() ? 1 : 0);
-                }
                 // 参考线懒创建（橙色 1px——画布全高/全宽）
                 if (!m_alignV.IsValid()) {
                     m_alignV = m_viewport->CreatePanel(0, 0, 1, 100);
@@ -2189,13 +2113,6 @@ void CanvasPane::applyAlignSnap(float& x, float& y, float w, float h,
         }
         if (bestX > kAlignThreshold) lineX = -1.0f; else { x += snapDx; hitX = true; }
         if (bestY > kAlignThreshold) lineY = -1.0f; else { y += snapDy; hitY = true; }
-        {   // [诊断]（节流）
-            static int sDbgTick2 = 0;
-            if ((sDbgTick2++ % 5) == 0)
-                std::printf("[DBG-align2] best=(%.1f,%.1f) line=(%.0f,%.0f) hit=(%d,%d) items=%zu\n",
-                            bestX, bestY, lineX, lineY, hitX ? 1 : 0, hitY ? 1 : 0,
-                            m_items.size());
-        }
     }
     // 参考线懒创建（橙色 1px——画布全高/全宽）
     if (!m_alignV.IsValid()) {

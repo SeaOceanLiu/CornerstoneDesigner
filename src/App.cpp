@@ -139,19 +139,6 @@ void App::syncRootToWindow() {
     if (root.IsValid()) {
         root.SetRect(0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h));
         std::printf("[App] window resized to %dx%d, root->SetRect\n", w, h);
-        // [诊断] middleArea 各面板引擎重排后的实际 rect（ratio 语义定位）
-        auto ma = m_ui->FindControl("middleArea");
-        if (ma.IsValid()) {
-            const char* ids[] = { "toolboxPanel", "canvasArea", "propertyPanel" };
-            for (const char* id : ids) {
-                auto p = m_ui->FindControl(id);
-                if (p.IsValid())
-                    std::printf("[DBG-layout] %s rect=(%g,%g,%g,%g)\n", id,
-                                p.GetRect().x, p.GetRect().y,
-                                p.GetRect().w, p.GetRect().h);
-            }
-            std::fflush(stdout);
-        }
     }
 
     m_lastWinW = w;
@@ -365,18 +352,6 @@ int App::run(int autoSeconds) {
     auto last = Clock::now();
     int frame = 0;
 
-    {   // [诊断] 引擎初始重排后的 middleArea 面板实际 rect（ratio 语义定位，一次性）
-        const char* ids[] = { "toolboxPanel", "canvasArea", "propertyPanel" };
-        for (const char* id : ids) {
-            auto p = m_ui->FindControl(id);
-            if (p.IsValid())
-                std::printf("[DBG-layout] %s rect=(%g,%g,%g,%g)\n", id,
-                            p.GetRect().x, p.GetRect().y,
-                            p.GetRect().w, p.GetRect().h);
-        }
-        std::fflush(stdout);
-    }
-
     while (!m_ui->IsQuitRequested() && !m_exitRequested) {
         m_ui->ProcessEvents();
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
@@ -401,6 +376,7 @@ int App::run(int autoSeconds) {
         m_ui->Clear();
         m_ui->Render();
         if (m_canvas) m_canvas->RenderViewport();
+        m_ui->RenderOverlays();   // P0-52①：owner 浮层（下拉/菜单/弹窗）重绘于画布子视口之上
         m_ui->Present();
 
         if (frame == 0) {
