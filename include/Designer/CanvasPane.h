@@ -161,6 +161,8 @@ private:
     PlacedControl* placedById(const std::string& id);
     // P1-a：控件画布全局原点（沿 parentId 链累加局部 rect；WinFrame 加 ClientPanel 内容偏移）
     void globalOriginOf(const PlacedControl& pc, float& gx, float& gy);
+    // 智能对齐（x/y 为选中控件局部坐标，引用修正）：命中轴吸附+参考线更新；返回命中轴
+    void applyAlignSnap(float& x, float& y, float w, float h, bool& hitX, bool& hitY);
     void selectItem(const std::string& id);
     void ensureSelHandle(Control target);   // 引擎 HandleControl 附加（选中框+8向手柄+光标）
     void detachSelHandle();                 // 分离并隐藏

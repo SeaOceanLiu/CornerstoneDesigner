@@ -1840,18 +1840,24 @@ int CanvasPane::rectFilterThunk(UIControlHandle, float* x, float* y,
 }
 
 int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
-    if (!m_snapEnabled) return 0;
     const float g = m_gridCell;
     const ControlModel* m = findModel(m_selectedId);
     if (!m) return 0;
-    const SRect& p = m->props.rect;   // 上帧 filter 输出（已贴网格）——锚定边推断基准
+    const SRect& p = m->props.rect;   // 上帧 filter 输出——锚定边推断基准
 
-    // 纯移动（尺寸未变，Move 手柄/选框拖拽）：量化位置即可
+    // 纯移动（尺寸未变，Move 手柄/选框拖拽）：智能对齐优先（引擎拖动路径全覆盖），
+    // 未命中轴回退网格；对齐与网格均未命中时不改动
     if (std::fabs(w - p.w) < kResizeEpsilon && std::fabs(h - p.h) < kResizeEpsilon) {
-        x = std::round(x / g) * g;
-        y = std::round(y / g) * g;
-        return 1;
+        bool hitX = false, hitY = false;
+        if (m_snapEnabled) applyAlignSnap(x, y, w, h, hitX, hitY);
+        if (m_snapEnabled) {
+            if (!hitX) x = std::round(x / g) * g;
+            if (!hitY) y = std::round(y / g) * g;
+            return 1;
+        }
+        return 0;
     }
+    if (!m_snapEnabled) return 0;
 
     // resize：量化尺寸；按锚定边保持对缘（NW/W/SW 动左缘 → 保持右缘 = p 右缘，
     // p 已贴网格 + w 量化 → 新 x 自动贴网格，对缘不漂移）
@@ -2134,6 +2140,86 @@ void CanvasPane::globalOriginOf(const PlacedControl& pc, float& gx, float& gy) {
     }
     gx += pc.model->props.rect.x;
     gy += pc.model->props.rect.y;
+}
+
+// 智能对齐：x/y 为选中控件局部坐标（引用修正）——与其它控件边缘/中心最小差（6px）
+// 命中轴吸附 + 参考线每帧更新；hitX/hitY 输出命中态（网格回退用）
+void CanvasPane::applyAlignSnap(float& x, float& y, float w, float h,
+                                bool& hitX, bool& hitY) {
+    hitX = false; hitY = false;
+    // 局部 → 全局（子控件经父链换算）
+    float gx = x, gy = y;
+    PlacedControl* selfPc = placedById(m_selectedId);
+    if (selfPc && !selfPc->parentId.empty()) {
+        if (PlacedControl* par = placedById(selfPc->parentId)) {
+            float pgx = 0, pgy = 0;
+            globalOriginOf(*par, pgx, pgy);
+            if (par->model->props.type == "win-frame" && par->ctl.IsValid()) {
+                void* hh = par->ctl.GetPtr("client-panel");
+                if (hh) {
+                    const auto cr = m_viewport->FromHandle(hh).GetRect();
+                    pgx += cr.x; pgy += cr.y;
+                }
+            }
+            gx += pgx; gy += pgy;
+        }
+    }
+    float lineX = -1.0f, lineY = -1.0f;
+    {
+        const float dXs[3] = { gx, gx + w * 0.5f, gx + w };
+        const float dYs[3] = { gy, gy + h * 0.5f, gy + h };
+        float bestX = kAlignThreshold + 1.0f, bestY = kAlignThreshold + 1.0f;
+        float snapDx = 0.0f, snapDy = 0.0f;
+        for (auto& it : m_items) {
+            if (it.model->props.id == m_selectedId || !it.ctl.IsValid()) continue;
+            float ogx = 0, ogy = 0;
+            globalOriginOf(it, ogx, ogy);
+            const float ow = it.model->props.rect.w, oh = it.model->props.rect.h;
+            const float oXs[3] = { ogx, ogx + ow * 0.5f, ogx + ow };
+            const float oYs[3] = { ogy, ogy + oh * 0.5f, ogy + oh };
+            for (int i = 0; i < 3; ++i)
+                for (int j = 0; j < 3; ++j) {
+                    const float dx = oXs[j] - dXs[i];
+                    if (std::fabs(dx) < bestX) { bestX = std::fabs(dx); snapDx = dx; lineX = oXs[j]; }
+                    const float dy = oYs[j] - dYs[i];
+                    if (std::fabs(dy) < bestY) { bestY = std::fabs(dy); snapDy = dy; lineY = oYs[j]; }
+                }
+        }
+        if (bestX > kAlignThreshold) lineX = -1.0f; else { x += snapDx; hitX = true; }
+        if (bestY > kAlignThreshold) lineY = -1.0f; else { y += snapDy; hitY = true; }
+        {   // [诊断]（节流）
+            static int sDbgTick2 = 0;
+            if ((sDbgTick2++ % 5) == 0)
+                std::printf("[DBG-align2] best=(%.1f,%.1f) line=(%.0f,%.0f) hit=(%d,%d) items=%zu
+",
+                            bestX, bestY, lineX, lineY, hitX ? 1 : 0, hitY ? 1 : 0,
+                            m_items.size());
+        }
+    }
+    // 参考线懒创建（橙色 1px——画布全高/全宽）
+    if (!m_alignV.IsValid()) {
+        m_alignV = m_viewport->CreatePanel(0, 0, 1, 100);
+        if (m_alignV.IsValid()) {
+            m_alignV.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
+            m_alignV.SetBool("border-visible", 0);
+        }
+    }
+    if (!m_alignH.IsValid()) {
+        m_alignH = m_viewport->CreatePanel(0, 0, 100, 1);
+        if (m_alignH.IsValid()) {
+            m_alignH.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
+            m_alignH.SetBool("border-visible", 0);
+        }
+    }
+    const float cvH = m_contentH / m_zoom, cvW = m_contentW / m_zoom;
+    if (m_alignV.IsValid()) {
+        m_alignV.SetBool(PropertyNames::kVisible, lineX >= 0);
+        if (lineX >= 0) m_alignV.SetRect(lineX, 0, 1, cvH);
+    }
+    if (m_alignH.IsValid()) {
+        m_alignH.SetBool(PropertyNames::kVisible, lineY >= 0);
+        if (lineY >= 0) m_alignH.SetRect(0, lineY, cvW, 1);
+    }
 }
 
 // 右侧控件树：select 事件 → 选中画布控件（m_treeSync 抑制编程式回环）。
