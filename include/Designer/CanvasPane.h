@@ -157,6 +157,8 @@ private:
     bool hitTest(float cx, float cy, std::string& outId);   // 非 const：子控件命中需 placedById（非 const）
     ControlModel* findModel(const std::string& id);
     PlacedControl* placedById(const std::string& id);
+    // P1-a：控件画布全局原点（沿 parentId 链累加局部 rect；WinFrame 加 ClientPanel 内容偏移）
+    void globalOriginOf(const PlacedControl& pc, float& gx, float& gy);
     void selectItem(const std::string& id);
     void ensureSelHandle(Control target);   // 引擎 HandleControl 附加（选中框+8向手柄+光标）
     void detachSelHandle();                 // 分离并隐藏
@@ -198,6 +200,7 @@ private:
     bool  m_dragging = false;
     float m_dragOffX = 0, m_dragOffY = 0;
     std::string m_dragId;
+    std::string m_dragParentId;   // 拖动起始的父容器 id（子控件拖动转局部用）
     Control m_dragCtl;
 
     Control m_toolboxTree;

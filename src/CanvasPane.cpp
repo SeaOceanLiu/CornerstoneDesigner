@@ -692,8 +692,13 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
                         if (h) {
                             targetParent = m_viewport->FromHandle(h);
                             targetParentId = hitId + "/client-panel";
-                            parentOffX = hitPc->ctl.GetRect().x;
-                            parentOffY = hitPc->ctl.GetRect().y;
+                            // 内容原点 = WinFrame 全局原点 + ClientPanel 相对偏移（标题栏下移）
+                            float cgx = 0, cgy = 0;
+                            const auto wr = hitPc->ctl.GetRect();
+                            const auto cr = targetParent.GetRect();
+                            cgx = wr.x + cr.x; cgy = wr.y + cr.y;
+                            parentOffX = cgx;
+                            parentOffY = cgy;
                             std::printf("[DBG-place] FromHandle valid\n");
                             std::fflush(stdout);
                         }
@@ -758,14 +763,12 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
 }
 
 bool CanvasPane::hitTest(float cx, float cy, std::string& outId) {
-    // 轮 1：容器子控件优先（深度语义；全局 rect = 父容器原点 + 局部 rect）
+    // 轮 1：容器子控件优先（深度语义；helper 全局原点——含父链与 WinFrame 内容偏移）
     for (auto it = m_items.rbegin(); it != m_items.rend(); ++it) {
         if (it->parentId.empty()) continue;
-        auto* par = placedById(it->parentId);
-        if (!par) continue;
+        float gx = 0, gy = 0;
+        globalOriginOf(*it, gx, gy);
         const SRect& lr = it->model->props.rect;
-        const float gx = par->ctl.GetRect().x + lr.x;
-        const float gy = par->ctl.GetRect().y + lr.y;
         if (cx >= gx && cx < gx + lr.w && cy >= gy && cy < gy + lr.h) {
             outId = it->model->props.id;
             return true;
@@ -1882,10 +1885,25 @@ void CanvasPane::tickInput() {
         ControlModel* m = findModel(m_dragId);
         if (!m) { m_dragId.clear(); m_mouseWasDown = down; return; }
         if (down) {
-            float nx = cx - m_dragOffX, ny = cy - m_dragOffY;
+            float nx = cx - m_dragOffX, ny = cy - m_dragOffY;   // 画布全局目标
             if (m_snapEnabled) {
                 nx = std::round(nx / m_gridCell) * m_gridCell;
                 ny = std::round(ny / m_gridCell) * m_gridCell;
+            }
+            // 子控件：全局 → 容器局部（父全局原点 + WinFrame ClientPanel 内容偏移）
+            if (!m_dragParentId.empty()) {
+                if (PlacedControl* par = placedById(m_dragParentId)) {
+                    float pgx = 0, pgy = 0;
+                    globalOriginOf(*par, pgx, pgy);
+                    if (par->model->props.type == "win-frame" && par->ctl.IsValid()) {
+                        void* h = par->ctl.GetPtr("client-panel");
+                        if (h) {
+                            const auto cr = m_viewport->FromHandle(h).GetRect();
+                            pgx += cr.x; pgy += cr.y;
+                        }
+                    }
+                    nx -= pgx; ny -= pgy;
+                }
             }
             m->props.rect.x = nx;
             m->props.rect.y = ny;
@@ -1939,11 +1957,22 @@ void CanvasPane::tickInput() {
         if (hitTest(cx, cy, hit)) {
             selectItem(hit);
             if (ControlModel* m = findModel(hit)) {
-                m_dragOffX = cx - m->props.rect.x;
-                m_dragOffY = cy - m->props.rect.y;
-                m_dragId = hit;
-                if (PlacedControl* pc = placedById(hit))
+                // 全局域拖动偏移（子控件经 helper 全局化；拖动中父不动——记父 id 转局部）
+                m_dragParentId.clear();
+                if (PlacedControl* pc = placedById(hit)) {
+                    if (pc->parentId.empty()) {
+                        m_dragOffX = cx - pc->model->props.rect.x;
+                        m_dragOffY = cy - pc->model->props.rect.y;
+                    } else {
+                        float gx0 = 0, gy0 = 0;
+                        globalOriginOf(*pc, gx0, gy0);
+                        m_dragOffX = cx - gx0;
+                        m_dragOffY = cy - gy0;
+                        m_dragParentId = pc->parentId;
+                    }
                     m_dragCtl = pc->ctl;
+                }
+                m_dragId = hit;
             }
         } else {
             selectItem("");
@@ -1962,6 +1991,33 @@ CanvasPane::PlacedControl* CanvasPane::placedById(const std::string& id) {
     for (auto& it : m_items)
         if (it.model->props.id == id) return &it;
     return nullptr;
+}
+
+// P1-a：控件画布全局原点 = 父链逐层（局部 rect + WinFrame ClientPanel 内容偏移）+ 自身局部 rect
+void CanvasPane::globalOriginOf(const PlacedControl& pc, float& gx, float& gy) {
+    gx = 0.0f; gy = 0.0f;
+    std::vector<const PlacedControl*> chain;
+    for (const PlacedControl* p = placedById(pc.parentId); p != nullptr;
+         p = placedById(p->parentId))
+        chain.push_back(p);
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+        const PlacedControl* par = *it;
+        if (par->ctl.IsValid()) {
+            const auto r = par->ctl.GetRect();
+            gx += r.x; gy += r.y;
+        } else {
+            gx += par->model->props.rect.x; gy += par->model->props.rect.y;
+        }
+        if (par->model->props.type == "win-frame" && par->ctl.IsValid()) {
+            void* h = par->ctl.GetPtr("client-panel");
+            if (h) {
+                const auto cr = m_viewport->FromHandle(h).GetRect();
+                gx += cr.x; gy += cr.y;
+            }
+        }
+    }
+    gx += pc.model->props.rect.x;
+    gy += pc.model->props.rect.y;
 }
 
 // 右侧控件树：select 事件 → 选中画布控件（m_treeSync 抑制编程式回环）。
