@@ -2104,7 +2104,9 @@ void CanvasPane::tickInput() {
     }
 
     if (upEdge) {
-        // 松开且未开始拖动：无操作
+        // 松开：辅助线隐藏（引擎拖动路径（filter）松开后不再回调——统一在此收尾）
+        if (m_alignV.IsValid()) m_alignV.SetBool(PropertyNames::kVisible, 0);
+        if (m_alignH.IsValid()) m_alignH.SetBool(PropertyNames::kVisible, 0);
     }
     m_mouseWasDown = down;
 }
