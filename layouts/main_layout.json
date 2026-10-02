@@ -291,10 +291,10 @@
                                     "font-size": 20,
                                     "colors": {
                                         "text": {
-                                            "normal": "#B0B0B0FF",
-                                            "hover": "#FFFFFFFF",
-                                            "pressed": "#FFFFFFFF",
-                                            "disabled": "#808080FF"
+                                            "normal": "#888888FF",
+                                            "hover": "#B8B8B8FF",
+                                            "pressed": "#B8B8B8FF",
+                                            "disabled": "#606060FF"
                                         },
                                         "background": {
                                             "normal": "#2A2A2AFF",
@@ -309,6 +309,7 @@
                                             "disabled": "#303030FF"
                                         }
                                     },
+                                    "selected-text": "#FFFFFFFF",
                                     "tabs": [
                                         {
                                             "title": "工具箱",
@@ -936,10 +937,10 @@
                                     },
                                     "colors": {
                                         "text": {
-                                            "normal": "#B0B0B0FF",
-                                            "hover": "#FFFFFFFF",
-                                            "pressed": "#FFFFFFFF",
-                                            "disabled": "#808080FF"
+                                            "normal": "#888888FF",
+                                            "hover": "#B8B8B8FF",
+                                            "pressed": "#B8B8B8FF",
+                                            "disabled": "#606060FF"
                                         },
                                         "background": {
                                             "normal": "#2A2A2AFF",
@@ -954,6 +955,7 @@
                                             "disabled": "#303030FF"
                                         }
                                     },
+                                    "selected-text": "#FFFFFFFF",
                                     "tabs": [
                                         {
                                             "title": "属性",
