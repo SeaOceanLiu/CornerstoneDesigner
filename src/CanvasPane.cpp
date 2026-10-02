@@ -2029,8 +2029,9 @@ void CanvasPane::SetToolboxTree(Control tree) {
                 now - m_lastToolTime).count();
             m_lastToolId.clear();
             if (ms < 500) {
-                // 双击：画布中央放置（逻辑坐标）
+                // 双击：画布中央放置（逻辑坐标）；清放置待定（双击流程第一击已设 pending）
                 placeControl(id, m_contentW / (2 * m_zoom), m_contentH / (2 * m_zoom));
+                m_pendingPlaceTool.clear();
                 return;
             }
         }
