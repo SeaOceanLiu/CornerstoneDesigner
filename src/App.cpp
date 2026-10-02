@@ -286,6 +286,17 @@ void App::bindToolbar() {
         });
     }
 
+    // 网格间距档位（10-200px——拖动/吸附随 SetGridCellSize 同步瓦片重建）
+    auto gcCtl = m_ui->FindControl("cb_gridcell");
+    if (gcCtl.IsValid()) {
+        gcCtl.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event&) {
+            auto gc = m_ui->FindControl("cb_gridcell");
+            const int idx = gc.GetInt(PropertyNames::kSelectedIndex);
+            static const float kCells[] = { 10, 20, 25, 40, 50, 100, 200 };
+            if (idx >= 0 && idx < 7) m_canvas->SetGridCellSize(kCells[idx]);
+        });
+    }
+
     auto snapCtl = m_ui->FindControl("tb_snap");
     if (snapCtl.IsValid()) {
         snapCtl.SetBool(PropertyNames::kTriState, false);   // 两态开关
