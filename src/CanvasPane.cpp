@@ -413,6 +413,12 @@ void CanvasPane::styleControl(const std::string& toolboxId, Control ctl) {
         ctl.SetStateColor(PropertyNames::kBorder, border);
         ctl.SetStateColor(PropertyNames::kText, text);
         ctl.SetStateColor(PropertyNames::kTextShadow, shadow);
+    } else if (toolboxId == "tTabs") {
+        // TabControl：页签文字/背景/边框四态显式（引擎缺省 hover 文字色偏深——
+        // 在窗体/深色背景上不可读；hover 与 normal 同色）
+        ctl.SetStateColor(PropertyNames::kText, text);
+        ctl.SetStateColor(PropertyNames::kBackground, face);
+        ctl.SetStateColor(PropertyNames::kBorder, border);
     } else if (toolboxId == "tLabel" || toolboxId == "tCheck" ||
                toolboxId == "tNum" || toolboxId == "tCombo") {
         ctl.SetStateColor(PropertyNames::kText, text);
