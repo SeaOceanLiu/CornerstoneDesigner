@@ -1966,6 +1966,14 @@ void CanvasPane::tickInput() {
                 }
                 if (bestX > kAlignThreshold) lineX = -1.0f; else nx += snapDx;
                 if (bestY > kAlignThreshold) lineY = -1.0f; else ny += snapDy;
+                {   // [诊断] 对齐计算值（节流）
+                    static int sDbgTick = 0;
+                    if ((sDbgTick++ % 5) == 0)
+                        std::printf("[DBG-align] best=(%.1f,%.1f) line=(%.0f,%.0f) items=%zu alignV=%d
+",
+                                    bestX, bestY, lineX, lineY, m_items.size(),
+                                    m_alignV.IsValid() ? 1 : 0);
+                }
                 // 参考线懒创建（橙色 1px——画布全高/全宽）
                 if (!m_alignV.IsValid()) {
                     m_alignV = m_viewport->CreatePanel(0, 0, 1, 100);
