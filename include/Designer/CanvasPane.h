@@ -206,6 +206,8 @@ private:
     std::function<void(bool)> m_dragCursorFn;   // 拖放光标回调（保留接口）
     bool m_dragCursorOn = false;
     Control m_dragGhost;          // 拖放跟随图标（鼠标旁控件小图标 ghost）
+    Control m_alignV;             // 对齐辅助线（竖 1px——拖动中显示）
+    Control m_alignH;             // 对齐辅助线（横 1px）
     Control m_dragCtl;
 
     Control m_toolboxTree;

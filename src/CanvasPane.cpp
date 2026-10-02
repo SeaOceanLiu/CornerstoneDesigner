@@ -168,6 +168,7 @@ constexpr UIColor kPropPanelBorderFocus{0x4A, 0x90, 0xD9, 255};
 constexpr float kToolboxColorRowW = 120.0f;    // 工具箱颜色项宽
 constexpr int kTreeItemH = 28;                 // 控件树行高
 constexpr float kResizeEpsilon = 0.5f;         // resize 缘判定像素容差（几何等价阈值）
+constexpr float kAlignThreshold = 6.0f;        // 智能对齐吸附阈值（边缘/中心对齐——像素）
 constexpr float kDefaultFontPx = 16.0f;        // 控件字号读失败时的回落缺省（引擎缺省字号）
 constexpr float kMinContentH = 8.0f;           // 资源面板内容高度下限（钳制）
 constexpr float kZoomMax = 2.0f;               // 画布缩放上限
@@ -1940,9 +1941,62 @@ void CanvasPane::tickInput() {
         if (!m) { m_dragId.clear(); m_mouseWasDown = down; return; }
         if (down) {
             float nx = cx - m_dragOffX, ny = cy - m_dragOffY;   // 画布全局目标
+            // 智能对齐吸附（优先于网格）：与其它控件的边缘/中心最小差；命中显示参考线
+            float lineX = -1.0f, lineY = -1.0f;
+            {
+                const float w = m->props.rect.w, h = m->props.rect.h;
+                const float dXs[3] = { nx, nx + w * 0.5f, nx + w };
+                const float dYs[3] = { ny, ny + h * 0.5f, ny + h };
+                float bestX = kAlignThreshold + 1.0f, bestY = kAlignThreshold + 1.0f;
+                float snapDx = 0.0f, snapDy = 0.0f;
+                for (auto& it : m_items) {
+                    if (it.model->props.id == m_dragId || !it.ctl.IsValid()) continue;
+                    float ogx = 0, ogy = 0;
+                    globalOriginOf(it, ogx, ogy);
+                    const float ow = it.model->props.rect.w, oh = it.model->props.rect.h;
+                    const float oXs[3] = { ogx, ogx + ow * 0.5f, ogx + ow };
+                    const float oYs[3] = { ogy, ogy + oh * 0.5f, ogy + oh };
+                    for (int i = 0; i < 3; ++i)
+                        for (int j = 0; j < 3; ++j) {
+                            const float dx = oXs[j] - dXs[i];
+                            if (std::fabs(dx) < bestX) { bestX = std::fabs(dx); snapDx = dx; lineX = oXs[j]; }
+                            const float dy = oYs[j] - dYs[i];
+                            if (std::fabs(dy) < bestY) { bestY = std::fabs(dy); snapDy = dy; lineY = oYs[j]; }
+                        }
+                }
+                if (bestX > kAlignThreshold) lineX = -1.0f; else nx += snapDx;
+                if (bestY > kAlignThreshold) lineY = -1.0f; else ny += snapDy;
+                // 参考线懒创建（橙色 1px——画布全高/全宽）
+                if (bestX <= kAlignThreshold || bestY <= kAlignThreshold) {
+                    if (!m_alignV.IsValid()) {
+                        m_alignV = m_viewport->CreatePanel(0, 0, 1, 100);
+                        if (m_alignV.IsValid()) {
+                            m_alignV.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
+                            m_alignV.SetBool("border-visible", 0);
+                        }
+                    }
+                    if (!m_alignH.IsValid()) {
+                        m_alignH = m_viewport->CreatePanel(0, 0, 100, 1);
+                        if (m_alignH.IsValid()) {
+                            m_alignH.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
+                            m_alignH.SetBool("border-visible", 0);
+                        }
+                    }
+                    const float cvH = m_contentH / m_zoom, cvW = m_contentW / m_zoom;
+                    if (m_alignV.IsValid()) {
+                        m_alignV.SetBool(PropertyNames::kVisible, lineX >= 0);
+                        if (lineX >= 0) m_alignV.SetRect(lineX, 0, 1, cvH);
+                    }
+                    if (m_alignH.IsValid()) {
+                        m_alignH.SetBool(PropertyNames::kVisible, lineY >= 0);
+                        if (lineY >= 0) m_alignH.SetRect(0, lineY, cvW, 1);
+                    }
+                }
+            }
+            // 网格吸附：智能未命中的轴才回退网格（智能优先）
             if (m_snapEnabled) {
-                nx = std::round(nx / m_gridCell) * m_gridCell;
-                ny = std::round(ny / m_gridCell) * m_gridCell;
+                if (lineX < 0) nx = std::round(nx / m_gridCell) * m_gridCell;
+                if (lineY < 0) ny = std::round(ny / m_gridCell) * m_gridCell;
             }
             // 子控件：全局 → 容器局部（父全局原点 + WinFrame ClientPanel 内容偏移）
             if (!m_dragParentId.empty()) {
@@ -1965,6 +2019,8 @@ void CanvasPane::tickInput() {
                 m_dragCtl.SetRect(nx, ny, m->props.rect.w, m->props.rect.h);
             fillPropertyPanel();   // 拖动中同步属性面板（m_propSync 抑制回写）
         } else {
+            if (m_alignV.IsValid()) m_alignV.SetBool(PropertyNames::kVisible, 0);
+            if (m_alignH.IsValid()) m_alignH.SetBool(PropertyNames::kVisible, 0);
             // CheckBox 拖动 → setRect → recreate → 内部 caption 全新重建
             // （文本/直控色丢失）——从 model.extended 恢复
             if (m->props.type == "check-box" && m_dragCtl.IsValid()) {
