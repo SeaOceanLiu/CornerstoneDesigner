@@ -2190,8 +2190,7 @@ void CanvasPane::applyAlignSnap(float& x, float& y, float w, float h,
         {   // [诊断]（节流）
             static int sDbgTick2 = 0;
             if ((sDbgTick2++ % 5) == 0)
-                std::printf("[DBG-align2] best=(%.1f,%.1f) line=(%.0f,%.0f) hit=(%d,%d) items=%zu
-",
+                std::printf("[DBG-align2] best=(%.1f,%.1f) line=(%.0f,%.0f) hit=(%d,%d) items=%zu\n",
                             bestX, bestY, lineX, lineY, hitX ? 1 : 0, hitY ? 1 : 0,
                             m_items.size());
         }
