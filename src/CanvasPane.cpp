@@ -1967,30 +1967,29 @@ void CanvasPane::tickInput() {
                 if (bestX > kAlignThreshold) lineX = -1.0f; else nx += snapDx;
                 if (bestY > kAlignThreshold) lineY = -1.0f; else ny += snapDy;
                 // 参考线懒创建（橙色 1px——画布全高/全宽）
-                if (bestX <= kAlignThreshold || bestY <= kAlignThreshold) {
-                    if (!m_alignV.IsValid()) {
-                        m_alignV = m_viewport->CreatePanel(0, 0, 1, 100);
-                        if (m_alignV.IsValid()) {
-                            m_alignV.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
-                            m_alignV.SetBool("border-visible", 0);
-                        }
-                    }
-                    if (!m_alignH.IsValid()) {
-                        m_alignH = m_viewport->CreatePanel(0, 0, 100, 1);
-                        if (m_alignH.IsValid()) {
-                            m_alignH.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
-                            m_alignH.SetBool("border-visible", 0);
-                        }
-                    }
-                    const float cvH = m_contentH / m_zoom, cvW = m_contentW / m_zoom;
+                if (!m_alignV.IsValid()) {
+                    m_alignV = m_viewport->CreatePanel(0, 0, 1, 100);
                     if (m_alignV.IsValid()) {
-                        m_alignV.SetBool(PropertyNames::kVisible, lineX >= 0);
-                        if (lineX >= 0) m_alignV.SetRect(lineX, 0, 1, cvH);
+                        m_alignV.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
+                        m_alignV.SetBool("border-visible", 0);
                     }
+                }
+                if (!m_alignH.IsValid()) {
+                    m_alignH = m_viewport->CreatePanel(0, 0, 100, 1);
                     if (m_alignH.IsValid()) {
-                        m_alignH.SetBool(PropertyNames::kVisible, lineY >= 0);
-                        if (lineY >= 0) m_alignH.SetRect(0, lineY, cvW, 1);
+                        m_alignH.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
+                        m_alignH.SetBool("border-visible", 0);
                     }
+                }
+                // 每帧无条件更新显示状态（远离隐藏/命中显示——拖走再拖回均正确）
+                const float cvH = m_contentH / m_zoom, cvW = m_contentW / m_zoom;
+                if (m_alignV.IsValid()) {
+                    m_alignV.SetBool(PropertyNames::kVisible, lineX >= 0);
+                    if (lineX >= 0) m_alignV.SetRect(lineX, 0, 1, cvH);
+                }
+                if (m_alignH.IsValid()) {
+                    m_alignH.SetBool(PropertyNames::kVisible, lineY >= 0);
+                    if (lineY >= 0) m_alignH.SetRect(0, lineY, cvW, 1);
                 }
             }
             // 网格吸附：智能未命中的轴才回退网格（智能优先）
