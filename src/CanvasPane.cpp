@@ -1969,8 +1969,7 @@ void CanvasPane::tickInput() {
                 {   // [诊断] 对齐计算值（节流）
                     static int sDbgTick = 0;
                     if ((sDbgTick++ % 5) == 0)
-                        std::printf("[DBG-align] best=(%.1f,%.1f) line=(%.0f,%.0f) items=%zu alignV=%d
-",
+                        std::printf("[DBG-align] best=(%.1f,%.1f) line=(%.0f,%.0f) items=%zu alignV=%d\n",
                                     bestX, bestY, lineX, lineY, m_items.size(),
                                     m_alignV.IsValid() ? 1 : 0);
                 }
