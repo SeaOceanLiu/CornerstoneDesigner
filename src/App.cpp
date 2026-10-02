@@ -105,6 +105,15 @@ bool App::SdlApi::pollDeleteKey() {
     return edge;
 }
 
+// Ctrl 按住态（SDL_SCANCODE_LCTRL = 224 / RCTRL = 228；多选修饰键）
+bool App::SdlApi::pollCtrl() {
+    if (!getKeyboardState) return false;
+    int numkeys = 0;
+    const unsigned char* state = getKeyboardState(&numkeys);
+    if (!state || numkeys <= 228) return false;
+    return state[224] != 0 || state[228] != 0;
+}
+
 void App::SdlApi::unload() {
 #ifdef _WIN32
     if (dll) FreeLibrary((HMODULE)dll);
@@ -170,7 +179,9 @@ bool App::init() {
     if (m_canvas) {
         m_canvas->SetMouseSource([this](float& x, float& y) { return m_sdl.pollMouse(x, y); });
         m_canvas->SetKeySource([this] { return m_sdl.pollDeleteKey(); });
+        m_canvas->SetCtrlSource([this] { return m_sdl.pollCtrl(); });   // P2 多选修饰键
         m_canvas->SetCanvasTree(m_ui->FindControl("tvTree"));
+        m_canvas->SetStatusTarget(m_ui->FindControl("statusBar"));   // P1-b 放置目标提示
         m_canvas->LoadSchema(exeRelative("schema/declarative-ui.schema.json"));
         m_canvas->SetDynamicPropsContainer(m_ui->FindControl("propDynamic"));
         // 滚轮双订阅：动态区内 propDynamic 消费；面板其他区域由 tabProperty 兜底
@@ -212,6 +223,13 @@ void App::registerActions() {
         (void)ctl;
         std::printf("[App] action not implemented yet\n");
     };
+    // 菜单浮层项点击：标记画布跳过本帧（弹层显示在画布上方，SDL 轮询须同步跳过）
+    auto guard = [this](std::function<void(Control)> fn) {
+        return [this, fn](Control ctl) {
+            if (m_canvas) m_canvas->SuppressCanvasClickThisFrame();
+            fn(ctl);
+        };
+    };
     const char* actions[] = {
         "onMenuNew", "onMenuOpen", "onMenuSave", "onMenuSaveAs",
         "onMenuImportJson", "onMenuExportJson", "onMenuExportCode",
@@ -225,13 +243,13 @@ void App::registerActions() {
     };
     for (const char* name : actions) {
         if (std::string(name) == "onMenuExit") {
-            m_ui->RegisterAction(name, [this](Control) { m_exitRequested = true; });
+            m_ui->RegisterAction(name, guard([this](Control) { m_exitRequested = true; }));
         } else if (std::string(name) == "onMenuAbout") {
-            m_ui->RegisterAction(name, [this](Control) {
+            m_ui->RegisterAction(name, guard([this](Control) {
                 std::printf("[App] CornerstoneDesigner v0.1 (stage 1 skeleton)\n");
-            });
+            }));
         } else {
-            m_ui->RegisterAction(name, placeholder);
+            m_ui->RegisterAction(name, guard(placeholder));
         }
     }
 }
@@ -277,6 +295,7 @@ void App::bindToolbar() {
     auto gcCtl = m_ui->FindControl("cb_gridcell");
     if (gcCtl.IsValid()) {
         gcCtl.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event&) {
+            m_canvas->SuppressCanvasClickThisFrame();   // 弹层项点击不误触画布
             auto gc = m_ui->FindControl("cb_gridcell");
             const int idx = gc.GetInt(PropertyNames::kSelectedIndex);
             static const float kCells[] = { 10, 20, 25, 40, 50, 100, 200 };
@@ -300,9 +319,23 @@ void App::bindToolbar() {
         });
     }
 
+    // P2 多选：对齐命令下拉（0-5 左/水平居中/右/顶/垂直居中/底；≥2 启用；执行后清选中）
+    auto alignCmd = m_ui->FindControl("tb_align");
+    if (alignCmd.IsValid()) {
+        m_canvas->SetAlignCommandControl(alignCmd);
+        alignCmd.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event& e) {
+            const int idx = e.GetSelectedIndex();
+            if (idx >= 0 && idx < 6) {
+                m_canvas->SuppressCanvasClickThisFrame();   // 弹层项点击不误触画布
+                m_canvas->AlignSelection(idx);
+            }
+        });
+    }
+
     auto zoomCtl = m_ui->FindControl("tb_zoom");
     if (zoomCtl.IsValid()) {
         zoomCtl.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event& e) {
+            m_canvas->SuppressCanvasClickThisFrame();   // 弹层项点击不误触画布
             static const float kZooms[] = { 0.25f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
             int idx = e.GetSelectedIndex();
             if (idx >= 0 && idx < 6) m_canvas->SetZoom(kZooms[idx]);

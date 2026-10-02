@@ -169,6 +169,7 @@ constexpr float kToolboxColorRowW = 120.0f;    // 工具箱颜色项宽
 constexpr int kTreeItemH = 28;                 // 控件树行高
 constexpr float kResizeEpsilon = 0.5f;         // resize 缘判定像素容差（几何等价阈值）
 constexpr float kAlignThreshold = 6.0f;        // 智能对齐吸附阈值（边缘/中心对齐——像素）
+constexpr float kBandMinDrag = 3.0f;           // 框选判定阈值（画布逻辑像素——小于视为空白点击）
 constexpr float kDefaultFontPx = 16.0f;        // 控件字号读失败时的回落缺省（引擎缺省字号）
 constexpr float kMinContentH = 8.0f;           // 资源面板内容高度下限（钳制）
 constexpr float kZoomMax = 2.0f;               // 画布缩放上限
@@ -617,6 +618,12 @@ static std::string controlTypeOf(const std::string& tb) {
     return "panel";
 }
 
+// P1-a/P1-b：容器类控件（内容区可承载子控件——WinFrame 严格 ClientPanel）
+static bool isContainerType(const std::string& type) {
+    return type == "panel" || type == "win-frame" ||
+           type == "popup" || type == "dialog";
+}
+
 // 视口内按工具箱 id 创建控件（坐标为视口局部物理像素）。
 Control CanvasPane::createViewportControl(const std::string& tb, float x, float y,
                                           float w, float h, ControlModel& model) const {
@@ -699,40 +706,41 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
     const char* prefix = "ctl";
     if (!controlSpec(toolboxId, w, h, caption, prefix)) return;
 
-    // P1-a 容器解析：点击命中容器类控件 → 放置目标为其内容面板/自身（07 §4.2）
-    // WinFrame 严格 ClientPanel（子控件只能放入内容区）；坐标换算为容器局部
+    // P1-b 放置目标双通道（07 §4.2，最新者优先）：
+    //   ①画布命中——命中容器内容区（命中子控件则上溯最近容器祖先）→ 目标=该容器；
+    //   ②控件树显式指定——树中选中容器 → 目标=该容器（m_placeTargetId）；
+    //   未命中/未指定 → 画布根。WinFrame 严格 ClientPanel（标题栏/框架命中不深入）。
     std::string targetParentId;      // 空=画布根
     Control targetParent;            // 有效=容器挂载（AddChild）；无效=bench 根（工厂默认）
-    float parentOffX = 0.0f, parentOffY = 0.0f;
+    SRect contentRect{ 0, 0, 0, 0 }; // 目标容器内容区全局 rect（坐标换算/钳制）
     {
-        std::string hitId;
-        if (hitTest(cx, cy, hitId)) {
-            if (auto* hitPc = placedById(hitId)) {
-                const std::string& ht = hitPc->model->props.type;
-                const bool container = (ht == "panel" || ht == "win-frame" ||
-                                        ht == "popup" || ht == "dialog");
-                if (container) {
-                    if (ht == "win-frame") {
-                        void* h = hitPc->ctl.GetPtr("client-panel");
-                        if (h) {
-                            targetParent = m_viewport->FromHandle(h);
-                            targetParentId = hitId;   // 存父控件 id（内容区偏移由 globaOriginOf/类型判断补）
-                            // 内容原点 = WinFrame 全局原点 + ClientPanel 相对偏移（标题栏下移）
-                            float cgx = 0, cgy = 0;
-                            const auto wr = hitPc->ctl.GetRect();
-                            const auto cr = targetParent.GetRect();
-                            cgx = wr.x + cr.x; cgy = wr.y + cr.y;
-                            parentOffX = cgx;
-                            parentOffY = cgy;
-                        }
-                    } else {
-                        targetParent = hitPc->ctl;
-                        targetParentId = hitId;
-                        parentOffX = hitPc->ctl.GetRect().x;
-                        parentOffY = hitPc->ctl.GetRect().y;
-                    }
-                }
+        std::string candId;
+        if (hitTest(cx, cy, candId)) {
+            PlacedControl* pc = placedById(candId);
+            // 命中非容器 → 沿父链上溯最近容器（放置为容器内兄弟控件）
+            while (pc && !isContainerType(pc->model->props.type) && !pc->parentId.empty()) {
+                candId = pc->parentId;
+                pc = placedById(candId);
             }
+            if (pc && isContainerType(pc->model->props.type)) {
+                Control par;
+                SRect cr;
+                // 内容区判定（WinFrame：标题栏/框架命中不深入——沿用当前目标）
+                if (resolveContainer(candId, par, cr) &&
+                    cx >= cr.x && cx < cr.x + cr.w && cy >= cr.y && cy < cr.y + cr.h)
+                    targetParentId = candId;
+            }
+        }
+        if (targetParentId.empty() && !m_placeTargetId.empty()) {
+            // 通道②回退：树选中的当前放置目标（已删除则清理）
+            if (placedById(m_placeTargetId)) targetParentId = m_placeTargetId;
+            else m_placeTargetId.clear();
+        }
+        if (!targetParentId.empty()) {
+            if (resolveContainer(targetParentId, targetParent, contentRect))
+                m_placeTargetId = targetParentId;   // 通道①更新当前目标（最新者优先）
+            else
+                targetParentId.clear();
         }
     }
 
@@ -756,11 +764,20 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
     if (!ctl.IsValid()) return;
     styleControl(toolboxId, ctl);   // 编程创建无主题样式：显式浅色面/深字/描边
 
-    // P1-a 容器挂载：AddChild 到容器 + 坐标换算为容器局部（rect 记账同步）
+    // P1-b 容器挂载：AddChild 到容器 + 坐标换算为容器局部（钳制内容区，rect 记账同步）；
+    // 双击（非拖放）落容器 → 内容区居中（显式目标容器的直觉落位）
     if (targetParent.IsValid()) {
+        float lx, ly;
+        if (fromDrag) { lx = x - contentRect.x; ly = y - contentRect.y; }
+        else          { lx = (contentRect.w - w) * 0.5f; ly = (contentRect.h - h) * 0.5f; }
+        if (lx > contentRect.w - w) lx = contentRect.w - w;
+        if (ly > contentRect.h - h) ly = contentRect.h - h;
+        if (lx < 0) lx = 0;
+        if (ly < 0) ly = 0;
         m_ui->AddChild(targetParent, ctl);
-        ctl.SetRect(x - parentOffX, y - parentOffY, w, h);
-        model->props.rect = { x - parentOffX, y - parentOffY, w, h };
+        ctl.SetRect(lx, ly, w, h);
+        model->props.rect = { lx, ly, w, h };
+        refreshPlaceTargetHint();   // 通道①命中已更新目标 → 状态栏同步
     }
     m_items.push_back({ std::move(model), ctl, targetParentId });   // P1-a：容器子控件记账
     std::printf("[Canvas] placed %s id=%s at (%.0f,%.0f)\n",
@@ -811,38 +828,379 @@ ControlModel* CanvasPane::findModel(const std::string& id) {
 }
 
 void CanvasPane::selectItem(const std::string& id) {
-    if (m_selectedId == id) return;
-    m_selectedId = id;
-    PlacedControl* pc = id.empty() ? nullptr : placedById(id);
+    setSelection(id.empty() ? std::vector<std::string>{}
+                            : std::vector<std::string>{ id });
+}
+
+// P2 多选：选择集统一入口（去重/过滤失效 id；末位=主选）——手柄/外框/面板/树/对齐启用同步。
+void CanvasPane::setSelection(std::vector<std::string> ids) {
+    std::vector<std::string> norm;
+    for (const auto& id : ids) {
+        if (id.empty() || !findModel(id)) continue;
+        if (std::find(norm.begin(), norm.end(), id) != norm.end()) continue;
+        norm.push_back(id);
+    }
+    if (norm == m_selIds) return;
+    m_selIds = std::move(norm);
+    m_selectedId = m_selIds.empty() ? std::string() : m_selIds.back();
+
+    PlacedControl* pc = m_selectedId.empty() ? nullptr : placedById(m_selectedId);
     if (pc && pc->ctl.IsValid()) ensureSelHandle(pc->ctl);
     else detachSelHandle();
+    updateSelOutlines();
+    if (m_alignCombo.IsValid())
+        m_alignCombo.SetBool(PropertyNames::kEnabled, m_selIds.size() >= 2);
     fillPropertyPanel();
     syncTreeSelection();
     rebuildDynamicRows();
-    if (m_clickHandler) m_clickHandler(id, 0, 0);
+    if (m_clickHandler) m_clickHandler(m_selectedId, 0, 0);
+}
+
+// P2 多选：Ctrl+单击切换成员。
+void CanvasPane::toggleSelection(const std::string& id) {
+    std::vector<std::string> ids = m_selIds;
+    auto it = std::find(ids.begin(), ids.end(), id);
+    if (it != ids.end()) ids.erase(it);
+    else ids.push_back(id);
+    setSelection(std::move(ids));
+}
+
+// P2 多选：次级选中外框（主选由 HandleControl 呈现）——橙 1px 描边，池化复用。
+void CanvasPane::updateSelOutlines() {
+    if (!m_viewport) return;
+    const size_t need = m_selIds.size() > 1 ? m_selIds.size() - 1 : 0;
+    while (m_selOutlines.size() < need) {
+        Control p = m_viewport->CreatePanel(0, 0, 1, 1);
+        if (!p.IsValid()) break;
+        p.SetBool(PropertyNames::kAlwaysOnTop, 1);      // z 序置顶（后续新增控件不覆盖）
+        p.SetBool(PropertyNames::kTransparent, 1);      // 仅描边
+        p.SetBool(PropertyNames::kBorderVisible, 1);
+        const UIColor kOutline{0xFF, 0x88, 0x00, 0xC0};   // 四态同色（hover 不落回默认深色）
+        p.SetStateColor(PropertyNames::kBorder,
+                        UIStateColor{kOutline, kOutline, kOutline, kOutline});
+        p.SetBool(PropertyNames::kVisible, 0);
+        m_selOutlines.push_back(p);
+    }
+    size_t k = 0;
+    for (size_t i = 0; i + 1 < m_selIds.size(); ++i) {   // 末位=主选（不描边）
+        PlacedControl* pc = placedById(m_selIds[i]);
+        if (!pc || !pc->ctl.IsValid()) continue;
+        float gx = 0, gy = 0;
+        globalOriginOf(*pc, gx, gy);
+        const SRect& r = pc->model->props.rect;
+        Control& o = m_selOutlines[k++];
+        o.SetRect(gx, gy, r.w, r.h);
+        o.SetBool(PropertyNames::kVisible, 1);
+    }
+    for (size_t i = k; i < m_selOutlines.size(); ++i)
+        m_selOutlines[i].SetBool(PropertyNames::kVisible, 0);
+}
+
+// P2 框选：起框——重建面板（新控件追加到视口末尾=置顶；容器后放置也不会盖住框）
+// + 记录起点与并入模式。面板颜色/尺寸由 updateBand 首帧创建。
+void CanvasPane::beginBand(float cx, float cy, bool additive) {
+    if (m_bandRect.IsValid()) {
+        m_bandRect.Destroy();
+        m_bandRect = Control();
+    }
+    m_bandActive = true;
+    m_bandAdditive = additive;
+    m_bandSX = cx;
+    m_bandSY = cy;
+}
+
+// P2 框选：拖拽中更新橡皮筋矩形（画布逻辑坐标；视口裁剪由渲染承担）。
+void CanvasPane::updateBand(float cx, float cy) {
+    if (!m_viewport) return;
+    if (!m_bandRect.IsValid()) {
+        m_bandRect = m_viewport->CreatePanel(0, 0, 1, 1);
+        if (!m_bandRect.IsValid()) return;
+        m_bandRect.SetBool(PropertyNames::kAlwaysOnTop, 1);   // 后续新增控件不覆盖
+        // 四态同色（鼠标始终在框内 → hover 态；仅设 normal 会落回默认深色"黑底"）
+        const UIColor kBandFill{0x4A, 0x90, 0xD9, 0x30};
+        const UIColor kBandLine{0x4A, 0x90, 0xD9, 0xC0};
+        m_bandRect.SetBool(PropertyNames::kTransparent, 0);   // 半透明填充可见
+        m_bandRect.SetBool(PropertyNames::kBorderVisible, 1);
+        m_bandRect.SetStateColor(PropertyNames::kBackground,
+                                 UIStateColor{kBandFill, kBandFill, kBandFill, kBandFill});
+        m_bandRect.SetStateColor(PropertyNames::kBorder,
+                                 UIStateColor{kBandLine, kBandLine, kBandLine, kBandLine});
+    }
+    const float x0 = std::min(m_bandSX, cx), y0 = std::min(m_bandSY, cy);
+    m_bandRect.SetRect(x0, y0, std::fabs(cx - m_bandSX), std::fabs(cy - m_bandSY));
+    m_bandRect.SetBool(PropertyNames::kVisible, 1);
+}
+
+// P2 框选：松开判定——微小移动=空白点击（非并入清空/并入不变）；否则相交控件集
+// （可见控件；祖先去重防组拖动双倍位移；Ctrl 启动并入当前选择）。
+// 上下文：起点在容器内容区内部 → 仅选该容器后代（容器内框选子控件）；起点画布空白/
+// 容器框架区 → 顶层语义（容器优先——框架区起框选容器本体）。
+void CanvasPane::finalizeBand(float cx, float cy) {
+    m_bandActive = false;
+    if (m_bandRect.IsValid()) m_bandRect.SetBool(PropertyNames::kVisible, 0);
+    const float x0 = std::min(m_bandSX, cx), y0 = std::min(m_bandSY, cy);
+    const float x1 = std::max(m_bandSX, cx), y1 = std::max(m_bandSY, cy);
+    const bool dragged = (x1 - x0) >= kBandMinDrag || (y1 - y0) >= kBandMinDrag;
+    // 起点容器解析（框选上下文）：起点命中容器内容区（含后代命中→上溯最近容器）
+    std::string bandRoot;
+    {
+        std::string hitId;
+        if (hitTest(m_bandSX, m_bandSY, hitId)) {
+            PlacedControl* pc = placedById(hitId);
+            while (pc && !isContainerType(pc->model->props.type) && !pc->parentId.empty()) {
+                hitId = pc->parentId;
+                pc = placedById(hitId);
+            }
+            if (pc && isContainerType(pc->model->props.type)) {
+                Control par;
+                SRect cr;
+                if (resolveContainer(hitId, par, cr) &&
+                    m_bandSX >= cr.x && m_bandSX < cr.x + cr.w &&
+                    m_bandSY >= cr.y && m_bandSY < cr.y + cr.h)
+                    bandRoot = hitId;   // WinFrame 标题栏/框架命中不算（选容器本体）
+            }
+        }
+    }
+    if (!dragged) {
+        if (m_bandAdditive) return;                  // Ctrl 空白点击：选择不变
+        if (!bandRoot.empty()) selectItem(bandRoot); // 容器内容区单击 → 选中容器本体
+        else selectItem("");                         // 画布空白单击：清空
+        return;
+    }
+    auto isDescendantOf = [&](const std::string& id, const std::string& root) -> bool {
+        PlacedControl* p = placedById(id);
+        while (p && !p->parentId.empty()) {
+            if (p->parentId == root) return true;
+            p = placedById(p->parentId);
+        }
+        return false;
+    };
+    std::vector<std::string> hits;
+    for (auto& it : m_items) {
+        if (!it.ctl.IsValid()) continue;
+        if (!it.ctl.GetBool(PropertyNames::kVisible)) continue;
+        if (!bandRoot.empty() && !isDescendantOf(it.model->props.id, bandRoot)) continue;
+        float gx = 0, gy = 0;
+        globalOriginOf(it, gx, gy);
+        const SRect& r = it.model->props.rect;
+        if (gx < x1 && gx + r.w > x0 && gy < y1 && gy + r.h > y0)
+            hits.push_back(it.model->props.id);
+    }
+    // 祖先去重：某成员的祖先也在命中集 → 去掉成员（保留容器，子控件随动）
+    std::vector<std::string> top;
+    for (const auto& id : hits) {
+        bool hasSelAncestor = false;
+        PlacedControl* p = placedById(id);
+        while (p && !p->parentId.empty()) {
+            p = placedById(p->parentId);
+            if (!p) break;
+            if (std::find(hits.begin(), hits.end(), p->model->props.id) != hits.end()) {
+                hasSelAncestor = true;
+                break;
+            }
+        }
+        if (!hasSelAncestor) top.push_back(id);
+    }
+    if (m_bandAdditive) {
+        std::vector<std::string> merged = m_selIds;
+        for (const auto& id : top)
+            if (std::find(merged.begin(), merged.end(), id) == merged.end())
+                merged.push_back(id);
+        setSelection(std::move(merged));
+    } else {
+        setSelection(std::move(top));
+    }
+}
+
+// P2 多选：选择集全局包围盒（画布逻辑坐标）。
+void CanvasPane::selectionGlobalBBox(float& x, float& y, float& w, float& h) {
+    x = y = w = h = 0;
+    bool first = true;
+    float minX = 0, minY = 0, maxX = 0, maxY = 0;
+    for (const auto& id : m_selIds) {
+        PlacedControl* pc = placedById(id);
+        if (!pc || !pc->ctl.IsValid()) continue;
+        float gx = 0, gy = 0;
+        globalOriginOf(*pc, gx, gy);
+        const SRect& r = pc->model->props.rect;
+        if (first) { minX = gx; minY = gy; maxX = gx + r.w; maxY = gy + r.h; first = false; }
+        else {
+            if (gx < minX) minX = gx;
+            if (gy < minY) minY = gy;
+            if (gx + r.w > maxX) maxX = gx + r.w;
+            if (gy + r.h > maxY) maxY = gy + r.h;
+        }
+    }
+    if (!first) { x = minX; y = minY; w = maxX - minX; h = maxY - minY; }
+}
+
+// P2 多选：控件父容器全局原点（含 WinFrame ClientPanel 内容偏移；顶层=0）。
+void CanvasPane::parentGlobalOriginOf(const PlacedControl& pc, float& px, float& py) {
+    px = 0; py = 0;
+    if (pc.parentId.empty()) return;
+    PlacedControl* par = placedById(pc.parentId);
+    if (!par) return;
+    globalOriginOf(*par, px, py);
+    if (par->model->props.type == "win-frame" && par->ctl.IsValid()) {
+        void* h = par->ctl.GetPtr("client-panel");
+        if (h) {
+            const auto cr = m_viewport->FromHandle(h).GetRect();
+            px += cr.x; py += cr.y;
+        }
+    }
+}
+
+// P2 多选组拖动：快照其余成员起始局部 rect + 主选起始全局/局部（设计器路径用绝对；
+// 引擎路径用 m_groupPrev 增量基准）。
+void CanvasPane::beginGroupDrag(const std::string& primaryId) {
+    m_groupDrag = false;
+    m_groupEntries.clear();
+    if (m_selIds.size() < 2) return;
+    PlacedControl* pp = placedById(primaryId);
+    if (!pp) return;
+    float pgx = 0, pgy = 0;
+    globalOriginOf(*pp, pgx, pgy);
+    m_groupStartX = pgx;
+    m_groupStartY = pgy;
+    m_groupPrevX = pp->model->props.rect.x;
+    m_groupPrevY = pp->model->props.rect.y;
+    for (const auto& id : m_selIds) {
+        if (id == primaryId) continue;
+        PlacedControl* pc = placedById(id);
+        if (!pc || !pc->ctl.IsValid()) continue;
+        m_groupEntries.push_back({ id, pc->model->props.rect });
+    }
+    m_groupDrag = !m_groupEntries.empty();
+}
+
+// P2 多选组拖动：其余选中增量平移（父不动 → 局部增量 = 全局增量）+ 外框跟随。
+void CanvasPane::applyGroupDelta(float dx, float dy) {
+    if (!m_groupDrag) return;
+    for (auto& e : m_groupEntries) {
+        PlacedControl* pc = placedById(e.id);
+        if (!pc || !pc->ctl.IsValid()) continue;
+        SRect& r = pc->model->props.rect;
+        r.x += dx; r.y += dy;
+        pc->ctl.SetRect(r.x, r.y, r.w, r.h);
+    }
+    updateSelOutlines();
+}
+
+// P2 多选组拖动：设计器路径——按起始快照绝对落位（主选已由拖动路径写绝对位置）。
+void CanvasPane::applyGroupFromStart(float dx, float dy) {
+    if (!m_groupDrag) return;
+    for (auto& e : m_groupEntries) {
+        PlacedControl* pc = placedById(e.id);
+        if (!pc || !pc->ctl.IsValid()) continue;
+        SRect& r = pc->model->props.rect;
+        r.x = e.startLocal.x + dx;
+        r.y = e.startLocal.y + dy;
+        pc->ctl.SetRect(r.x, r.y, r.w, r.h);
+    }
+    updateSelOutlines();
+}
+
+// P2 多选对齐：命令下拉接线（≥2 启用）。
+void CanvasPane::SetAlignCommandControl(Control combo) {
+    m_alignCombo = combo;
+    if (m_alignCombo.IsValid())
+        m_alignCombo.SetBool(PropertyNames::kEnabled, m_selIds.size() >= 2);
+}
+
+// P2 多选对齐：选择集全局包围盒六模式（局部换算写回；手柄/外框/面板同步）。
+void CanvasPane::AlignSelection(int mode) {
+    if (m_alignCombo.IsValid())
+        m_alignCombo.SetInt(PropertyNames::kSelectedIndex, -1);   // 命令式：执行后清选中（下次任意项可触发）
+    if (m_selIds.size() < 2 || mode < 0 || mode > 5) return;
+    float bx = 0, by = 0, bw = 0, bh = 0;
+    selectionGlobalBBox(bx, by, bw, bh);
+    for (const auto& id : m_selIds) {
+        PlacedControl* pc = placedById(id);
+        if (!pc || !pc->ctl.IsValid()) continue;
+        float gx = 0, gy = 0;
+        globalOriginOf(*pc, gx, gy);
+        const float w = pc->model->props.rect.w, h = pc->model->props.rect.h;
+        float nx = gx, ny = gy;
+        switch (mode) {
+        case 0: nx = bx; break;                          // 左对齐
+        case 1: nx = bx + (bw - w) * 0.5f; break;        // 水平居中
+        case 2: nx = bx + bw - w; break;                 // 右对齐
+        case 3: ny = by; break;                          // 顶对齐
+        case 4: ny = by + (bh - h) * 0.5f; break;        // 垂直居中
+        default: ny = by + bh - h; break;                // 底对齐
+        }
+        float px = 0, py = 0;
+        parentGlobalOriginOf(*pc, px, py);
+        pc->model->props.rect.x = nx - px;
+        pc->model->props.rect.y = ny - py;
+        pc->ctl.SetRect(nx - px, ny - py, w, h);
+    }
+    updateSelOutlines();
+    fillPropertyPanel();
 }
 
 // 选中变化 → 属性面板回填（m_propSync 抑制回写）；未选中清零。
+// P2 多选：X/Y/W/H=选择集包围盒（只读）；caption/色/可见/启用=共有值（编辑批量写全部）。
 void CanvasPane::fillPropertyPanel() {
     if (!m_propX.IsValid()) return;
+    m_propSync = true;
+    if (m_selIds.size() > 1) {
+        float bx = 0, by = 0, bw = 0, bh = 0;
+        selectionGlobalBBox(bx, by, bw, bh);
+        m_propX.SetFloat(PropertyNames::kValue, bx);
+        m_propY.SetFloat(PropertyNames::kValue, by);
+        m_propW.SetFloat(PropertyNames::kValue, bw);
+        m_propH.SetFloat(PropertyNames::kValue, bh);
+        m_propX.SetBool(PropertyNames::kEnabled, false);   // 只读：批量移动经拖动/对齐
+        m_propY.SetBool(PropertyNames::kEnabled, false);
+        m_propW.SetBool(PropertyNames::kEnabled, false);
+        m_propH.SetBool(PropertyNames::kEnabled, false);
+        // caption：全部一致 → 显示；否则空（编辑写全部）
+        std::string cap = readCaptionOf(m_selIds.front());
+        for (size_t i = 1; i < m_selIds.size(); ++i)
+            if (readCaptionOf(m_selIds[i]) != cap) { cap.clear(); break; }
+        m_propCaption.SetString(PropertyNames::kTextContent, cap);
+        // 颜色：全部一致 → 显示；否则缺省
+        UIColor cc{0x4A, 0x90, 0xD9, 255};
+        bool first = true;
+        for (const auto& id : m_selIds) {
+            const PlacedControl* pc = placedById(id);
+            if (!pc || !pc->ctl.IsValid()) continue;
+            const UIColor c = pc->ctl.GetColor(PropertyNames::kBackground);
+            if (first) { cc = c; first = false; }
+            else if (c.r != cc.r || c.g != cc.g || c.b != cc.b) { cc = UIColor{0x4A, 0x90, 0xD9, 255}; break; }
+        }
+        if (m_propColor.IsValid()) {
+            char hex[8];
+            std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", cc.r, cc.g, cc.b);
+            m_propColor.SetString(PropertyNames::kColor, hex);
+            m_lastColorHex = hex;
+        }
+        // 可见/启用：全部为真 → 勾选（编辑写全部）
+        bool allVis = true, allEn = true;
+        for (const auto& id : m_selIds) {
+            const PlacedControl* pc = placedById(id);
+            if (!pc || !pc->ctl.IsValid()) continue;
+            if (!pc->ctl.GetBool(PropertyNames::kVisible)) allVis = false;
+            if (!pc->ctl.GetBool(PropertyNames::kEnabled)) allEn = false;
+        }
+        m_propVisible.SetBool(PropertyNames::kChecked, allVis);
+        m_propEnabled.SetBool(PropertyNames::kChecked, allEn);
+        m_propSync = false;
+        return;
+    }
+    m_propX.SetBool(PropertyNames::kEnabled, true);   // 单选：恢复可编辑
+    m_propY.SetBool(PropertyNames::kEnabled, true);
+    m_propW.SetBool(PropertyNames::kEnabled, true);
+    m_propH.SetBool(PropertyNames::kEnabled, true);
     const ControlModel* m = findModel(m_selectedId);
     const PlacedControl* pc = m ? placedById(m->props.id) : nullptr;
-    m_propSync = true;
     m_propX.SetFloat(PropertyNames::kValue, m ? m->props.rect.x : 0);
     m_propY.SetFloat(PropertyNames::kValue, m ? m->props.rect.y : 0);
     m_propW.SetFloat(PropertyNames::kValue, m ? m->props.rect.w : 0);
     m_propH.SetFloat(PropertyNames::kValue, m ? m->props.rect.h : 0);
     // caption 回填：check-box/win-frame 的文本在内部 Label（经句柄直控读）
-    std::string capVal = m ? m->props.extended.value("caption", "") : "";
-    if (m && pc && pc->ctl.IsValid()) {
-        const std::string& tp = m->props.type;
-        if ((tp == "check-box" || tp == "win-frame") && m_ui) {
-            void* h = pc->ctl.GetPtr(tp == "win-frame"
-                ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
-            if (h) capVal = m_viewport->FromHandle(h).GetString(PropertyNames::kCaption);
-        }
-    }
-    m_propCaption.SetString(PropertyNames::kTextContent, capVal);
+    m_propCaption.SetString(PropertyNames::kTextContent, readCaptionOf(m_selectedId));
     // 颜色回填：读控件背景色（normal 态），失败用缺省；SetString 走 ColorPicker
     // 的 hex 写入口（setColor），记录 hex 供回调 echo 抑制
     UIColor cc{0x4A, 0x90, 0xD9, 255};
@@ -879,13 +1237,17 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
     // 可见/启用勾选（check-changed，intVal=CheckState）→ 被选控件标准属性直写
     m_propVisible.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
         if (m_propSync) return;
-        if (PlacedControl* pc = placedById(m_selectedId))
-            pc->ctl.SetBool(PropertyNames::kVisible, e.GetCheckState() != 0);
+        const bool v = e.GetCheckState() != 0;
+        for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
+            if (PlacedControl* pc = placedById(id))
+                if (pc->ctl.IsValid()) pc->ctl.SetBool(PropertyNames::kVisible, v);
     });
     m_propEnabled.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
         if (m_propSync) return;
-        if (PlacedControl* pc = placedById(m_selectedId))
-            pc->ctl.SetBool(PropertyNames::kEnabled, e.GetCheckState() != 0);
+        const bool v = e.GetCheckState() != 0;
+        for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
+            if (PlacedControl* pc = placedById(id))
+                if (pc->ctl.IsValid()) pc->ctl.SetBool(PropertyNames::kEnabled, v);
     });
     // NUD 事件载荷为 Float（GetValueChanged）；lambda 按值捕获（不可悬空）
     auto bindRect = [this](Control nud, int which) {
@@ -907,29 +1269,16 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
     bindRect(m_propH, 3);
     m_propCaption.SetCallback(PropertyNames::kEventTextChanged, [this](const Event& e) {
         if (m_propSync) return;
-        ControlModel* m = findModel(m_selectedId);
-        if (!m) return;
+        if (m_selIds.empty()) return;
         const std::string v = e.GetTextChanged();
-        m->props.extended["caption"] = v;
         // 动态区文本行同步（先行——不依赖控件写路径，防回环）
         if (m_captionEditor.IsValid()) {
             m_propSync = true;
             m_captionEditor.SetString(PropertyNames::kTextContent, v);
             m_propSync = false;
         }
-        PlacedControl* pc = placedById(m->props.id);
-        if (!pc || !pc->ctl.IsValid()) return;
-        // check-box（无 caption 属性分发）/ win-frame（title 键）经内部 Label 直控
-        const std::string& tp = m->props.type;
-        if ((tp == "check-box" || tp == "win-frame") && m_ui) {
-            void* h = pc->ctl.GetPtr(tp == "win-frame"
-                ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
-            if (h) {
-                m_viewport->FromHandle(h).SetString(PropertyNames::kCaption, v);
-                return;
-            }
-        }
-        pc->ctl.SetString(PropertyNames::kCaption, v);
+        for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
+            applyCaptionTo(id, v);
     });
     // 颜色：ColorPicker 经 color-changed（onOK 确认触发，Binding Event
     // GetChangedColor 取 UIColor 载荷）
@@ -941,16 +1290,96 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
 
 // 用户确认颜色 → 写选中控件背景色（normal 态）+ 模型记录。
 void CanvasPane::onColorPicked(unsigned char r, unsigned char g, unsigned char b) {
-    if (m_selectedId.empty()) return;
-    ControlModel* m = findModel(m_selectedId);
-    PlacedControl* pc = placedById(m_selectedId);
-    if (!m || !pc || !pc->ctl.IsValid()) return;
+    if (m_selIds.empty()) return;
     const UIColor c{ r, g, b, 255 };
     char hex[8];
     std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", r, g, b);
     m_lastColorHex = hex;
-    pc->ctl.SetColor(PropertyNames::kBackground, c);
-    m->props.extended["color"] = hex;
+    for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中
+        ControlModel* m = findModel(id);
+        PlacedControl* pc = placedById(id);
+        if (!m || !pc || !pc->ctl.IsValid()) continue;
+        pc->ctl.SetColor(PropertyNames::kBackground, c);
+        m->props.extended["color"] = hex;
+    }
+}
+
+// P2 多选共有属性：caption 读取（check-box/win-frame 的文本在内部 Label，经句柄直控读）。
+std::string CanvasPane::readCaptionOf(const std::string& id) {
+    const ControlModel* m = findModel(id);
+    if (!m) return "";
+    std::string capVal = m->props.extended.value("caption", "");
+    const PlacedControl* pc = placedById(id);
+    if (pc && pc->ctl.IsValid() && m_ui) {
+        const std::string& tp = m->props.type;
+        if (tp == "check-box" || tp == "win-frame") {
+            void* h = pc->ctl.GetPtr(tp == "win-frame"
+                ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
+            if (h) capVal = m_viewport->FromHandle(h).GetString(PropertyNames::kCaption);
+        }
+    }
+    return capVal;
+}
+
+// P2 多选共有属性：caption 写入（类型特例：check-box/win-frame 内部 Label 直控）。
+void CanvasPane::applyCaptionTo(const std::string& id, const std::string& v) {
+    ControlModel* m = findModel(id);
+    if (!m) return;
+    m->props.extended["caption"] = v;
+    PlacedControl* pc = placedById(id);
+    if (!pc || !pc->ctl.IsValid()) return;
+    const std::string& tp = m->props.type;
+    if ((tp == "check-box" || tp == "win-frame") && m_ui) {
+        void* h = pc->ctl.GetPtr(tp == "win-frame"
+            ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
+        if (h) {
+            m_viewport->FromHandle(h).SetString(PropertyNames::kCaption, v);
+            return;
+        }
+    }
+    pc->ctl.SetString(PropertyNames::kCaption, v);
+}
+
+// P2 多选：颜色槽写回单个目标——text/text-shadow 组经内部 caption/title Label 直控
+// （类型分派；caption 直控结果存 model.extended，CheckBox recreate 后拖动结束恢复用）。
+void CanvasPane::writeColorSlotTo(const std::string& id, const std::string& prop,
+                                  const std::string& grpName, const UIColor& c) {
+    ControlModel* m = findModel(id);
+    PlacedControl* pc = placedById(id);
+    if (!m || !pc || !pc->ctl.IsValid()) return;
+    char hex8[12];
+    std::snprintf(hex8, sizeof(hex8), "#%02X%02X%02X%02X", c.r, c.g, c.b, c.a);
+    m->props.extended[prop + "-color"] = hex8;
+    if (grpName == "text" || grpName == "text-shadow") {
+        const char* capKey = (m->props.type == "win-frame")
+            ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel;
+        void* capH = pc->ctl.GetPtr(capKey);
+        if (capH) {
+            m_viewport->FromHandle(capH).SetColor(prop.c_str(), c);
+            return;
+        }
+    }
+    pc->ctl.SetColor(prop.c_str(), c);
+}
+
+// P2 多选：string 行写回单个目标——check-box/win-frame 内部 Label 直控；
+// 路径类记录 extended（引擎只写不读的显示兜底）。
+void CanvasPane::writeStringPropTo(const std::string& id, const std::string& prop,
+                                   const std::string& v) {
+    ControlModel* m = findModel(id);
+    PlacedControl* pc = placedById(id);
+    if (!m || !pc || !pc->ctl.IsValid()) return;
+    const std::string& tp = m->props.type;
+    if (tp == "check-box" || tp == "win-frame") {
+        void* h = pc->ctl.GetPtr(tp == "win-frame"
+            ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
+        if (h) {
+            m_viewport->FromHandle(h).SetString(PropertyNames::kCaption, v);
+            return;
+        }
+    }
+    if (isPathLikeProp(prop)) m->props.extended[prop] = v;
+    pc->ctl.SetString(prop.c_str(), v);
 }
 
 // ── Schema 驱动动态属性区 ──
@@ -1035,6 +1464,27 @@ void CanvasPane::SetDynamicPropsContainer(Control box) {
     }
 }
 
+// P2 多选：类型 def 的键集（merged properties + colors@伪键）——共有属性交集过滤用。
+static std::set<std::string> schemaKeySet(const nlohmann::json& defs, const std::string& type) {
+    std::set<std::string> keys;
+    if (!defs.contains(type)) return keys;
+    const auto& d = defs[type];
+    if (!d.contains("properties")) return keys;
+    nlohmann::json merged = d["properties"];
+    const auto& common = defs["common"]["properties"];
+    for (auto it = common.begin(); it != common.end(); ++it)
+        if (!merged.contains(it.key())) merged[it.key()] = it.value();
+    for (auto it = merged.begin(); it != merged.end(); ++it) {
+        if (it.key() == "colors") {
+            for (const auto& [grpName, states] : resolveColorGroups(defs, d))
+                keys.insert("colors@" + grpName);
+        } else {
+            keys.insert(it.key());
+        }
+    }
+    return keys;
+}
+
 // 选中控件 → 按 schema 类型生成动态属性行（label 行 + 编辑控件行）。
 // 支持 string(EditBox)/number·integer(NUD)/boolean(CheckBox)；嵌套对象、枚举、
 // 布局资源类（rect/actors/luotiAni…）首版跳过。
@@ -1049,12 +1499,14 @@ void CanvasPane::rebuildDynamicRows() {
     m_fixedWidthRows.clear();
     m_captionEditor = Control();
     m_schemaTarget = Control();
+    m_schemaTargets.clear();
     m_rowRefreshers.clear();
     if (!m_propDynamic.IsValid()) return;
     const ControlModel* m = findModel(m_selectedId);
     if (!m) {   // 未选中：动态区留空（滚动条一并隐藏）
         if (m_dynScroll.IsValid()) m_dynScroll.SetBool(PropertyNames::kVisible, false);
         m_rowsBuiltSig.clear();
+        m_schemaTargets.clear();
         return;
     }
     const PlacedControl* pc = placedById(m->props.id);
@@ -1066,9 +1518,21 @@ void CanvasPane::rebuildDynamicRows() {
     const nlohmann::json& def = defs[m->props.type];
     if (!def.contains("properties")) return;
 
+    // P2 多选：批量写目标（全部选中；读回/回填以主选为准）+ 行集签名含全部类型
+    m_schemaTargets.clear();
+    std::string typeSig;
+    for (const auto& id : m_selIds) {
+        PlacedControl* t = placedById(id);
+        if (!t || !t->ctl.IsValid()) continue;
+        m_schemaTargets.push_back(t->ctl);
+        if (!typeSig.empty()) typeSig += ",";
+        typeSig += t->model->props.type;
+    }
+    if (m_schemaTargets.empty()) return;
+
     // E 方案快路径：同类型行集相同（schema 确定）——跳过销毁重建，仅执行各行
-    // 刷值闭包（读选中控件当前值回填行显示，毫秒级）
-    if (m_rowsBuiltSig == m->props.type && !m_rowRefreshers.empty()) {
+    // 刷值闭包（读选中控件当前值回填行显示，毫秒级）；P2 多选签名含全部类型
+    if (m_rowsBuiltSig == typeSig && !m_rowRefreshers.empty()) {
         m_schemaTarget = pc->ctl;
         m_propSync = true;   // 程序化回填不触发联动回调
         for (auto& fn : m_rowRefreshers)
@@ -1195,6 +1659,22 @@ void CanvasPane::rebuildDynamicRows() {
         }
         kvs.push_back({it.key(), &it.value()});
     }
+    // P2 多选：仅保留全部选中类型的共有键（同类型=全集；交集空则只有组标题/类型行）
+    if (m_selIds.size() > 1) {
+        std::set<std::string> common = schemaKeySet(defs, m->props.type);
+        for (size_t i = 0; i + 1 < m_selIds.size(); ++i) {
+            const ControlModel* mi = findModel(m_selIds[i]);
+            if (!mi) continue;
+            const std::set<std::string> ks = schemaKeySet(defs, mi->props.type);
+            std::set<std::string> inter;
+            for (const auto& k : common)
+                if (ks.count(k)) inter.insert(k);
+            common.swap(inter);
+        }
+        kvs.erase(std::remove_if(kvs.begin(), kvs.end(),
+                                 [&](const auto& kv) { return !common.count(kv.first); }),
+                  kvs.end());
+    }
     auto groupOf = [](const std::string& key) -> int {
         if (key == "colors@background") return 0;                    // 背景色
         if (key == "colors@border") return 1;                        // 边框色
@@ -1210,10 +1690,15 @@ void CanvasPane::rebuildDynamicRows() {
                isPathLikeProp(jsonKeyToProp(b.first));   // 组内：资源/路径类聚尾
     });
     int lastGroup = -1;   // 当前已呈现组序号（-1=尚未）
-    // 类型标识行（选中控件类型一目了然——首字母大写的 schema 类型名）
+    // 类型标识行（选中控件类型一目了然——首字母大写的 schema 类型名；多选显示计数）
     if (!m_schemaType.empty()) {
-        std::string typeName = m_schemaType;
-        typeName[0] = std::toupper((unsigned char)typeName[0]);
+        std::string typeName;
+        if (m_selIds.size() > 1) {
+            typeName = u8"多选 ×" + std::to_string(m_selIds.size());
+        } else {
+            typeName = m_schemaType;
+            typeName[0] = std::toupper((unsigned char)typeName[0]);
+        }
         Control lb = m_ui->CreateLabel(typeName, kPropLblFont, 0, 0, rowW, kPropLblH);
         lb.SetColor(PropertyNames::kText, UIColor{0xE8, 0xE8, 0xE8, 255});
         lb.SetRect(kPropInsetX, y, rowW, kPropLblH);
@@ -1264,8 +1749,20 @@ void CanvasPane::rebuildDynamicRows() {
             auto itg = colorGroupsAll.find(colorSubGrp);
             if (itg == colorGroupsAll.end()) continue;
             const auto& [grpName, states] = *itg;
-        const bool hasShadow = def.contains("properties") &&
-                               def["properties"].contains("shadow");
+        bool hasShadow = def.contains("properties") &&
+                         def["properties"].contains("shadow");
+        // P2 多选：全部选中类型都声明 shadow 才生成阴影段（交集语义）
+        if (hasShadow && m_selIds.size() > 1) {
+            for (const auto& id : m_selIds) {
+                const ControlModel* mi = findModel(id);
+                if (!mi || !defs.contains(mi->props.type) ||
+                    !defs[mi->props.type].contains("properties") ||
+                    !defs[mi->props.type]["properties"].contains("shadow")) {
+                    hasShadow = false;
+                    break;
+                }
+            }
+        }
         const bool isListLike = (m_schemaType == "list-view" ||
                                  m_schemaType == "tree-view");
         auto renderShadowRows = [&]() {
@@ -1300,13 +1797,16 @@ void CanvasPane::rebuildDynamicRows() {
                 });
                 cb.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e2) {
                     const bool on2 = e2.GetCheckState() != 0;
-                    if (m_schemaType == "win-frame") {
-                        void* h = m_schemaTarget.GetPtr(PropertyNames::kTitleLabel);
-                        if (h) m_viewport->FromHandle(h).SetBool(PropertyNames::kShadow, on2);
-                        return;
+                    for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中（类型分派）
+                        PlacedControl* pc2 = placedById(id);
+                        if (!pc2 || !pc2->ctl.IsValid()) continue;
+                        if (pc2->model->props.type == "win-frame") {
+                            void* h = pc2->ctl.GetPtr(PropertyNames::kTitleLabel);
+                            if (h) m_viewport->FromHandle(h).SetBool(PropertyNames::kShadow, on2);
+                            continue;
+                        }
+                        pc2->ctl.SetBool(PropertyNames::kShadow, on2);
                     }
-                    if (m_schemaTarget.IsValid())
-                        m_schemaTarget.SetBool(PropertyNames::kShadow, on2);
                 });
                 m_propDynamic.AddChild(cb);
                 m_dynamicRows.push_back(cb);
@@ -1337,14 +1837,22 @@ void CanvasPane::rebuildDynamicRows() {
                     nud.SetFloat(PropertyNames::kValue, rv);
                 });
                 nud.SetCallback(PropertyNames::kEventValueChanged,
-                                [this, legacyInner, attLabelKey, oi](const Event& e2) {
-                    if (!m_schemaTarget.IsValid()) return;
-                    if (m_schemaType == "label" || !legacyInner) {
-                        m_schemaTarget.SetFloat(kOffProp[oi], e2.GetValueChanged());
-                        return;
+                                [this, oi](const Event& e2) {
+                    const float v2 = e2.GetValueChanged();
+                    for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中（类型分派）
+                        PlacedControl* pc2 = placedById(id);
+                        if (!pc2 || !pc2->ctl.IsValid()) continue;
+                        const std::string& tp2 = pc2->model->props.type;
+                        const bool legacy2 = (tp2 == "button" || tp2 == "check-box" ||
+                                              tp2 == "win-frame");
+                        if (tp2 == "label" || !legacy2) {
+                            pc2->ctl.SetFloat(kOffProp[oi], v2);
+                            continue;
+                        }
+                        void* h = pc2->ctl.GetPtr(tp2 == "win-frame"
+                            ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
+                        if (h) m_viewport->FromHandle(h).SetFloat(kOffProp[oi], v2);
                     }
-                    void* h = m_schemaTarget.GetPtr(attLabelKey);
-                    if (h) m_viewport->FromHandle(h).SetFloat(kOffProp[oi], e2.GetValueChanged());
                 });
                 m_propDynamic.AddChild(nud);
                 m_dynamicRows.push_back(nud);
@@ -1390,41 +1898,10 @@ void CanvasPane::rebuildDynamicRows() {
                     // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
                     Control cp = m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
-                                   [this, prop, gk, grpName, st, capKey](const Event& e) {
-                        if (!m_schemaTarget.IsValid()) return;
+                                   [this, prop, grpName](const Event& e) {
                         const UIColor c = e.GetChangedColor();
-                        // text/textShadow 组：直控内部 caption Label
-                        // （GetPtr("caption-label")——Button 单色 setter 不同步 caption 的绕行回收）
-                        if ((grpName == "text" || grpName == "text-shadow") && m_ui) {
-                            void* capH = m_schemaTarget.GetPtr(capKey);
-                            if (capH) {
-                                // caption 属于被设计控件子树（子视口实例）——
-                                // FromHandle 须用子视口域（主实例域会 validate 失败落空）
-                                auto cap = m_viewport->FromHandle(capH);
-                                const std::string capProp = gk + (st == "normal"
-                                    ? std::string() : ("." + st));
-                                cap.SetColor(capProp.c_str(), c);
-                                // CheckBox recreate 丢 caption 状态——存 extended（拖动结束恢复用）
-                                ControlModel* m2 = findModel(m_selectedId);
-                                if (m2) {
-                                    char hex8[12];
-                                    std::snprintf(hex8, sizeof(hex8), "#%02X%02X%02X%02X",
-                                                  c.r, c.g, c.b, c.a);
-                                    m2->props.extended[prop + "-color"] = hex8;
-                                }
-                                return;
-                            }
-                        }
-                        m_schemaTarget.SetColor(prop.c_str(), c);   // 兜底（无 caption 控件等）
-                        {
-                            ControlModel* m2 = findModel(m_selectedId);
-                            if (m2) {
-                                char hex8[12];
-                                std::snprintf(hex8, sizeof(hex8), "#%02X%02X%02X%02X",
-                                              c.r, c.g, c.b, c.a);
-                                m2->props.extended[prop + "-color"] = hex8;
-                            }
-                        }
+                        for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
+                            writeColorSlotTo(id, prop, grpName, c);
                     });
                     m_fixedWidthRows.insert(m_dynamicRows.size());
                     m_propDynamic.AddChild(cp);
@@ -1489,8 +1966,11 @@ void CanvasPane::rebuildDynamicRows() {
             fcb.SetCallback(PropertyNames::kEventSelectionChanged,
                             [this, fcb, fontNames](const Event&) mutable {
                 const int idx = fcb.GetInt(PropertyNames::kSelectedIndex);
-                if (idx >= 0 && idx < (int)fontNames.size() && m_schemaTarget.IsValid()) {
-                    m_schemaTarget.SetString(PropertyNames::kFont, fontNames[idx]);
+                if (idx >= 0 && idx < (int)fontNames.size()) {
+                    for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
+                        if (PlacedControl* pc2 = placedById(id))
+                            if (pc2->ctl.IsValid())
+                                pc2->ctl.SetString(PropertyNames::kFont, fontNames[idx]);
                 }
             });
             m_propDynamic.AddChild(fcb);
@@ -1559,21 +2039,15 @@ void CanvasPane::rebuildDynamicRows() {
             const bool isCaptionRow = (prop == PropertyNames::kCaption || prop == "title");
             if (isCaptionRow) m_captionEditor = ta;
             ta.SetCallback(PropertyNames::kEventTextChanged,
-                           [this, prop, viaLabel, innerKey, isCaptionRow](const Event& e) {
+                           [this, prop, isCaptionRow](const Event& e) {
                                if (m_propSync) return;
-                               if (!m_schemaTarget.IsValid()) return;
+                               if (m_selIds.empty()) return;
                                const std::string v2 =
                                    sanitizePropValue(prop, e.GetTextChanged());
                                if (isCaptionRow && m_propCaption.IsValid()) {
                                    m_propSync = true;
                                    m_propCaption.SetString(PropertyNames::kTextContent, v2);
                                    m_propSync = false;
-                               }
-                               if (viaLabel) {
-                                   void* h = m_schemaTarget.GetPtr(innerKey);
-                                   if (h) m_viewport->FromHandle(h).SetString(
-                                       PropertyNames::kCaption, v2);
-                                   return;
                                }
                                if (isPathLikeProp(prop)) {
                                    // textChanged 每键写回——过滤明显无效中间态
@@ -1589,10 +2063,9 @@ void CanvasPane::rebuildDynamicRows() {
                                    if (!providerRef && !v2.empty() &&
                                        v2.find('.') == std::string::npos)
                                        return;
-                                   if (ControlModel* m2 = findModel(m_selectedId))
-                                       m2->props.extended[prop] = v2;
                                }
-                               m_schemaTarget.SetString(prop.c_str(), v2);
+                               for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
+                                   writeStringPropTo(id, prop, v2);
                                // playing 状态不干预：引擎 wasPlaying 语义
                                // （播放中换动画→重播、暂停中换→保持暂停）；
                                // 首次预览由 placeControl 放置时自动播放承担
@@ -1626,10 +2099,13 @@ void CanvasPane::rebuildDynamicRows() {
             });
             nud.SetCallback(PropertyNames::kEventValueChanged,
                             [this, prop, isInt](const Event& e) {
-                                if (!m_schemaTarget.IsValid()) return;
-                                if (isInt) m_schemaTarget.SetInt(prop.c_str(),
-                                                                 (int)e.GetValueChanged());
-                                else m_schemaTarget.SetFloat(prop.c_str(), e.GetValueChanged());
+                                const float v2 = e.GetValueChanged();
+                                for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中
+                                    PlacedControl* pc2 = placedById(id);
+                                    if (!pc2 || !pc2->ctl.IsValid()) continue;
+                                    if (isInt) pc2->ctl.SetInt(prop.c_str(), (int)v2);
+                                    else pc2->ctl.SetFloat(prop.c_str(), v2);
+                                }
                             });
             m_propDynamic.AddChild(nud);
             m_dynamicRows.push_back(nud);
@@ -1642,8 +2118,10 @@ void CanvasPane::rebuildDynamicRows() {
             // CheckBox 不发 click，发 check-changed（intVal=CheckState 枚举）
             cb.SetCallback(PropertyNames::kEventCheckChanged,
                            [this, prop](const Event& e) {
-                if (m_schemaTarget.IsValid())
-                    m_schemaTarget.SetBool(prop.c_str(), e.GetCheckState() != 0);
+                const bool v2 = e.GetCheckState() != 0;
+                for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
+                    if (PlacedControl* pc2 = placedById(id))
+                        if (pc2->ctl.IsValid()) pc2->ctl.SetBool(prop.c_str(), v2);
             });
             // 勾选状态回填（引擎 getter 补齐后 text-shadow-enable 等可读回）
             cb.SetBool(PropertyNames::kChecked,
@@ -1677,7 +2155,7 @@ void CanvasPane::rebuildDynamicRows() {
     {
         std::string coll;
         for (const auto& g : m_collapsedGroups) coll += g + ",";
-        m_rowsBuiltSig = m_schemaType + "|" + coll;
+        m_rowsBuiltSig = typeSig + "|" + coll;   // P2 多选：签名含全部选中类型
     }
     m_dynScrollMax = (y + kPropInsetX) - viewRowsH;
     if (m_dynScrollMax < 0) m_dynScrollMax = 0;
@@ -1784,9 +2262,17 @@ int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
         if (m_snapEnabled) {                                          // 吸附到网格（独立）
             if (!hitX) x = std::round(x / g) * g;
             if (!hitY) y = std::round(y / g) * g;
-            return 1;
         }
-        return (m_alignEnabled && (hitX || hitY)) ? 1 : 0;
+        // P2 多选组拖动：主选过滤后局部位置增量 → 其余成员同步平移
+        if (m_groupDrag) {
+            const float dx = x - m_groupPrevX, dy = y - m_groupPrevY;
+            if (dx != 0.0f || dy != 0.0f) {
+                applyGroupDelta(dx, dy);
+                m_groupPrevX = x;
+                m_groupPrevY = y;
+            }
+        }
+        return (m_snapEnabled || (m_alignEnabled && (hitX || hitY))) ? 1 : 0;
     }
     if (!m_snapEnabled) return 0;
 
@@ -1823,6 +2309,15 @@ void CanvasPane::tickInput() {
     const bool downEdge = down && !m_mouseWasDown;
     const bool upEdge = !down && m_mouseWasDown;
 
+    // 引擎浮层消费本帧点击（工具栏下拉/菜单项——App 回调标记）：画布交互整体跳过。
+    // 弹层项显示在画布上方，引擎按 P0-52 路由 owner；设计器 SDL 轮询须同步跳过，
+    // 否则该次按下被当作画布空白点击 → 误清选择。
+    if (m_suppressCanvasClick) {
+        m_suppressCanvasClick = false;
+        m_mouseWasDown = down;
+        return;
+    }
+
     // 拖放 ghost：候选活跃时——鼠标旁跟随控件图标（画布内可见）；结束销毁
     {
         const bool curOn = !m_pendingPlaceTool.empty();
@@ -1831,6 +2326,7 @@ void CanvasPane::tickInput() {
             if (!icon.empty()) {
                 m_dragGhost = m_viewport->CreateImage(icon, 0, 0, 32.0f, 32.0f);
                 if (m_dragGhost.IsValid()) {
+                    m_dragGhost.SetBool(PropertyNames::kAlwaysOnTop, 1);   // z 序置顶
                     m_dragGhost.SetInt(PropertyNames::kAlpha, 180);   // 半透明
                     m_dragGhost.SetBool(PropertyNames::kVisible, 0);
                 }
@@ -1849,6 +2345,9 @@ void CanvasPane::tickInput() {
             m_dragGhost = Control();
         }
     }
+
+    // P2 框选：拖拽中更新橡皮筋矩形（画布逻辑坐标）
+    if (m_bandActive && down) updateBand(cx, cy);
 
     // 工具拖放（拖放模式）：工具箱项按下（kEventSelect）→ 拖到画布松开 → 放置于松开处；
     // 在工具箱内松开（普通单击）→ 不放置、仅清除候选
@@ -1907,6 +2406,7 @@ void CanvasPane::tickInput() {
                 if (!m_alignV.IsValid()) {
                     m_alignV = m_viewport->CreatePanel(0, 0, 1, 100);
                     if (m_alignV.IsValid()) {
+                        m_alignV.SetBool(PropertyNames::kAlwaysOnTop, 1);   // z 序置顶
                         m_alignV.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
                         m_alignV.SetBool("border-visible", 0);
                     }
@@ -1914,6 +2414,7 @@ void CanvasPane::tickInput() {
                 if (!m_alignH.IsValid()) {
                     m_alignH = m_viewport->CreatePanel(0, 0, 100, 1);
                     if (m_alignH.IsValid()) {
+                        m_alignH.SetBool(PropertyNames::kAlwaysOnTop, 1);   // z 序置顶
                         m_alignH.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
                         m_alignH.SetBool("border-visible", 0);
                     }
@@ -1934,6 +2435,8 @@ void CanvasPane::tickInput() {
                 if (lineX < 0) nx = std::round(nx / m_gridCell) * m_gridCell;
                 if (lineY < 0) ny = std::round(ny / m_gridCell) * m_gridCell;
             }
+            // P2 多选组拖动：全局增量（局部换算前捕获；其余成员按起始快照平移）
+            const float gdx = nx - m_groupStartX, gdy = ny - m_groupStartY;
             // 子控件：全局 → 容器局部（父全局原点 + WinFrame ClientPanel 内容偏移）
             if (!m_dragParentId.empty()) {
                 if (PlacedControl* par = placedById(m_dragParentId)) {
@@ -1953,6 +2456,7 @@ void CanvasPane::tickInput() {
             m->props.rect.y = ny;
             if (m_dragCtl.IsValid())
                 m_dragCtl.SetRect(nx, ny, m->props.rect.w, m->props.rect.h);
+            if (m_groupDrag) applyGroupFromStart(gdx, gdy);   // P2 多选组拖动
             fillPropertyPanel();   // 拖动中同步属性面板（m_propSync 抑制回写）
         } else {
             if (m_alignV.IsValid()) m_alignV.SetBool(PropertyNames::kVisible, 0);
@@ -1979,14 +2483,28 @@ void CanvasPane::tickInput() {
                 }
             }
             m_dragId.clear();   // 松开结束拖动
+            m_groupDrag = false;
+            m_groupEntries.clear();
         }
         m_mouseWasDown = down;
         return;
     }
 
     // 按下沿：选中控件手柄带让给 HandleControl（拖拽 resize）；控件命中 → 选中并
-    // 拖动；空白 → 取消选中
+    // 拖动；空白 → 取消选中。P2 多选：Ctrl+单击切换成员；多选成员拖动=组拖动。
     if (downEdge && inVp) {
+        // Ctrl+单击：多选切换（优先于手柄让区/拖动——修饰键手势不启动拖拽）；
+        // Ctrl+空白按下：启动并入式框选（松开判定，微小移动=不变）
+        if (m_ctrlSource && m_ctrlSource()) {
+            std::string hit;
+            if (hitTest(cx, cy, hit)) {
+                toggleSelection(hit);
+            } else {
+                beginBand(cx, cy, true);   // Ctrl+空白：并入式框选
+            }
+            m_mouseWasDown = down;
+            return;
+        }
         // 手柄精确让区：HandleHitTest 命中 → HandleControl 接管拖拽；未命中
         // （本体/空白）走设计器逻辑——本体边缘（非手柄处）恢复移动能力
         if (m_selectedId.empty() == false && m_selHandle.IsValid()) {
@@ -1995,13 +2513,41 @@ void CanvasPane::tickInput() {
             // 视口根 rect=窗口全局位置）→ 全局域，传 SDL 窗口坐标原样
             const bool hh = m_ui->HandleHitTest(m_selHandle, wx, wy, ht);
             if (hh) {
+                // 多选 + 主选本体移动区（HandleType::Move=1）→ 组拖动（引擎路径增量）
+                if (m_selIds.size() > 1 && ht == 1) beginGroupDrag(m_selectedId);
                 m_mouseWasDown = down;
                 return;
             }
         }
         std::string hit;
         if (hitTest(cx, cy, hit)) {
-            selectItem(hit);
+            const bool inSel = std::find(m_selIds.begin(), m_selIds.end(), hit) != m_selIds.end();
+            // 容器内容区（未选中）：延迟判定——拖动=框选其子控件，单击=选中容器本体
+            // （选中后拖动=移动容器——HandleControl 本体路径；WinFrame 标题栏不在此列）
+            if (!inSel) {
+                PlacedControl* hpc = placedById(hit);
+                if (hpc && isContainerType(hpc->model->props.type)) {
+                    Control par;
+                    SRect cr;
+                    if (resolveContainer(hit, par, cr) &&
+                        cx >= cr.x && cx < cr.x + cr.w && cy >= cr.y && cy < cr.y + cr.h) {
+                        beginBand(cx, cy, false);   // 容器内容区：延迟判定（拖动=框选子控件）
+                        m_mouseWasDown = down;
+                        return;
+                    }
+                }
+            }
+            if (inSel && m_selIds.size() > 1) {
+                // 多选成员：保留选择集，命中项升为主选（手柄切换）→ 组拖动（设计器路径）
+                if (m_selectedId != hit) {
+                    std::vector<std::string> ids = m_selIds;
+                    ids.erase(std::remove(ids.begin(), ids.end(), hit), ids.end());
+                    ids.push_back(hit);
+                    setSelection(std::move(ids));
+                }
+            } else {
+                selectItem(hit);
+            }
             if (ControlModel* m = findModel(hit)) {
                 // 全局域拖动偏移（子控件经 helper 全局化；拖动中父不动——记父 id 转局部）
                 m_dragParentId.clear();
@@ -2019,9 +2565,11 @@ void CanvasPane::tickInput() {
                     m_dragCtl = pc->ctl;
                 }
                 m_dragId = hit;
+                beginGroupDrag(hit);
             }
         } else {
-            selectItem("");
+            // P2 框选：空白处按下 → 启动橡皮筋（松开判定空白点击/框选）
+            beginBand(cx, cy, false);
         }
         m_mouseWasDown = down;
         return;
@@ -2031,6 +2579,9 @@ void CanvasPane::tickInput() {
         // 松开：辅助线隐藏（引擎拖动路径（filter）松开后不再回调——统一在此收尾）
         if (m_alignV.IsValid()) m_alignV.SetBool(PropertyNames::kVisible, 0);
         if (m_alignH.IsValid()) m_alignH.SetBool(PropertyNames::kVisible, 0);
+        if (m_bandActive) finalizeBand(cx, cy);   // P2 框选：松开判定
+        m_groupDrag = false;   // P2 多选组拖动收尾（引擎路径）
+        m_groupEntries.clear();
     }
     m_mouseWasDown = down;
 }
@@ -2118,6 +2669,7 @@ void CanvasPane::applyAlignSnap(float& x, float& y, float w, float h,
     if (!m_alignV.IsValid()) {
         m_alignV = m_viewport->CreatePanel(0, 0, 1, 100);
         if (m_alignV.IsValid()) {
+            m_alignV.SetBool(PropertyNames::kAlwaysOnTop, 1);   // z 序置顶
             m_alignV.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
             m_alignV.SetBool("border-visible", 0);
         }
@@ -2125,6 +2677,7 @@ void CanvasPane::applyAlignSnap(float& x, float& y, float w, float h,
     if (!m_alignH.IsValid()) {
         m_alignH = m_viewport->CreatePanel(0, 0, 100, 1);
         if (m_alignH.IsValid()) {
+            m_alignH.SetBool(PropertyNames::kAlwaysOnTop, 1);   // z 序置顶
             m_alignH.SetColor("background", UIColor{0xFF, 0x88, 0x00, 0xC0});
             m_alignH.SetBool("border-visible", 0);
         }
@@ -2149,7 +2702,63 @@ void CanvasPane::SetCanvasTree(Control tree) {
         const std::string id = e.GetNodeId();
         if (id.empty() || !findModel(id)) return;   // 空选/未知节点忽略
         selectItem(id);
+        // P1-b 通道②：树选中容器 → 设为当前放置目标；选中非容器 → 回画布根
+        const ControlModel* m = findModel(id);
+        setPlaceTarget(m && isContainerType(m->props.type) ? id : std::string());
     });
+}
+
+// P1-b：主实例 statusBar 接线（放置目标提示；statusHint 段）。
+void CanvasPane::SetStatusTarget(Control statusBar) {
+    m_statusTarget = statusBar;
+    refreshPlaceTargetHint();
+}
+
+// P1-b：容器 id → 挂载父控件（WinFrame 严格 ClientPanel）+ 内容区全局 rect。
+// 内容区全局原点经 globalOriginOf（父链累加 + ClientPanel 偏移——嵌套容器天然正确）。
+bool CanvasPane::resolveContainer(const std::string& id, Control& outParent, SRect& outContentRect) {
+    PlacedControl* pc = placedById(id);
+    if (!pc || !pc->ctl.IsValid() || !isContainerType(pc->model->props.type)) return false;
+    float gx = 0, gy = 0;
+    globalOriginOf(*pc, gx, gy);
+    if (pc->model->props.type == "win-frame") {
+        void* h = pc->ctl.GetPtr("client-panel");
+        if (!h) return false;
+        outParent = m_viewport->FromHandle(h);
+        if (!outParent.IsValid()) return false;
+        const auto cr = outParent.GetRect();
+        outContentRect = { gx + cr.x, gy + cr.y, cr.w, cr.h };
+        return true;
+    }
+    outParent = pc->ctl;
+    const auto r = pc->ctl.GetRect();
+    outContentRect = { gx, gy, r.w, r.h };
+    return true;
+}
+
+// P1-b：更新当前放置目标（空=画布根）+ 状态栏提示。
+void CanvasPane::setPlaceTarget(const std::string& id) {
+    if (m_placeTargetId == id) return;
+    m_placeTargetId = id;
+    refreshPlaceTargetHint();
+}
+
+void CanvasPane::refreshPlaceTargetHint() {
+    if (!m_statusTarget.IsValid() || !m_ui) return;
+    std::string text = u8"放置目标：";
+    const ControlModel* m = m_placeTargetId.empty() ? nullptr : findModel(m_placeTargetId);
+    if (m) {
+        text += m->props.type + " " + m->props.id;
+    } else {
+        m_placeTargetId.clear();
+        text += u8"画布根";
+    }
+    m_ui->StatusBarSetItemText(m_statusTarget, "statusHint", text);
+    // 引擎 P0-53 过渡：updateStatusItemText 不触发 relayout（段宽仍按旧文本 → 长文本
+    // 溢出压相邻段）——以临时段增删强制重排（同帧内完成，无视觉影响）；引擎修复同步后删除。
+    static const char* const kProbe = "__relayout_probe";
+    m_ui->StatusBarAddItem(m_statusTarget, kProbe, "");
+    m_ui->StatusBarRemoveItem(m_statusTarget, kProbe);
 }
 
 // 画布控件增删/选中 → 树同步（编程式，触发 select 回调被 m_treeSync 抑制）。
@@ -2180,15 +2789,16 @@ void CanvasPane::syncTreeSelection() {
 
 // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
 void CanvasPane::deleteSelected() {
-    if (m_selectedId.empty()) return;
-    // 收集后代 id（含自身）——容器删除连带子树（P1-a 层级）
+    if (m_selIds.empty()) return;
+    // 收集后代 id（含自身）——容器删除连带子树（P1-a 层级）；P2 多选：全部选中项
     std::vector<std::string> toRemove;
     std::function<void(const std::string&)> collect = [&](const std::string& pid) {
+        if (std::find(toRemove.begin(), toRemove.end(), pid) != toRemove.end()) return;
         toRemove.push_back(pid);
         for (auto& it : m_items)
             if (it.parentId == pid) collect(it.model->props.id);
     };
-    collect(m_selectedId);
+    for (const auto& id : m_selIds) collect(id);
     // 反向（后代先删）：控件销毁（视口内）+ 模型条目移除 + 树节点移除
     for (auto rit = toRemove.rbegin(); rit != toRemove.rend(); ++rit) {
         if (PlacedControl* pc = placedById(*rit)) {
@@ -2205,6 +2815,7 @@ void CanvasPane::deleteSelected() {
         m_dragCtl = Control();
     }
     selectItem("");   // 取消选中 → 属性面板清零 + 选中框隐藏
+    refreshPlaceTargetHint();   // P1-b：目标容器被删 → 提示回画布根
 }
 
 void CanvasPane::SetToolboxTree(Control tree) {

@@ -70,6 +70,8 @@ public:
     void SetMouseSource(MouseSourceFn src) { m_mouseSource = std::move(src); }
     using KeySourceFn = std::function<bool()>;   // 返回 Delete 键按下沿（每帧轮询一次）
     void SetKeySource(KeySourceFn src) { m_keySource = std::move(src); }
+    using CtrlSourceFn = std::function<bool()>;  // Ctrl 按住态（每帧轮询一次；多选修饰键）
+    void SetCtrlSource(CtrlSourceFn src) { m_ctrlSource = std::move(src); }
 
     // 右侧控件树（tvTree）：画布控件增删/选中双向同步。
     void SetCanvasTree(Control tree);
@@ -77,6 +79,17 @@ public:
                      const std::string& label);   // 层级挂接（parentId 空=顶层）
     void syncTreeRemove(const std::string& id);
     void syncTreeSelection();
+
+    // P1-b 放置目标提示：主实例 statusBar（statusHint 段显示当前目标容器）。
+    void SetStatusTarget(Control statusBar);
+
+    // P2 多选：对齐命令下拉（tb_align，选中 ≥2 启用）+ 执行
+    // （0-5：左/水平居中/右/顶/垂直居中/底；作用于选择集全局包围盒）。
+    void SetAlignCommandControl(Control combo);
+    void AlignSelection(int mode);
+    // 引擎浮层消费点击标记（App 在工具栏下拉/菜单项回调中调用）：本帧画布交互跳过，
+    // 防弹层项点击落到画布（SDL 轮询独立于引擎路由）误清选择。
+    void SuppressCanvasClickThisFrame() { m_suppressCanvasClick = true; }
 
     // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
     void deleteSelected();
@@ -163,9 +176,32 @@ private:
     PlacedControl* placedById(const std::string& id);
     // P1-a：控件画布全局原点（沿 parentId 链累加局部 rect；WinFrame 加 ClientPanel 内容偏移）
     void globalOriginOf(const PlacedControl& pc, float& gx, float& gy);
+    // P1-b：容器 id → 挂载父控件（WinFrame 严格 ClientPanel）+ 内容区全局 rect
+    bool resolveContainer(const std::string& id, Control& outParent, SRect& outContentRect);
+    void setPlaceTarget(const std::string& id);   // 更新当前放置目标 + 状态栏提示
+    void refreshPlaceTargetHint();
     // 智能对齐（x/y 为选中控件局部坐标，引用修正）：命中轴吸附+参考线更新；返回命中轴
     void applyAlignSnap(float& x, float& y, float w, float h, bool& hitX, bool& hitY);
     void selectItem(const std::string& id);
+    // P2 多选：选择集维护（m_selectedId = 主选 = 末位）、次级外框、包围盒、组拖动
+    void setSelection(std::vector<std::string> ids);
+    void toggleSelection(const std::string& id);
+    void updateSelOutlines();
+    // P2 框选（橡皮筋）：空白处按下拖动 → 相交控件选择（Ctrl=并入当前选择；微小移动=空白点击）
+    void beginBand(float cx, float cy, bool additive);   // 起框：重建面板置顶（z 序）+ 记录起点
+    void updateBand(float cx, float cy);
+    void finalizeBand(float cx, float cy);
+    void selectionGlobalBBox(float& x, float& y, float& w, float& h);
+    void parentGlobalOriginOf(const PlacedControl& pc, float& px, float& py);
+    void beginGroupDrag(const std::string& primaryId);
+    void applyGroupDelta(float dx, float dy);          // 引擎路径：增量
+    void applyGroupFromStart(float dx, float dy);      // 设计器路径：起始快照绝对
+    std::string readCaptionOf(const std::string& id);  // 多选共有属性：caption 读取（含内部 Label 直控）
+    void applyCaptionTo(const std::string& id, const std::string& v);
+    void writeColorSlotTo(const std::string& id, const std::string& prop,
+                          const std::string& grpName, const UIColor& c);   // P2 多选：颜色槽批量写
+    void writeStringPropTo(const std::string& id, const std::string& prop,
+                           const std::string& v);                          // P2 多选：string 行批量写
     void ensureSelHandle(Control target);   // 引擎 HandleControl 附加（选中框+8向手柄+光标）
     void detachSelHandle();                 // 分离并隐藏
     static int rectFilterThunk(UIControlHandle target, float* x, float* y,
@@ -175,7 +211,16 @@ private:
     void applyModelRect(ControlModel* m);   // 模型 rect → 视口控件 rect + 选中框
 
     std::vector<PlacedControl> m_items;
-    std::string m_selectedId;
+    std::string m_selectedId;                   // 主选（= m_selIds 末位；空=未选中）
+    std::vector<std::string> m_selIds;          // P2 多选：选择集
+    std::vector<Control> m_selOutlines;         // P2 多选：次级选中外框池（橙 1px 描边）
+    Control m_alignCombo;                       // P2 多选：tb_align（≥2 启用）
+    bool m_suppressCanvasClick = false;         // 引擎浮层消费点击 → 本帧画布交互跳过
+    // P2 框选（橡皮筋）
+    bool  m_bandActive = false;
+    bool  m_bandAdditive = false;               // Ctrl 启动：并入当前选择
+    float m_bandSX = 0, m_bandSY = 0;           // 起始点（画布逻辑坐标）
+    Control m_bandRect;                         // 框选矩形（半透明填充+描边，视口内）
     Control m_selHandle;           // 引擎 HandleControl（选中框+8向手柄+方向光标，附加 target）
     bool  m_propSync = false;      // 属性面板回填中（抑制回写）
     Control m_propX, m_propY, m_propW, m_propH, m_propCaption, m_propVisible, m_propEnabled;
@@ -197,7 +242,8 @@ private:
     std::vector<Control> m_dynamicRows;          // 已生成的行控件（销毁/滚动偏移用）
     std::vector<float>   m_dynamicRowY;          // 各行未滚动时的 baseY（与 rows 对齐）
     float m_dynScrollMax = 0;                    // 滚动范围（内容高-视野高，<0 归零）
-    Control m_schemaTarget;                      // 当前行集对应的目标控件
+    Control m_schemaTarget;                      // 当前行集对应的目标控件（主选——读回/回填）
+    std::vector<Control> m_schemaTargets;        // P2 多选：批量写目标（全部选中）
     std::string m_schemaType;
     void applyDynScroll(float value);            // 滚动 → 行偏移+超界隐藏
 
@@ -207,6 +253,12 @@ private:
     float m_dragOffX = 0, m_dragOffY = 0;
     std::string m_dragId;
     std::string m_dragParentId;   // 拖动起始的父容器 id（子控件拖动转局部用）
+    // P2 多选组拖动：设计器路径=起始快照；引擎 HandleControl 路径=逐帧增量（filterRect）
+    struct GroupEntry { std::string id; SRect startLocal; };
+    std::vector<GroupEntry> m_groupEntries;
+    float m_groupStartX = 0, m_groupStartY = 0;   // 主选起始全局（设计器路径）
+    float m_groupPrevX = 0, m_groupPrevY = 0;     // 主选上帧局部（引擎路径增量基准）
+    bool  m_groupDrag = false;
     std::function<void(bool)> m_dragCursorFn;   // 拖放光标回调（保留接口）
     bool m_dragCursorOn = false;
     Control m_dragGhost;          // 拖放跟随图标（鼠标旁控件小图标 ghost）
@@ -216,6 +268,8 @@ private:
 
     Control m_toolboxTree;
     Control m_canvasTree;          // 控件树（主实例 tvTree）
+    Control m_statusTarget;        // 主实例 statusBar（放置目标提示）
+    std::string m_placeTargetId;   // 当前放置目标容器 id（空=画布根；双通道更新，最新者优先）
     bool    m_treeSync = false;    // 编程式树操作中（抑制 select 回调回环）
     std::string m_lastToolId;
     std::string m_pendingPlaceTool;   // 放置待定工具 id（画布点击放置——P1-a）
@@ -223,6 +277,7 @@ private:
     int   m_seq = 0;
     MouseSourceFn m_mouseSource;
     KeySourceFn   m_keySource;
+    CtrlSourceFn  m_ctrlSource;
 
     float m_seenX = 0, m_seenY = 0, m_seenW = 0, m_seenH = 0;   // 观测缓存
 

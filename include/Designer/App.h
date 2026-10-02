@@ -54,6 +54,7 @@ private:
         void* windowHandle();       // SDL_GetWindows[0]
         bool pollMouse(float& x, float& y);   // 返回左键是否按下；填充窗口坐标
         bool pollDeleteKey();                 // Delete 键按下沿（每帧调一次）
+        bool pollCtrl();                      // Ctrl 按住态（多选修饰键；每帧调一次）
     };
     SdlApi m_sdl;
 

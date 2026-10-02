@@ -895,8 +895,7 @@
                                                     "label": "底对齐",
                                                     "value": "底对齐"
                                                 }
-                                            ],
-                                            "selected-index": 0
+                                            ]
                                         },
                                         {
                                             "type": "panel",
