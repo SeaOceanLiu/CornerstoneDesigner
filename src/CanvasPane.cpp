@@ -774,8 +774,8 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
     // 供动态行 getter 读失败时的回填兜底
     m_items.back().model->props.extended["font-size"] = readFontPx(ctl);
 
-    // 控件树同步：新增节点（标签 = 默认标题 + id）
-    syncTreeAdd(m_items.back().model->props.id,
+    // 控件树同步：新增节点（层级挂接——容器子控件挂父节点下；标签 = 默认标题 + id）
+    syncTreeAdd(m_items.back().parentId, m_items.back().model->props.id,
                 std::string(caption) + " " + m_items.back().model->props.id);
 
     // 选中新控件（HandleControl setTarget 重新附加，alwaysOnTop 置顶）
@@ -2082,10 +2082,12 @@ void CanvasPane::SetCanvasTree(Control tree) {
 
 // 画布控件增删/选中 → 树同步（编程式，触发 select 回调被 m_treeSync 抑制）。
 // tvTree 在主实例，经 m_ui 成员方法操作。
-void CanvasPane::syncTreeAdd(const std::string& id, const std::string& label) {
+void CanvasPane::syncTreeAdd(const std::string& parentId, const std::string& id,
+                             const std::string& label) {
     if (!m_canvasTree.IsValid() || !m_ui) return;
     m_treeSync = true;
-    m_ui->TreeViewAddNode(m_canvasTree, "", id, label);
+    // P1-a 层级：容器子控件挂到父控件节点下（节点 id 与控件 id 同一空间）
+    m_ui->TreeViewAddNode(m_canvasTree, parentId, id, label);
     m_treeSync = false;
 }
 
@@ -2107,17 +2109,29 @@ void CanvasPane::syncTreeSelection() {
 // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
 void CanvasPane::deleteSelected() {
     if (m_selectedId.empty()) return;
-    if (PlacedControl* pc = placedById(m_selectedId)) {
-        if (pc->ctl.IsValid()) pc->ctl.Destroy();   // 视口内销毁（悬挂检测保护后续访问）
-        for (auto it = m_items.begin(); it != m_items.end(); ++it) {
-            if (it->model->props.id == m_selectedId) { m_items.erase(it); break; }
+    // 收集后代 id（含自身）——容器删除连带子树（P1-a 层级）
+    std::vector<std::string> toRemove;
+    std::function<void(const std::string&)> collect = [&](const std::string& pid) {
+        toRemove.push_back(pid);
+        for (auto& it : m_items)
+            if (it.parentId == pid) collect(it.model->props.id);
+    };
+    collect(m_selectedId);
+    // 反向（后代先删）：控件销毁（视口内）+ 模型条目移除 + 树节点移除
+    for (auto rit = toRemove.rbegin(); rit != toRemove.rend(); ++rit) {
+        if (PlacedControl* pc = placedById(*rit)) {
+            if (pc->ctl.IsValid()) pc->ctl.Destroy();
         }
+        for (auto it = m_items.begin(); it != m_items.end(); ++it) {
+            if (it->model->props.id == *rit) { m_items.erase(it); break; }
+        }
+        syncTreeRemove(*rit);
     }
-    if (m_dragId == m_selectedId) {   // 拖动中删除：清理拖动状态
+    if (m_dragId == m_selectedId || !m_dragParentId.empty()) {   // 拖动状态清理
         m_dragId.clear();
+        m_dragParentId.clear();
         m_dragCtl = Control();
     }
-    syncTreeRemove(m_selectedId);
     selectItem("");   // 取消选中 → 属性面板清零 + 选中框隐藏
 }
 

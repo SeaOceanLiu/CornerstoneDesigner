@@ -73,7 +73,8 @@ public:
 
     // 右侧控件树（tvTree）：画布控件增删/选中双向同步。
     void SetCanvasTree(Control tree);
-    void syncTreeAdd(const std::string& id, const std::string& label);
+    void syncTreeAdd(const std::string& parentId, const std::string& id,
+                     const std::string& label);   // 层级挂接（parentId 空=顶层）
     void syncTreeRemove(const std::string& id);
     void syncTreeSelection();
 
