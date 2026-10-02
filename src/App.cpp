@@ -325,7 +325,7 @@ void App::bindToolbar() {
         m_canvas->SetAlignCommandControl(alignCmd);
         alignCmd.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event& e) {
             const int idx = e.GetSelectedIndex();
-            if (idx >= 0 && idx < 6) {
+            if (idx >= 0 && idx < 10) {   // 0-5 对齐六模式 + 6 等宽 + 7 等高 + 8/9 水平/垂直分布
                 m_canvas->SuppressCanvasClickThisFrame();   // 弹层项点击不误触画布
                 m_canvas->AlignSelection(idx);
             }

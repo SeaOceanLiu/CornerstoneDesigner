@@ -1107,11 +1107,77 @@ void CanvasPane::SetAlignCommandControl(Control combo) {
         m_alignCombo.SetBool(PropertyNames::kEnabled, m_selIds.size() >= 2);
 }
 
-// P2 多选对齐：选择集全局包围盒六模式（局部换算写回；手柄/外框/面板同步）。
+// P2 多选对齐/分布（0-5 对齐六模式、6 等宽、7 等高、8 水平分布、9 垂直分布）：
+// 局部换算写回；手柄/外框/面板同步。
 void CanvasPane::AlignSelection(int mode) {
     if (m_alignCombo.IsValid())
         m_alignCombo.SetInt(PropertyNames::kSelectedIndex, -1);   // 命令式：执行后清选中（下次任意项可触发）
-    if (m_selIds.size() < 2 || mode < 0 || mode > 5) return;
+    if (m_selIds.size() < 2 || mode < 0 || mode > 9) return;
+
+    // 等宽/等高：以主选（最后选中）为基准，保左/上缘改宽/高
+    if (mode == 6 || mode == 7) {
+        const ControlModel* ref = findModel(m_selectedId);
+        if (!ref) return;
+        const float rw = ref->props.rect.w, rh = ref->props.rect.h;
+        for (const auto& id : m_selIds) {
+            PlacedControl* pc = placedById(id);
+            if (!pc || !pc->ctl.IsValid()) continue;
+            SRect& r = pc->model->props.rect;
+            if (mode == 6) r.w = rw; else r.h = rh;
+            pc->ctl.SetRect(r.x, r.y, r.w, r.h);
+        }
+        updateSelOutlines();
+        fillPropertyPanel();
+        return;
+    }
+
+    // 分布：按左/上缘排序等间距（首末不动；间隙可为负——重叠时仍等距）
+    if (mode == 8 || mode == 9) {
+        std::vector<PlacedControl*> sel;
+        for (const auto& id : m_selIds) {
+            PlacedControl* pc = placedById(id);
+            if (pc && pc->ctl.IsValid()) sel.push_back(pc);
+        }
+        if (sel.size() < 2) return;
+        const bool horizontal = (mode == 8);
+        std::sort(sel.begin(), sel.end(), [&](PlacedControl* a, PlacedControl* b) {
+            float ax = 0, ay = 0, bx2 = 0, by2 = 0;
+            globalOriginOf(*a, ax, ay);
+            globalOriginOf(*b, bx2, by2);
+            return (horizontal ? ax : ay) < (horizontal ? bx2 : by2);
+        });
+        float fgx = 0, fgy = 0, lgx = 0, lgy = 0;
+        globalOriginOf(*sel.front(), fgx, fgy);
+        globalOriginOf(*sel.back(), lgx, lgy);
+        const float firstSize = horizontal ? sel.front()->model->props.rect.w
+                                           : sel.front()->model->props.rect.h;
+        const float lastSize  = horizontal ? sel.back()->model->props.rect.w
+                                           : sel.back()->model->props.rect.h;
+        const float span  = horizontal ? (lgx + lastSize - fgx) : (lgy + lastSize - fgy);
+        float total = 0.0f;
+        for (auto* pc : sel)
+            total += horizontal ? pc->model->props.rect.w : pc->model->props.rect.h;
+        const float gap = (span - total) / (float)(sel.size() - 1);
+        float cursor = horizontal ? fgx : fgy;
+        for (auto* pc : sel) {
+            float gx = 0, gy = 0;
+            globalOriginOf(*pc, gx, gy);
+            const float w = pc->model->props.rect.w, h = pc->model->props.rect.h;
+            const float nx = horizontal ? cursor : gx;
+            const float ny = horizontal ? gy : cursor;
+            float px = 0, py = 0;
+            parentGlobalOriginOf(*pc, px, py);
+            pc->model->props.rect.x = nx - px;
+            pc->model->props.rect.y = ny - py;
+            pc->ctl.SetRect(nx - px, ny - py, w, h);
+            cursor += (horizontal ? w : h) + gap;
+        }
+        updateSelOutlines();
+        fillPropertyPanel();
+        return;
+    }
+
+    // 六对齐：选择集全局包围盒
     float bx = 0, by = 0, bw = 0, bh = 0;
     selectionGlobalBBox(bx, by, bw, bh);
     for (const auto& id : m_selIds) {
