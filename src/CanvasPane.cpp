@@ -1855,6 +1855,13 @@ void CanvasPane::tickInput() {
     const bool downEdge = down && !m_mouseWasDown;
     const bool upEdge = !down && m_mouseWasDown;
 
+    // 工具拖放（拖放模式）：工具箱项按下（kEventSelect）→ 拖到画布松开 → 放置于松开处；
+    // 在工具箱内松开（普通单击）→ 不放置、仅清除候选
+    if (!m_pendingPlaceTool.empty() && !down) {
+        if (inVp) placeControl(m_pendingPlaceTool, cx, cy);
+        m_pendingPlaceTool.clear();
+    }
+
     // 引擎 HandleControl 拖拽感知：rect 差异（filter 吸附后引擎 setRect）→
     // 同步模型/属性面板（吸附已由 filter 实时承担，此处纯同步）
     if (m_selectedId.empty() == false && m_dragId.empty()) {
@@ -1916,13 +1923,6 @@ void CanvasPane::tickInput() {
     // 按下沿：选中控件手柄带让给 HandleControl（拖拽 resize）；控件命中 → 选中并
     // 拖动；空白 → 取消选中
     if (downEdge && inVp) {
-        // P1-a 放置模式：工具箱单击选中工具后，画布点击 → 放置于点击处（含容器解析）
-        if (!m_pendingPlaceTool.empty()) {
-            placeControl(m_pendingPlaceTool, cx, cy);
-            m_pendingPlaceTool.clear();
-            m_mouseWasDown = down;
-            return;
-        }
         // 手柄精确让区：HandleHitTest 命中 → HandleControl 接管拖拽；未命中
         // （本体/空白）走设计器逻辑——本体边缘（非手柄处）恢复移动能力
         if (m_selectedId.empty() == false && m_selHandle.IsValid()) {
@@ -2035,7 +2035,8 @@ void CanvasPane::SetToolboxTree(Control tree) {
                 return;
             }
         }
-        // 单击工具：进入放置待定（画布点击放置——P1-a 容器解析生效）；双击：画布中央放置（既有习惯）
+        // 拖放候选：按下工具项即候选（松开在画布→放置；在工具箱内松开→单击不动作）；
+        // 双击：画布中央放置（既有习惯，清候选防松开误放置）
         m_pendingPlaceTool = id;
         m_lastToolId = id;
         m_lastToolTime = now;
