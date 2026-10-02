@@ -289,6 +289,26 @@
                                     "id": "toolboxTabs",
                                     "position": "top",
                                     "font-size": 20,
+                                    "colors": {
+                                        "text": {
+                                            "normal": "#D0D0D0FF",
+                                            "hover": "#FFFFFFFF",
+                                            "pressed": "#FFFFFFFF",
+                                            "disabled": "#808080FF"
+                                        },
+                                        "background": {
+                                            "normal": "#2A2A2AFF",
+                                            "hover": "#383838FF",
+                                            "pressed": "#404040FF",
+                                            "disabled": "#2A2A2AFF"
+                                        },
+                                        "border": {
+                                            "normal": "#3A3A3AFF",
+                                            "hover": "#4A4A4AFF",
+                                            "pressed": "#4A90D9FF",
+                                            "disabled": "#303030FF"
+                                        }
+                                    },
                                     "tabs": [
                                         {
                                             "title": "工具箱",
@@ -913,6 +933,26 @@
                                     "font": {
                                         "name": "harmonyos-sans-sc-regular",
                                         "size": 20
+                                    },
+                                    "colors": {
+                                        "text": {
+                                            "normal": "#D0D0D0FF",
+                                            "hover": "#FFFFFFFF",
+                                            "pressed": "#FFFFFFFF",
+                                            "disabled": "#808080FF"
+                                        },
+                                        "background": {
+                                            "normal": "#2A2A2AFF",
+                                            "hover": "#383838FF",
+                                            "pressed": "#404040FF",
+                                            "disabled": "#2A2A2AFF"
+                                        },
+                                        "border": {
+                                            "normal": "#3A3A3AFF",
+                                            "hover": "#4A4A4AFF",
+                                            "pressed": "#4A90D9FF",
+                                            "disabled": "#303030FF"
+                                        }
                                     },
                                     "tabs": [
                                         {
