@@ -178,6 +178,27 @@ constexpr float kCascStep = 16.0f;             // 放置瀑布偏移步长（避
 constexpr int kCascMod = 8;                    // 瀑布偏移取模周期
 constexpr float kPropDynHDefault = 440.0f;     // 动态行区兜底高（与布局声明一致）
 
+// 工具箱项 → 图标路径（拖放 ghost 跟随图案；与 main_layout 工具箱 leadingControl 一致）
+std::string toolboxIconOf(const std::string& tb) {
+    static const std::pair<const char*, const char*> kIcons[] = {
+        { "tBtn", "gen/icons/button.svg" }, { "tLabel", "gen/icons/label.svg" },
+        { "tImage", "gen/icons/image.svg" }, { "tCheck", "gen/icons/check-box.svg" },
+        { "tEdit", "gen/icons/edit-box.svg" }, { "tArea", "gen/icons/text-area.svg" },
+        { "tBar", "gen/icons/progress-bar.svg" }, { "tSlider", "gen/icons/slider.svg" },
+        { "tScroll", "gen/icons/scroll-bar.svg" }, { "tShape", "gen/icons/shape.svg" },
+        { "tPanel", "gen/icons/panel.svg" }, { "tWin", "gen/icons/win-frame.svg" },
+        { "tSplit", "gen/icons/splitter.svg" }, { "tTabs", "gen/icons/tab-control.svg" },
+        { "tCombo", "gen/icons/combo-box.svg" }, { "tList", "gen/icons/list-view.svg" },
+        { "tTree", "gen/icons/tree-view.svg" }, { "tNum", "gen/icons/numeric-up-down.svg" },
+        { "tColor", "gen/icons/color-picker.svg" }, { "tMenu", "gen/icons/menu-bar.svg" },
+        { "tStatus", "gen/icons/status-bar.svg" }, { "tAni", "gen/icons/animation.svg" },
+        { "tDialog", "gen/icons/dialog.svg" }, { "tCtx", "gen/icons/context-menu.svg" },
+    };
+    for (const auto& ic : kIcons)
+        if (tb == ic.first) return ic.second;
+    return std::string();
+}
+
 // 字体名大小写不敏感比较（引擎 P0-46 读回枚举名小写化——清单为驼峰原名）
 bool ieqNoCase(const std::string& a, const std::string& b) {
     if (a.size() != b.size()) return false;
@@ -663,7 +684,7 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
     return ctl;
 }
 
-void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) {
+void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, bool fromDrag) {
     if (!m_viewport) return;
     float w = 120, h = 32;
     const char* caption = "";
@@ -691,7 +712,7 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
                         std::fflush(stdout);
                         if (h) {
                             targetParent = m_viewport->FromHandle(h);
-                            targetParentId = hitId + "/client-panel";
+                            targetParentId = hitId;   // 存父控件 id（内容区偏移由 globaOriginOf/类型判断补）
                             // 内容原点 = WinFrame 全局原点 + ClientPanel 相对偏移（标题栏下移）
                             float cgx = 0, cgy = 0;
                             const auto wr = hitPc->ctl.GetRect();
@@ -713,10 +734,10 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy) 
         }
     }
 
-    // 瀑布偏移避免完全重叠
-    float casc = (float)(m_seq % kCascMod) * kCascStep;
-    float x = cx - w / 2 + casc;
-    float y = cy - h / 2 + casc;
+    // 拖放放置：左上角=落点（精确、无瀑布）；双击中央：居中+瀑布防重叠
+    float casc = fromDrag ? 0.0f : (float)(m_seq % kCascMod) * kCascStep;
+    float x = fromDrag ? cx : (cx - w / 2 + casc);
+    float y = fromDrag ? cy : (cy - h / 2 + casc);
     if (m_snapEnabled) {
         x = std::round(x / m_gridCell) * m_gridCell;
         y = std::round(y / m_gridCell) * m_gridCell;
@@ -1858,19 +1879,37 @@ void CanvasPane::tickInput() {
     const bool downEdge = down && !m_mouseWasDown;
     const bool upEdge = !down && m_mouseWasDown;
 
-    // 拖放光标：候选活跃（拖动中）→ 十字光标（App 注入）；结束恢复
+    // 拖放 ghost：候选活跃时——鼠标旁跟随控件图标（画布内可见）；结束销毁
     {
         const bool curOn = !m_pendingPlaceTool.empty();
-        if (curOn != m_dragCursorOn) {
-            m_dragCursorOn = curOn;
-            if (m_dragCursorFn) m_dragCursorFn(curOn);
+        if (curOn && !m_dragGhost.IsValid()) {
+            const std::string icon = toolboxIconOf(m_pendingPlaceTool);
+            if (!icon.empty()) {
+                m_dragGhost = m_viewport->CreateImage(icon, 0, 0, 32.0f, 32.0f);
+                if (m_dragGhost.IsValid()) {
+                    m_dragGhost.SetInt(PropertyNames::kAlpha, 180);   // 半透明
+                    m_dragGhost.SetBool(PropertyNames::kVisible, 0);
+                }
+            }
+        }
+        if (curOn && m_dragGhost.IsValid()) {
+            if (inVp) {
+                m_dragGhost.SetBool(PropertyNames::kVisible, 1);
+                m_dragGhost.SetRect(cx + 12.0f, cy + 12.0f, 32.0f, 32.0f);
+            } else {
+                m_dragGhost.SetBool(PropertyNames::kVisible, 0);
+            }
+        }
+        if (!curOn && m_dragGhost.IsValid()) {
+            m_dragGhost.Destroy();
+            m_dragGhost = Control();
         }
     }
 
     // 工具拖放（拖放模式）：工具箱项按下（kEventSelect）→ 拖到画布松开 → 放置于松开处；
     // 在工具箱内松开（普通单击）→ 不放置、仅清除候选
     if (!m_pendingPlaceTool.empty() && !down) {
-        if (inVp) placeControl(m_pendingPlaceTool, cx, cy);
+        if (inVp) placeControl(m_pendingPlaceTool, cx, cy, true);   // 拖放：左上角=落点
         m_pendingPlaceTool.clear();
     }
 

@@ -152,7 +152,7 @@ private:
     void styleControl(const std::string& toolboxId, Control ctl);   // 放置控件默认样式（白纸上可见）
 
     void tickInput();              // 交互轮询：放置/选中/拖动
-    void placeControl(const std::string& toolboxId, float cx, float cy);
+    void placeControl(const std::string& toolboxId, float cx, float cy, bool fromDrag = false);
     Control createViewportControl(const std::string& toolboxId, float x, float y,
                                   float w, float h, ControlModel& model) const;
     bool hitTest(float cx, float cy, std::string& outId);   // 非 const：子控件命中需 placedById（非 const）
@@ -202,8 +202,9 @@ private:
     float m_dragOffX = 0, m_dragOffY = 0;
     std::string m_dragId;
     std::string m_dragParentId;   // 拖动起始的父容器 id（子控件拖动转局部用）
-    std::function<void(bool)> m_dragCursorFn;   // 拖放光标回调（App 注入：true=拖放中十字）
+    std::function<void(bool)> m_dragCursorFn;   // 拖放光标回调（保留接口）
     bool m_dragCursorOn = false;
+    Control m_dragGhost;          // 拖放跟随图标（鼠标旁控件小图标 ghost）
     Control m_dragCtl;
 
     Control m_toolboxTree;
