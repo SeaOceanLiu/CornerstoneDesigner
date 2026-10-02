@@ -66,12 +66,18 @@ bool App::SdlApi::load() {
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindowSize"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(GetProcAddress((HMODULE)dll, "SDL_GetMouseState"));
     getKeyboardState = reinterpret_cast<const unsigned char*(*)(int*)>(GetProcAddress((HMODULE)dll, "SDL_GetKeyboardState"));
+    createSystemCursor = reinterpret_cast<void*(*)(int)>(GetProcAddress((HMODULE)dll, "SDL_CreateSystemCursor"));
+    setCursor = reinterpret_cast<void*(*)(void*)>(GetProcAddress((HMODULE)dll, "SDL_SetCursor"));
+    destroyCursor = reinterpret_cast<void(*)(void*)>(GetProcAddress((HMODULE)dll, "SDL_DestroyCursor"));
 #else
     getWindows   = reinterpret_cast<void*(*)(int*)>(dlsym(dll, "SDL_GetWindows"));
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(dlsym(dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(dlsym(dll, "SDL_GetWindowSize"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(dlsym(dll, "SDL_GetMouseState"));
     getKeyboardState = reinterpret_cast<const unsigned char*(*)(int*)>(dlsym(dll, "SDL_GetKeyboardState"));
+    createSystemCursor = reinterpret_cast<void*(*)(int)>(dlsym(dll, "SDL_CreateSystemCursor"));
+    setCursor = reinterpret_cast<void*(*)(void*)>(dlsym(dll, "SDL_SetCursor"));
+    destroyCursor = reinterpret_cast<void(*)(void*)>(dlsym(dll, "SDL_DestroyCursor"));
 #endif
     loaded = getWindows && getWindowSize;
     return loaded;
@@ -256,6 +262,13 @@ void App::setupCanvas() {
         m_canvas.reset();
         return;
     }
+    // 拖放光标：工具拖放中 → 十字（懒创建缓存）；结束恢复系统缺省
+    m_canvas->SetDragCursorFn([this](bool on) {
+        if (!m_sdl.setCursor) return;
+        if (on && !m_sdl.crossCursor && m_sdl.createSystemCursor)
+            m_sdl.crossCursor = m_sdl.createSystemCursor(3);   // SDL_SYSTEM_CURSOR_CROSSHAIR
+        m_sdl.setCursor(on ? m_sdl.crossCursor : nullptr);
+    });
     m_canvas->SetClickHandler([this](const std::string& id, float cx, float cy) {
         (void)cx; (void)cy;
         std::printf("[App] canvas click node=%s\n", id.c_str());

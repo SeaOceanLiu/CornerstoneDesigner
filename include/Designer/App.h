@@ -45,6 +45,10 @@ private:
         int   (*getWindowSize)(void*, int*, int*) = nullptr;
         unsigned (*getMouseState)(float*, float*) = nullptr;   // SDL_GetMouseState
         const unsigned char* (*getKeyboardState)(int*) = nullptr;  // SDL_GetKeyboardState
+        void* (*createSystemCursor)(int) = nullptr;   // SDL_CreateSystemCursor
+        void* (*setCursor)(void*) = nullptr;          // SDL_SetCursor（nullptr=恢复缺省）
+        void  (*destroyCursor)(void*) = nullptr;      // SDL_DestroyCursor
+        void* crossCursor = nullptr;                  // 拖放十字光标（懒创建缓存）
         bool load();
         void unload();
         void* windowHandle();       // SDL_GetWindows[0]

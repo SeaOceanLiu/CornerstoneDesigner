@@ -1858,6 +1858,15 @@ void CanvasPane::tickInput() {
     const bool downEdge = down && !m_mouseWasDown;
     const bool upEdge = !down && m_mouseWasDown;
 
+    // 拖放光标：候选活跃（拖动中）→ 十字光标（App 注入）；结束恢复
+    {
+        const bool curOn = !m_pendingPlaceTool.empty();
+        if (curOn != m_dragCursorOn) {
+            m_dragCursorOn = curOn;
+            if (m_dragCursorFn) m_dragCursorFn(curOn);
+        }
+    }
+
     // 工具拖放（拖放模式）：工具箱项按下（kEventSelect）→ 拖到画布松开 → 放置于松开处；
     // 在工具箱内松开（普通单击）→ 不放置、仅清除候选
     if (!m_pendingPlaceTool.empty() && !down) {

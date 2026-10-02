@@ -64,6 +64,7 @@ public:
 
     // 工具箱联动：双击工具箱项 → 视口内放置对应控件
     void SetToolboxTree(Control tree);
+    void SetDragCursorFn(std::function<void(bool)> fn) { m_dragCursorFn = std::move(fn); }
     // 鼠标源（App 注入 SDL 轮询；返回左键是否按下，填充窗口坐标）
     using MouseSourceFn = std::function<bool(float&, float&)>;
     void SetMouseSource(MouseSourceFn src) { m_mouseSource = std::move(src); }
@@ -201,6 +202,8 @@ private:
     float m_dragOffX = 0, m_dragOffY = 0;
     std::string m_dragId;
     std::string m_dragParentId;   // 拖动起始的父容器 id（子控件拖动转局部用）
+    std::function<void(bool)> m_dragCursorFn;   // 拖放光标回调（App 注入：true=拖放中十字）
+    bool m_dragCursorOn = false;
     Control m_dragCtl;
 
     Control m_toolboxTree;
