@@ -786,6 +786,28 @@
                                             }
                                         },
                                         {
+                                            "type": "combo-box",
+                                            "id": "cb_canvas",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 112,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            },
+                                            "selected-index": 1,
+                                            "items": [
+                                                { "label": "1024×768", "value": "1024x768" },
+                                                { "label": "1280×800", "value": "1280x800" },
+                                                { "label": "1440×900", "value": "1440x900" },
+                                                { "label": "1920×1080", "value": "1920x1080" },
+                                                { "label": "自定义…", "value": "custom" }
+                                            ]
+                                        },
+                                        {
                                             "type": "check-box",
                                             "id": "tb_grid",
                                             "caption": "网格",
@@ -2035,6 +2057,10 @@
                         {
                             "id": "statusHint",
                             "text": "就绪"
+                        },
+                        {
+                            "id": "statusPos",
+                            "text": "坐标 -"
                         },
                         {
                             "id": "statusSelection",

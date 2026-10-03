@@ -19,6 +19,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#undef CreateDialog   // 避免 Win32 宏（CreateDialogA/W）污染引擎 API 符号
 #endif
 
 namespace {
@@ -118,6 +119,24 @@ bool App::SdlApi::pollF5Key() {
     return edge;
 }
 
+// 中键状态 + 窗口坐标（画布平移）
+bool App::SdlApi::pollMiddle(float& x, float& y) {
+    if (!getMouseState) return false;
+    float mx = 0, my = 0;
+    unsigned buttons = getMouseState(&mx, &my);
+    x = mx; y = my;
+    return (buttons & 0x02u) != 0;   // SDL_BUTTON_MMASK（中键；0x04 是右键）
+}
+
+// 空格按住态（SDL_SCANCODE_SPACE = 44；空格+左键拖拽平移）
+bool App::SdlApi::pollSpace() {
+    if (!getKeyboardState) return false;
+    int numkeys = 0;
+    const unsigned char* state = getKeyboardState(&numkeys);
+    if (!state || numkeys <= 44) return false;
+    return state[44] != 0;
+}
+
 // Ctrl 按住态（SDL_SCANCODE_LCTRL = 224 / RCTRL = 228；多选修饰键）
 bool App::SdlApi::pollCtrl() {
     if (!getKeyboardState) return false;
@@ -193,8 +212,12 @@ bool App::init() {
         m_canvas->SetMouseSource([this](float& x, float& y) { return m_sdl.pollMouse(x, y); });
         m_canvas->SetKeySource([this] { return m_sdl.pollDeleteKey(); });
         m_canvas->SetCtrlSource([this] { return m_sdl.pollCtrl(); });   // P2 多选修饰键
+        m_canvas->SetMiddleSource([this](float& x, float& y) { return m_sdl.pollMiddle(x, y); });
+        m_canvas->SetSpaceSource([this] { return m_sdl.pollSpace(); });
+        m_canvas->SetZoomChangedFn([this] { syncZoomCombo(); });   // 缩放变化（含滚轮）同步档位
         m_canvas->SetCanvasTree(m_ui->FindControl("tvTree"));
         m_canvas->SetStatusTarget(m_ui->FindControl("statusBar"));   // P1-b 放置目标提示
+        m_canvas->SetPropertyPanel(m_ui->FindControl("propertyPanel"));   // Delete 归属判定
         m_canvas->LoadSchema(exeRelative("schema/declarative-ui.schema.json"));
         m_canvas->SetDynamicPropsContainer(m_ui->FindControl("propDynamic"));
         // 滚轮双订阅：动态区内 propDynamic 消费；面板其他区域由 tabProperty 兜底
@@ -267,7 +290,7 @@ void App::registerActions() {
             // 视图菜单缩放档（onMenuZoomNN → NN%）——与工具栏档位同路径
             const float z = std::stof(std::string(name).substr(10)) / 100.0f;
             m_ui->RegisterAction(name, guard([this, z](Control) {
-                if (m_canvas) { m_canvas->SetZoom(z); syncZoomCombo(); }
+                if (m_canvas) m_canvas->SetZoom(z);
             }));
         } else {
             m_ui->RegisterAction(name, guard(placeholder));
@@ -374,8 +397,7 @@ void App::bindToolbar() {
             float nz = kZooms[5];
             for (int i = 0; i < 6; ++i)
                 if (kZooms[i] > z + 0.001f) { nz = kZooms[i]; break; }
-            m_canvas->SetZoom(nz);
-            syncZoomCombo();
+            m_canvas->SetZoom(nz);   // 档位下拉经 SetZoomChangedFn 回调同步
         });
     }
 
@@ -388,8 +410,7 @@ void App::bindToolbar() {
             float nz = kZooms[0];
             for (int i = 5; i >= 0; --i)
                 if (kZooms[i] < z - 0.001f) { nz = kZooms[i]; break; }
-            m_canvas->SetZoom(nz);
-            syncZoomCombo();
+            m_canvas->SetZoom(nz);   // 档位下拉经 SetZoomChangedFn 回调同步
         });
     }
 
@@ -397,8 +418,23 @@ void App::bindToolbar() {
     if (zoom100.IsValid()) {
         zoom100.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
             m_canvas->SetZoom(1.0f);   // 1:1（实际大小）——重置为 100%
-            syncZoomCombo();
         });
+    }
+
+    // 设计画布尺寸（基准窗体）档位下拉（含"自定义…"→ 对话框）
+    auto canvasCtl = m_ui->FindControl("cb_canvas");
+    if (canvasCtl.IsValid()) {
+        canvasCtl.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event& e) {
+            if (m_canvasComboSync) return;   // 程序化同步不触发
+            const int idx = e.GetSelectedIndex();
+            if (idx == 4) { openCanvasSizeDialog(); return; }   // 自定义…
+            if (idx >= 0 && idx < 4) {
+                m_canvas->SuppressCanvasClickThisFrame();   // 弹层项点击不误触画布
+                static const float kSizes[4][2] = { {1024, 768}, {1280, 800}, {1440, 900}, {1920, 1080} };
+                m_canvas->SetCanvasSize(kSizes[idx][0], kSizes[idx][1]);
+            }
+        });
+        syncCanvasCombo();
     }
 
     auto preview = m_ui->FindControl("tb_preview");
@@ -424,6 +460,53 @@ void App::syncZoomCombo() {
     m_zoomComboSync = true;
     zc.SetInt(PropertyNames::kSelectedIndex, idx);
     m_zoomComboSync = false;
+}
+
+// 画布尺寸档下拉同步：命中预设→选中；非预设（自定义）→清空。
+void App::syncCanvasCombo() {
+    if (!m_canvas) return;
+    auto cb = m_ui->FindControl("cb_canvas");
+    if (!cb.IsValid()) return;
+    static const float kSizes[4][2] = { {1024, 768}, {1280, 800}, {1440, 900}, {1920, 1080} };
+    const float w = m_canvas->GetCanvasW(), h = m_canvas->GetCanvasH();
+    int idx = -1;
+    for (int i = 0; i < 4; ++i)
+        if (kSizes[i][0] == w && kSizes[i][1] == h) { idx = i; break; }
+    m_canvasComboSync = true;
+    cb.SetInt(PropertyNames::kSelectedIndex, idx);
+    m_canvasComboSync = false;
+}
+
+// 自定义画布尺寸对话框：懒建一次（CreateDialog 自动打开→立即关闭准备复用；
+// Popup::setBool(kVisible) 即 open/close），确定后应用 SetCanvasSize。
+void App::openCanvasSizeDialog() {
+    if (!m_canvas) return;
+    if (!m_canvasSizeDlg.IsValid()) {
+        m_canvasSizeDlg = m_ui->CreateDialog(u8"确定", u8"取消", 0, 0, 320, 190);
+        if (!m_canvasSizeDlg.IsValid()) return;
+        auto lbW = m_ui->CreateLabel(u8"宽", 16.0f, 20, 24, 40, 26);
+        m_dlgCanvasW = m_ui->CreateNumericUpDown(70, 24, 140, 26);
+        auto lbH = m_ui->CreateLabel(u8"高", 16.0f, 20, 64, 40, 26);
+        m_dlgCanvasH = m_ui->CreateNumericUpDown(70, 64, 140, 26);
+        m_dlgCanvasW.SetFloat(PropertyNames::kRangeMin, 320.0f);
+        m_dlgCanvasW.SetFloat(PropertyNames::kRangeMax, 3840.0f);
+        m_dlgCanvasH.SetFloat(PropertyNames::kRangeMin, 240.0f);
+        m_dlgCanvasH.SetFloat(PropertyNames::kRangeMax, 2160.0f);
+        m_canvasSizeDlg.AddChild(lbW);
+        m_canvasSizeDlg.AddChild(m_dlgCanvasW);
+        m_canvasSizeDlg.AddChild(lbH);
+        m_canvasSizeDlg.AddChild(m_dlgCanvasH);
+        m_canvasSizeDlg.SetCallback(PropertyNames::kEventClose, [this](const Event& e) {
+            if (e.GetCloseResult() == 1 && m_canvas)   // Confirmed
+                m_canvas->SetCanvasSize(m_dlgCanvasW.GetFloat(PropertyNames::kValue),
+                                        m_dlgCanvasH.GetFloat(PropertyNames::kValue));
+            syncCanvasCombo();
+        });
+        m_canvasSizeDlg.SetBool(PropertyNames::kVisible, 0);   // 首开即关（准备复用）
+    }
+    m_dlgCanvasW.SetFloat(PropertyNames::kValue, m_canvas->GetCanvasW());
+    m_dlgCanvasH.SetFloat(PropertyNames::kValue, m_canvas->GetCanvasH());
+    m_canvasSizeDlg.SetBool(PropertyNames::kVisible, 1);
 }
 
 // 设计↔预览切换：CanvasPane 预览态 + 工具栏按钮标题同步（预览/退出预览）+

@@ -72,6 +72,10 @@ public:
     void SetKeySource(KeySourceFn src) { m_keySource = std::move(src); }
     using CtrlSourceFn = std::function<bool()>;  // Ctrl 按住态（每帧轮询一次；多选修饰键）
     void SetCtrlSource(CtrlSourceFn src) { m_ctrlSource = std::move(src); }
+    using MiddleSourceFn = std::function<bool(float&, float&)>;  // 中键按下 + 窗口坐标
+    void SetMiddleSource(MiddleSourceFn src) { m_middleSource = std::move(src); }
+    using SpaceSourceFn = std::function<bool()>; // 空格按住态（空格+左键拖拽平移）
+    void SetSpaceSource(SpaceSourceFn src) { m_spaceSource = std::move(src); }
 
     // 右侧控件树（tvTree）：画布控件增删/选中双向同步。
     void SetCanvasTree(Control tree);
@@ -82,6 +86,8 @@ public:
 
     // P1-b 放置目标提示：主实例 statusBar（statusHint 段显示当前目标容器）。
     void SetStatusTarget(Control statusBar);
+    // 属性面板容器（Delete 键归属判定：面板内编辑时画布不删控件——SDL 轮询不感知引擎焦点）。
+    void SetPropertyPanel(Control panel) { m_propPanel = panel; }
 
     // P2 多选：对齐命令下拉（tb_align，选中 ≥2 启用）+ 执行
     // （0-5：左/水平居中/右/顶/垂直居中/底；作用于选择集全局包围盒）。
@@ -120,6 +126,15 @@ public:
     // 缩放档（0.25~2.0）。改变 z → 重建网格瓦片（小纹理）。
     void SetZoom(float zoom);
     float GetZoom() const { return m_zoom; }
+    // 缩放变化通知（App 接线：同步缩放档下拉）——所有缩放路径（含滚轮）统一触发
+    using ZoomChangedFn = std::function<void()>;
+    void SetZoomChangedFn(ZoomChangedFn fn) { m_zoomChangedFn = std::move(fn); }
+
+    // 设计画布尺寸（基准窗体，缺省 1280×800）：bench 固定为设计尺寸（不随视口/缩放漂移），
+    // 纸面=设计尺寸区域；根级锚定（P0-61）/导出以此为基准。
+    void SetCanvasSize(float w, float h);
+    float GetCanvasW() const { return m_designW; }
+    float GetCanvasH() const { return m_designH; }
 
     void SetGridVisible(bool visible);
     bool IsGridVisible() const { return m_gridVisible; }
@@ -166,6 +181,15 @@ private:
     };
 
     void refreshLayout();          // 同步视口与网格 Image rect（零重建）
+    void applyCanvasSize();        // 设计尺寸 → SetCanvasSize（P0-61③ 即时）+ 视口/纸面/滚动条刷新
+    void updateViewportRect();     // 视口尺寸 = 内容区扣除滚动条边条（设计尺寸/缩放变化须重算）
+    void updateGridRect();         // 纸面/网格 rect = 设计尺寸（逻辑；drawRect=设计尺寸×zoom）
+    void clampPan();               // 平移钳制（纸面小于视口→居中；大于→边缘不越界）
+    void applyPan();               // 平移 → 视口锚点偏移（recompute 会重置锚点，须重算增量）
+    void onWheel(float scrollY);   // 滚轮：Ctrl=按档缩放（光标锚点）；普通=垂直滚动
+    void SetZoomAt(float zoom, float sx, float sy);   // 缩放并保持光标下画布点屏幕位置不变
+    void syncScrollBars();         // 画布滚动条：rect/范围/值/可见性（纸面超出视口时显示）
+    void updateStatusPos(bool inVp, float cx, float cy);   // 状态栏鼠标画布坐标（视口外 "-"）
     void registerGridTile();       // 生成瓦片 PNG → RegisterResource（含首次 provider 触发）
     void createGridImage();        // 在子视口内创建网格 Image（scale-type=tile）
     void rebuildGridTile();        // registerGridTile + createGridImage（缩放档变化）
@@ -201,6 +225,10 @@ private:
     void finalizeBand(float cx, float cy);
     void selectionGlobalBBox(float& x, float& y, float& w, float& h);
     void parentGlobalOriginOf(const PlacedControl& pc, float& px, float& py);
+    // P0-61：锚定目标父级——容器子控件→容器；顶层→根（bench，经 Root() 暴露）
+    Control anchorParentOf(const PlacedControl& pc);
+    // P0-59：引擎重排（布局切换/锚点应用）后同步全部模型 rect——防模型失配致选不中
+    void syncModelsFromEngine();
     void beginGroupDrag(const std::string& primaryId);
     void applyGroupDelta(float dx, float dy);          // 引擎路径：增量
     void applyGroupFromStart(float dx, float dy);      // 设计器路径：起始快照绝对
@@ -210,6 +238,9 @@ private:
                           const std::string& grpName, const UIColor& c);   // P2 多选：颜色槽批量写
     void writeStringPropTo(const std::string& id, const std::string& prop,
                            const std::string& v);                          // P2 多选：string 行批量写
+    void applyComboItemsText(ControlModel& m, const std::string& text);    // 结构化：combo items 文本 → 模型 + 引擎同步
+    void applyStatusBarItemsText(ControlModel& m, const std::string& text);  // 结构化：状态栏段
+    void applyListColumnsText(ControlModel& m, const std::string& text);     // 结构化：列表列（标题|宽度）
     void ensureSelHandle(Control target);   // 引擎 HandleControl 附加（选中框+8向手柄+光标）
     void detachSelHandle();                 // 分离并隐藏
     static int rectFilterThunk(UIControlHandle target, float* x, float* y,
@@ -279,15 +310,30 @@ private:
     Control m_toolboxTree;
     Control m_canvasTree;          // 控件树（主实例 tvTree）
     Control m_statusTarget;        // 主实例 statusBar（放置目标提示）
+    Control m_propPanel;           // 主实例 propertyPanel（Delete 归属判定）
+    bool m_panelEditActive = false;   // 鼠标最后按下在属性面板内（Delete 归面板编辑器）
     std::string m_placeTargetId;   // 当前放置目标容器 id（空=画布根；双通道更新，最新者优先）
     bool    m_treeSync = false;    // 编程式树操作中（抑制 select 回调回环）
     std::string m_lastToolId;
     std::string m_pendingPlaceTool;   // 放置待定工具 id（画布点击放置——P1-a）
     std::chrono::steady_clock::time_point m_lastToolTime;
     int   m_seq = 0;
-    MouseSourceFn m_mouseSource;
-    KeySourceFn   m_keySource;
-    CtrlSourceFn  m_ctrlSource;
+    MouseSourceFn  m_mouseSource;
+    KeySourceFn    m_keySource;
+    CtrlSourceFn   m_ctrlSource;
+    MiddleSourceFn m_middleSource;
+    SpaceSourceFn  m_spaceSource;
+    // 画布滚动条（canvasArea 子级：视口右缘/下缘让条，非覆盖）
+    Control m_hScroll, m_vScroll;
+    float m_vpW = 0, m_vpH = 0;    // 实际视口尺寸（内容区扣除滚动条边条）
+    bool  m_scrollSync = false;    // 滚动条程序化同步中（抑制回调）
+    // 画布平移（中键拖拽 / 空格+左键拖拽）：逻辑偏移 + 引擎锚点增量记账
+    float m_panX = 0, m_panY = 0;
+    float m_panAppliedX = 0, m_panAppliedY = 0;
+    bool  m_panning = false;
+    bool  m_middleWasDown = false;
+    float m_panStartSX = 0, m_panStartSY = 0, m_panStartX = 0, m_panStartY = 0;
+    ZoomChangedFn m_zoomChangedFn;
 
     float m_seenX = 0, m_seenY = 0, m_seenW = 0, m_seenH = 0;   // 观测缓存
 
@@ -303,6 +349,8 @@ private:
     std::string m_resourceRoot;    // assets 资源根（字体注册用）
 
     float m_zoom = 1.0f;
+    float m_designW = 1280.0f;     // 设计画布（基准窗体）尺寸
+    float m_designH = 800.0f;
     bool  m_gridVisible = true;
     float m_gridCell = 40.0f;      // 画布逻辑坐标网格间距
     bool  m_snapEnabled = true;    // 吸附到网格
