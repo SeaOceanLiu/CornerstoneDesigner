@@ -939,6 +939,11 @@ int App::run(int autoSeconds) {
             std::printf("[AUTO1] miUndo valid=%d disabled=%d miRedo disabled=%d -> %s\n",
                         miOk ? 1 : 0, miDisabled ? 1 : 0, mrDisabled ? 1 : 0,
                         (miOk && miDisabled && mrDisabled) ? "MENU-STATE-OK" : "MENU-STATE-PENDING");
+            // P0-88：MenuBar 激活索引只读回钩子活性（常规态应为 -1；点击项后复位由引擎测试覆盖）
+            auto mb = m_ui->FindControl("menuBar");
+            const int activeIdx = mb.IsValid() ? mb.GetInt(PropertyNames::kActiveIndex) : -2;
+            std::printf("[AUTO1] menuBar active-index=%d -> %s\n", activeIdx,
+                        (activeIdx == -1) ? "MENU-IDLE-OK" : "MENU-IDLE-FAIL");
         }
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
         syncRootToWindow();
