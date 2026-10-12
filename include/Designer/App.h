@@ -35,7 +35,12 @@ private:
     void syncRootToWindow();            // 检测窗口尺寸变化 → root SetRect 触发布局重排
     void setupCanvas();                 // canvasArea → CanvasPane（子视口 + 网格覆盖层）
     void bindToolbar();                 // 画布工具栏控件 → CanvasPane 交互接线
-    void togglePreview();               // 设计↔预览切换（工具栏按钮/菜单 F5；同步按钮标题）
+    void refreshMenuStates();           // 菜单可用态（撤销/重做；引擎按 item id 注册后生效）
+    void togglePreview();               // 预览：独立窗体（引擎多实例）打开/刷新（工具栏/菜单 F5）
+    void openPreviewWindow();           // 创建预览实例 + 加载当前布局快照
+    void closePreviewWindow();          // 销毁预览实例（同步按钮标题）
+    void pumpPreviewWindow(double delta);// 主循环内泵预览实例（含窗体关闭回收）
+    void runPreviewChecks();              // auto=3 预览校验（Present 前像素捕获）
     void syncZoomCombo();               // 缩放档下拉同步（命中档位选中/非档位清空）
     void syncCanvasCombo();             // 画布尺寸档下拉同步（命中预设选中/自定义清空）
     void openCanvasSizeDialog();        // 自定义画布尺寸对话框（懒建复用：SetBool visible 开关）
@@ -53,25 +58,37 @@ private:
         void* (*setCursor)(void*) = nullptr;          // SDL_SetCursor（nullptr=恢复缺省）
         void  (*destroyCursor)(void*) = nullptr;      // SDL_DestroyCursor
         void* crossCursor = nullptr;                  // 拖放十字光标（懒创建缓存）
+        void* mainWin = nullptr;                      // 主窗口句柄（启动时捕获——预览实例窗口勿混入）
         bool load();
         void unload();
-        void* windowHandle();       // SDL_GetWindows[0]
+        void* windowHandle();       // 主窗口（mainWin；未捕获回退 SDL_GetWindows[0]）
         bool pollMouse(float& x, float& y);   // 返回左键是否按下；填充窗口坐标
         bool pollDeleteKey();                 // Delete 键按下沿（每帧调一次）
         bool pollF5Key();                     // F5 键按下沿（预览切换；每帧调一次）
+        bool pollUndoKey();                   // Ctrl+Z 按下沿（撤销；每帧调一次）
+        bool pollRedoKey();                   // Ctrl+Y 按下沿（重做；每帧调一次）
         bool pollCtrl();                      // Ctrl 按住态（多选修饰键；每帧调一次）
         bool pollMiddle(float& x, float& y);  // 中键状态 + 窗口坐标（画布平移）
         bool pollSpace();                     // 空格按住态（空格+左键拖拽平移）
     };
     SdlApi m_sdl;
 
-    std::unique_ptr<UICornerstone::UICornerstone> m_ui;  // 主实例（设计器自身 UI；预览为其内子视口）
+    std::unique_ptr<UICornerstone::UICornerstone> m_ui;  // 主实例（设计器自身 UI）
+    std::unique_ptr<UICornerstone::UICornerstone> m_previewUi;  // 预览独立窗体（引擎多实例）
     std::unique_ptr<CanvasPane> m_canvas;                // 中央画布（子视口 + 网格覆盖层）
     bool m_exitRequested = false;
     bool m_zoomComboSync = false;          // 缩放档下拉程序化同步中（抑制回调）
     bool m_canvasComboSync = false;        // 画布尺寸档下拉程序化同步中（抑制回调）
     Control m_canvasSizeDlg;               // 自定义画布尺寸对话框（主实例，懒建复用）
     Control m_dlgCanvasW, m_dlgCanvasH;    // 对话框宽/高 NUD
+    // 资源插入/修改对话框（懒建复用）：名称 EditBox + 路径显示 + 选择目录按钮
+    Control m_resDlg, m_dlgResName, m_dlgResPathEdit;
+    std::string m_dlgResPath;
+    bool m_resDlgEditMode = false;            // 对话框当前模式（复用——回调按成员分派）
+    bool m_previewCheckPending = false;       // auto=3：待执行预览校验（泵内 Present 前）
+    bool m_menuUndoEnabled = true;            // 菜单"撤销"当前可用态（仅变化时写引擎）
+    bool m_menuRedoEnabled = true;            // 菜单"重做"当前可用态
+    void openResourceDialog(bool editMode);   // 插入（editMode=false）/修改（true，选中行回填）
     std::string m_lastError;
     int m_lastWinW = 0, m_lastWinH = 0;    // 上次已同步的窗口尺寸
 };

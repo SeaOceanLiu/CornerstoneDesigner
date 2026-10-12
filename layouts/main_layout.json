@@ -107,6 +107,7 @@
                             "caption": "编辑(E)",
                             "items": [
                                 {
+                                    "id": "miUndo",
                                     "caption": "撤销",
                                     "shortcut": "Ctrl+Z",
                                     "events": {
@@ -114,6 +115,7 @@
                                     }
                                 },
                                 {
+                                    "id": "miRedo",
                                     "caption": "重做",
                                     "shortcut": "Ctrl+Y",
                                     "events": {
@@ -577,21 +579,14 @@
                                                 },
                                                 "anchor": "fill",
                                                 "defaultExpand": true,
-                                                "items": [
-                                                    {
-                                                        "id": "root",
-                                                        "label": "根面板",
-                                                        "expanded": true,
-                                                        "children": []
-                                                    }
-                                                ]
+                                                "items": []
                                             }
                                         },
                                         {
                                             "title": "资源",
                                             "page": {
-                                                "type": "list-view",
-                                                "id": "lvResource",
+                                                "type": "panel",
+                                                "id": "resPage",
                                                 "rect": {
                                                     "x": 0,
                                                     "y": 0,
@@ -599,32 +594,102 @@
                                                     "h": 700
                                                 },
                                                 "anchor": "fill",
-                                                "mode": "multi",
-                                                "rowHeight": 28,
-                                                "headerHeight": 28,
-                                                "gridlines": true,
-                                                "columns": [
+                                                "layout": {
+                                                    "type": "anchor"
+                                                },
+                                                "children": [
                                                     {
-                                                        "title": "名称",
-                                                        "width": 100,
-                                                        "sortable": true
+                                                        "type": "list-view",
+                                                        "id": "lvResource",
+                                                        "rect": {
+                                                            "x": 0,
+                                                            "y": 0,
+                                                            "w": 240,
+                                                            "h": 664
+                                                        },
+                                                        "anchor": "fill",
+                                                        "anchorOffset": {
+                                                            "bottom": 36
+                                                        },
+                                                        "mode": "multi",
+                                                        "rowHeight": 28,
+                                                        "headerHeight": 28,
+                                                        "gridlines": true,
+                                                        "columns": [
+                                                            {
+                                                                "title": "名称",
+                                                                "width": 80,
+                                                                "sortable": true
+                                                            },
+                                                            {
+                                                                "title": "路径",
+                                                                "width": 160,
+                                                                "sortable": true
+                                                            }
+                                                        ],
+                                                        "rows": [],
+                                                        "multiSelect": false
                                                     },
                                                     {
-                                                        "title": "路径",
-                                                        "width": 120,
-                                                        "sortable": true
-                                                    }
-                                                ],
-                                                "rows": [
+                                                        "type": "button",
+                                                        "id": "btnResInsert",
+                                                        "caption": "插入",
+                                                        "rect": {
+                                                            "x": 4,
+                                                            "y": 668,
+                                                            "w": 74,
+                                                            "h": 28
+                                                        },
+                                                        "anchor": "bottom-left",
+                                                        "anchorOffset": {
+                                                            "left": 4,
+                                                            "bottom": 4
+                                                        },
+                                                        "font": {
+                                                            "name": "harmonyos-sans-sc-regular",
+                                                            "size": 16
+                                                        }
+                                                    },
                                                     {
-                                                        "id": "resMain",
-                                                        "cells": [
-                                                            "main",
-                                                            "assets/"
-                                                        ]
+                                                        "type": "button",
+                                                        "id": "btnResEdit",
+                                                        "caption": "修改",
+                                                        "rect": {
+                                                            "x": 83,
+                                                            "y": 668,
+                                                            "w": 74,
+                                                            "h": 28
+                                                        },
+                                                        "anchor": "bottom-center",
+                                                        "anchorOffset": {
+                                                            "bottom": 4
+                                                        },
+                                                        "font": {
+                                                            "name": "harmonyos-sans-sc-regular",
+                                                            "size": 16
+                                                        }
+                                                    },
+                                                    {
+                                                        "type": "button",
+                                                        "id": "btnResRemove",
+                                                        "caption": "删除",
+                                                        "rect": {
+                                                            "x": 162,
+                                                            "y": 668,
+                                                            "w": 74,
+                                                            "h": 28
+                                                        },
+                                                        "anchor": "bottom-right",
+                                                        "anchorOffset": {
+                                                            "right": 4,
+                                                            "bottom": 4
+                                                        },
+                                                        "font": {
+                                                            "name": "harmonyos-sans-sc-regular",
+                                                            "size": 16
+                                                        }
                                                     }
-                                                ],
-                                                "multiSelect": false
+                                                ]
                                             }
                                         }
                                     ],
@@ -658,6 +723,9 @@
                             "type": "panel",
                             "id": "canvasArea",
                             "flow-weight": 1,
+                            "layout": {
+                                "type": "anchor"
+                            },
                             "rect": {
                                 "x": 0,
                                 "y": 0,
@@ -674,6 +742,7 @@
                                 {
                                     "type": "panel",
                                     "id": "canvasToolbar",
+                                    "anchor": "top-stretch",
                                     "rect": {
                                         "x": 0,
                                         "y": 0,
@@ -1908,6 +1977,7 @@
                                                     },
                                                     {
                                                         "type": "panel",
+                                                        "id": "bd_row",
                                                         "rect": {
                                                             "x": 0,
                                                             "y": 0,
@@ -1998,6 +2068,7 @@
                                                     },
                                                     {
                                                         "type": "label",
+                                                        "id": "evtNote",
                                                         "caption": "（列表后续由 EventManager 命令式填充）",
                                                         "rect": {
                                                             "x": 0,

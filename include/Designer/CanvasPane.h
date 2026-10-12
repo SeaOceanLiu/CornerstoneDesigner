@@ -19,6 +19,8 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -45,6 +47,7 @@ public:
     // 创建：须在主布局 LoadLayout 后调用（canvasArea 已存在）。
     // toolbarH：canvasArea 顶部工具栏高度，子视口从该位置下方开始。
     // resourceRoot：assets 资源根（用于把字体等资源注册进内存 provider，供视口内控件解析）。
+
     bool Create(UICornerstone::UICornerstone& ui, Control canvasArea, float toolbarH,
                 const std::string& resourceRoot);
 
@@ -79,10 +82,37 @@ public:
 
     // 右侧控件树（tvTree）：画布控件增删/选中双向同步。
     void SetCanvasTree(Control tree);
+    std::string benchTreeNodeLabel() const;   // 控件树画布根节点标签（Bench 控件 id）
     void syncTreeAdd(const std::string& parentId, const std::string& id,
                      const std::string& label);   // 层级挂接（parentId 空=顶层）
     void syncTreeRemove(const std::string& id);
+    void syncTreeRename(const std::string& id, const std::string& label);   // 树节点标签更新
     void syncTreeSelection();
+    // 控件 id 重命名（用户需求：代码引用）——模型/引用（子 parentId、tabs page-id、
+    // 放置目标、选中集）/引擎 id 注册/锚定父 child-id/控件树 全链更新。
+    // false = 无效（空/重复/含空白/保留键）——未做任何修改。
+    bool renameControlId(const std::string& oldId, std::string newId);
+    // 控件 id 行编辑完成再提交（防逐键改名致树节点反复重建——500ms 空闲/回车/切换选中）
+    void commitPendingIdRename();
+
+    // ── 事件面板（F4：右栏"事件"Tab）──
+    // 绑定行：事件类型 ComboBox（按控件类型注册表过滤）+ handler EditBox + 建议命名/添加；
+    // 已绑定列表：控件 id + 事件名 + handler + 删除（动态行——选中变化时重建）；
+    // 持久化 extended["events"] = { "onClick": "handlerName" }（引擎布局 JSON 1:1）；
+    // 冲突/不合规：C 标识符校验 + handler 唯一（ev_err 红字提示，拒绝添加）。
+    void SetEventPanel(Control typeCombo, Control handlerEdit, Control suggestBtn,
+                       Control addBtn, Control errLabel, Control listHost);
+    void refreshEventPanel();      // 选中变化 / 绑定增删后刷新（下拉 + 列表）
+    bool addEventBinding(const std::string& ctrlId, const std::string& jsonEvent,
+                         const std::string& handler);
+    bool removeEventBinding(const std::string& ctrlId, const std::string& jsonEvent);
+    bool isValidIdentifier(const std::string& name) const;      // C 标识符规范
+    bool isHandlerNameUnique(const std::string& name) const;    // 全体绑定中唯一
+    std::string suggestHandlerName(const std::string& ctrlId, const std::string& jsonEvent) const;
+    struct EventBinding { std::string controlId, jsonEvent, handler; };
+    std::vector<EventBinding> collectEventBindings() const;     // 先序遍历全树（导出用）
+    // 画布设置对话框（P0-84 绕过：对话框输入通道已证可用——id/窗口标题）
+    void ShowBenchSettingsDialog();
 
     // P1-b 放置目标提示：主实例 statusBar（statusHint 段显示当前目标容器）。
     void SetStatusTarget(Control statusBar);
@@ -104,6 +134,13 @@ public:
 
     // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
     void deleteSelected();
+    // F2.5 撤销/重做（快照式：模型序列化入栈；同键短时编辑合并为一步）
+    static constexpr size_t kMaxUndoSteps = 50;     // 需求 F2.5：至少 50 步
+    void commitUndo(const std::string& coalesceKey = "");   // 操作后记录（加载/恢复期挂起）
+    bool Undo();
+    bool Redo();
+    bool CanUndo() const { return m_undoPos > 0; }
+    bool CanRedo() const { return m_undoPos + 1 < m_undoStack.size(); }
     // 滚轮滚动动态区（mouse-wheel 事件载荷 scrollY；propDynamic 与 tabProperty 双订阅）
     void ScrollDynamicBy(float scrollY);
 
@@ -135,6 +172,13 @@ public:
     void SetCanvasSize(float w, float h);
     float GetCanvasW() const { return m_designW; }
     float GetCanvasH() const { return m_designH; }
+
+    // 画布（Bench）编辑（用户需求）：空白处单击选中画布 → 属性栏可改 id/标题/
+    // 尺寸/缩放模式/背景色（alpha=0 透明——游戏场景 UI 叠加透出）。缩放模式与
+    // 背景随导出 viewport 携带（预览生效）；标题经 .csd metadata（预览窗口标题）。
+    bool IsBenchSelected() const { return m_benchSelected; }
+    const std::string& BenchWindowTitle() const { return m_benchTitle; }
+    const std::string& BenchId() const { return m_benchId; }
 
     void SetGridVisible(bool visible);
     bool IsGridVisible() const { return m_gridVisible; }
@@ -172,6 +216,32 @@ public:
     using ClickHandler = std::function<void(const std::string& id, float cx, float cy)>;
     void SetClickHandler(ClickHandler handler) { m_clickHandler = std::move(handler); }
 
+    // ── 项目/布局 IO（菜单：新建/打开/保存/另存为/导入 JSON/导出 JSON）──
+    bool SaveProject(const std::string& path);      // 写 .csd（metadata + layout 整包）
+    bool OpenProject(const std::string& path);      // 读 .csd → 重建画布（清空前置）
+    bool ExportLayout(const std::string& path);     // 写引擎兼容布局 JSON（F7.1）
+    bool ImportLayout(const std::string& path);     // 读引擎布局 JSON → 重建画布
+    void NewProject();                              // 清空画布（新建）
+    nlohmann::json serializeLayoutJson() const;     // 模型树 → 引擎兼容布局 JSON（保存/导出共用）
+    bool buildFromLayoutJson(const nlohmann::json& layout, bool useViewportSize);  // 布局 JSON → 画布
+    void clearCanvas();                             // 清空全部画布控件/模型/树节点
+    const std::string& ProjectPath() const { return m_projectPath; }
+    void SetProjectPath(const std::string& p) { m_projectPath = p; }
+    void SetStatusHint(const std::string& text) { setStatusHint(text); }   // 状态栏提示（App 用）
+    bool SelfTestIo(const std::string& dir);        // auto=2 自测：放置→保存→打开→导出→导入往返
+    void SelfTestPlaceSample();                     // auto=3 冒烟：放置少量样例控件（预览窗口测试）
+    std::string SelfTestIdOfType(const std::string& type) const;   // auto=3：样例控件 id（预览实例校验）
+
+    // ── 资源面板（布局级 resourceProviders：插入/删除按钮 + 名称弹窗 + 目录对话框）──
+    void SetResourcePanel(Control list);            // lvResource 接线（App）
+    bool AddResourceProvider(const std::string& name, const std::string& path);   // 唯一校验
+    bool UpdateSelectedResourceProvider(const std::string& name, const std::string& path);  // 修改选中行（唯一校验排除自身）
+    bool SelectedResourceProvider(std::string& name, std::string& path) const;    // 选中行回填（App 弹窗）
+    void RemoveSelectedResourceProvider();          // 删除列表选中行
+    void refreshResourceList();                     // 列表重填（名称/路径）
+    void mountResourceProviders();                  // 设计态挂载（LoadLayout 顶层 resourceProviders）
+    const std::vector<std::pair<std::string, std::string>>& ResourceProviders() const { return m_resourceProviders; }
+
 private:
     // 画布内容（被设计控件，z 序 = vector 序）
     struct PlacedControl {
@@ -182,6 +252,9 @@ private:
 
     void refreshLayout();          // 同步视口与网格 Image rect（零重建）
     void applyCanvasSize();        // 设计尺寸 → SetCanvasSize（P0-61③ 即时）+ 视口/纸面/滚动条刷新
+    void selectBench();            // 选中画布（Bench）——属性面板显示画布行
+    void buildBenchRows();         // 画布属性动态行（id/标题/缩放模式/背景色）
+    void applyBenchBackground();   // 画布背景 → 设计器画布视口（WYSIWYG；alpha=0 透明）
     void updateViewportRect();     // 视口尺寸 = 内容区扣除滚动条边条（设计尺寸/缩放变化须重算）
     void updateGridRect();         // 纸面/网格 rect = 设计尺寸（逻辑；drawRect=设计尺寸×zoom）
     void clampPan();               // 平移钳制（纸面小于视口→居中；大于→边缘不越界）
@@ -193,8 +266,8 @@ private:
     void registerGridTile();       // 生成瓦片 PNG → RegisterResource（含首次 provider 触发）
     void createGridImage();        // 在子视口内创建网格 Image（scale-type=tile）
     void rebuildGridTile();        // registerGridTile + createGridImage（缩放档变化）
-    void registerFonts();          // 字体注册进内存 provider（视口内 Label 解析字体必需）
-    void styleControl(const std::string& toolboxId, Control ctl);   // 放置控件默认样式（白纸上可见）
+    void styleControl(const std::string& toolboxId, Control ctl,
+                      ControlModel& model);   // 放置控件默认样式（白纸上可见；同步模型 colors）
 
     void tickInput();              // 交互轮询：放置/选中/拖动
     void placeControl(const std::string& toolboxId, float cx, float cy, bool fromDrag = false);
@@ -241,6 +314,24 @@ private:
     void applyComboItemsText(ControlModel& m, const std::string& text);    // 结构化：combo items 文本 → 模型 + 引擎同步
     void applyStatusBarItemsText(ControlModel& m, const std::string& text);  // 结构化：状态栏段
     void applyListColumnsText(ControlModel& m, const std::string& text);     // 结构化：列表列（标题|宽度）
+    void applyListRowsText(ControlModel& m, const std::string& text);        // 结构化：列表行（| 分隔单元格）
+    void syncListRows(ControlModel& m, int engineRowCount);                  // 列表行引擎重放（列变更后亦调用）
+    void applyTreeItemsText(ControlModel& m, const std::string& text);       // 结构化：树节点（> 数量=层级）
+    // 结构化模型 → 引擎同步（加载/打开路径复用；文本编辑路径由 apply*Text 调用）
+    // oldIds/oldCount：引擎当前（旧）状态——编辑路径按旧移除，加载路径传空/0
+    void syncComboItems(ControlModel& m);
+    void syncStatusBarItems(ControlModel& m, const nlohmann::json& oldItems);
+    void syncListColumns(ControlModel& m, int engineColCount);
+    void syncTreeItems(ControlModel& m);
+    void applyMenusText(ControlModel& m, const std::string& text);         // 结构化：menu-bar menus（> 层级/@快捷键/-- 分隔）
+    void syncMenus(ControlModel& m, const nlohmann::json& oldMenus);
+    void applyTabsText(ControlModel& m, const std::string& text);          // 结构化：tab-control tabs（一行一页签标题）
+    void syncTabs(ControlModel& m, const nlohmann::json& oldTabs);
+    void removePlacedSubtree(const std::string& rootId);                   // 销毁放置控件子树（引擎/模型/树）
+    std::string resolvedParentIdOf(const std::string& targetId);           // 目标容器 → 实际父 id（TabControl→当前页 Panel）
+    void applyShapePointsText(ControlModel& m, const std::string& text);   // 结构化：shape points（一行一点 x,y）
+    void syncShapePoints(ControlModel& m);
+    void applyModelToEngine(PlacedControl& pc);     // 模型属性 → 引擎控件（加载应用）
     void ensureSelHandle(Control target);   // 引擎 HandleControl 附加（选中框+8向手柄+光标）
     void detachSelHandle();                 // 分离并隐藏
     static int rectFilterThunk(UIControlHandle target, float* x, float* y,
@@ -251,6 +342,10 @@ private:
 
     std::vector<PlacedControl> m_items;
     std::string m_selectedId;                   // 主选（= m_selIds 末位；空=未选中）
+    std::string m_projectPath;                  // 当前 .csd 路径（空=未关联文件）
+    std::vector<std::pair<std::string, std::string>> m_resourceProviders;   // 布局级资源挂载点
+    Control m_resList;                          // 资源列表（lvResource，主实例）
+    int m_resRows = 0;                          // 引擎列表当前行数（RemoveRow 越界不报——记账）
     std::vector<std::string> m_selIds;          // P2 多选：选择集
     std::vector<Control> m_selOutlines;         // P2 多选：次级选中外框池（橙 1px 描边）
     Control m_alignCombo;                       // P2 多选：tb_align（≥2 启用）
@@ -280,8 +375,13 @@ private:
     Control m_propDynamic;                       // propDynamic 容器（absolute 自管布局）
     Control m_dynScroll;                         // 容器底部滚动条（position-changed 驱动）
     std::unique_ptr<nlohmann::json> m_schema;    // 引擎 declarative-ui.schema.json
-    std::vector<Control> m_dynamicRows;          // 已生成的行控件（销毁/滚动偏移用）
+    std::vector<Control> m_dynamicRows;          // 本趟生效行控件（滚动偏移/宽度同步用）
     std::vector<float>   m_dynamicRowY;          // 各行未滚动时的 baseY（与 rows 对齐）
+    // 动态行池（跨类型复用——隐藏不销毁，换控件时重排+刷值；仅首次创建慢）
+    std::unordered_map<std::string, Control> m_rowPool;      // 行种类 → 常驻控件
+    std::unordered_set<std::string> m_rowPoolUsed;           // 本趟使用标记（未用→隐藏）
+    Control takePoolRow(const std::string& kind, const std::function<Control()>& create);
+    void hideUnusedPoolRows();
     float m_dynScrollMax = 0;                    // 滚动范围（内容高-视野高，<0 归零）
     Control m_schemaTarget;                      // 当前行集对应的目标控件（主选——读回/回填）
     std::vector<Control> m_schemaTargets;        // P2 多选：批量写目标（全部选中）
@@ -289,6 +389,19 @@ private:
     void applyDynScroll(float value);            // 滚动 → 行偏移+超界隐藏
 
     // 交互状态
+    // F2.5 撤销/重做栈（m_undoStack[m_undoPos]=当前状态；coalesce 0.7s 内同键覆盖合并）
+    std::vector<std::string> m_undoStack;
+    size_t m_undoPos = 0;
+    std::string m_undoKey;
+    double m_undoTime = 0.0;
+    bool m_undoSuspended = false;       // 加载/恢复期不记录
+    bool m_engineRectDirty = false;     // 引擎手柄拖拽/缩放中 rect 变化（松开提交一次）
+    std::string m_engineRectId;
+    bool m_dragOrigValid = false;       // 设计器拖动起始 rect（未移动不记历史）
+    SRect m_dragOrigRect{ 0, 0, 0, 0 };
+    void restoreSnapshot(const std::string& json);
+    void resetUndo();
+
     bool  m_mouseWasDown = false;
     bool  m_dragging = false;
     float m_dragOffX = 0, m_dragOffY = 0;
@@ -351,6 +464,21 @@ private:
     float m_zoom = 1.0f;
     float m_designW = 1280.0f;     // 设计画布（基准窗体）尺寸
     float m_designH = 800.0f;
+    // 画布（Bench）属性（导出 viewport 携带；标题入 .csd metadata）
+    UIColor m_benchBg{255, 255, 255, 255}; // 画布背景色（缺省白=纸面；alpha=0 透明=透出底层）
+    int m_benchScaleMode = 0;      // 0=off 1=fit 2=stretch
+    std::string m_benchTitle;      // 窗口标题（预览窗 / 代码生成）
+    std::string m_benchId;         // 画布 id（代码引用；viewport.id）
+    bool m_benchSelected = false;  // 画布选中态（与控件选择互斥）
+    Control m_benchDlg, m_benchDlgId, m_benchDlgTitle;   // 画布设置对话框（复用）
+    // 事件面板句柄（App 接线）
+    Control m_evType, m_evHandler, m_evSuggest, m_evAdd, m_evErr, m_evHost;
+    std::vector<Control> m_evRows;    // 动态绑定行（刷新时销毁重建）
+    std::vector<std::string> m_evTypeItems;   // 事件下拉值平行表（选中索引 → JSON 事件名）
+    // 控件 id 行待提交状态（编辑完成再改名）
+    std::string m_idRenameTarget, m_idRenameText;
+    std::chrono::steady_clock::time_point m_idRenameDeadline;
+    bool m_idRenamePending = false;
     bool  m_gridVisible = true;
     float m_gridCell = 40.0f;      // 画布逻辑坐标网格间距
     bool  m_snapEnabled = true;    // 吸附到网格

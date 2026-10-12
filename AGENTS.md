@@ -43,6 +43,11 @@
 - 仓库布局：`design/` 设计文档、`include/Designer/` 公共头、`src/` 实现、`layouts/` 设计器自身 JSON 布局、`build_scripts/` 构建脚本、`subModules/UICornerstone/` 子模块
 - 构建：`git clone --recursive` 后 `build_scripts\build.bat sdl3`（详见 [build.md](design/guidelines/build.md)）
 
+## 引擎仓库规则（铁律）
+
+- **引擎项目文件夹（`D:\GitSpace\UIControls`）为只读目录，不可更改引擎的任何文件**（源码、头文件、文档、schema、构建产物等一律禁止写入）。
+- 引擎侧需求/缺陷必须写入配合修改清单（`Temp/UICornerstone_配合修改清单_第三批.md`），由引擎方决定实现方式并实施；设计器侧只能读取/同步引擎交付的产物（如 `release/` 下 DLL）。
+
 ## 提交与推送规则
 
 - 提交（commit）和推送（push）必须经过用户的明确指示，**未经同意不得自行 push**，也不得自行执行 git add/commit。

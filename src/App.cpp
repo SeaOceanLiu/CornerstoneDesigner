@@ -19,6 +19,10 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <commdlg.h>
+#include <shlobj.h>
+#pragma comment(lib, "comdlg32.lib")
+#pragma comment(lib, "shell32.lib")
 #undef CreateDialog   // 避免 Win32 宏（CreateDialogA/W）污染引擎 API 符号
 #endif
 
@@ -119,6 +123,33 @@ bool App::SdlApi::pollF5Key() {
     return edge;
 }
 
+// Ctrl+Z / Ctrl+Y 按下沿（F2.5 撤销/重做快捷键；每帧调一次保持边沿状态）
+bool App::SdlApi::pollUndoKey() {
+    static bool wasDown = false;
+    if (!getKeyboardState) return false;
+    int numkeys = 0;
+    const unsigned char* state = getKeyboardState(&numkeys);
+    if (!state || numkeys <= 29) return false;
+    const bool ctrl = numkeys > 228 && (state[224] != 0 || state[228] != 0);   // LCTRL/RCTRL
+    const bool down = ctrl && state[29] != 0;   // SDL_SCANCODE_Z=29
+    const bool edge = down && !wasDown;
+    wasDown = down;
+    return edge;
+}
+
+bool App::SdlApi::pollRedoKey() {
+    static bool wasDown = false;
+    if (!getKeyboardState) return false;
+    int numkeys = 0;
+    const unsigned char* state = getKeyboardState(&numkeys);
+    if (!state || numkeys <= 28) return false;
+    const bool ctrl = numkeys > 228 && (state[224] != 0 || state[228] != 0);
+    const bool down = ctrl && state[28] != 0;   // SDL_SCANCODE_Y=28
+    const bool edge = down && !wasDown;
+    wasDown = down;
+    return edge;
+}
+
 // 中键状态 + 窗口坐标（画布平移）
 bool App::SdlApi::pollMiddle(float& x, float& y) {
     if (!getMouseState) return false;
@@ -157,6 +188,7 @@ void App::SdlApi::unload() {
 }
 
 void* App::SdlApi::windowHandle() {
+    if (mainWin) return mainWin;   // 主窗口固定（预览等多实例窗口创建后 [0] 可能变化）
     int count = 0;
     void* arr = getWindows ? getWindows(&count) : nullptr;
     if (count > 0 && arr && ((void**)arr)[0]) return ((void**)arr)[0];
@@ -197,6 +229,9 @@ bool App::init() {
         std::printf("[App] Create failed\n");
         return false;
     }
+    // 动作注册必须先于布局解析：引擎在 LoadLayout 解析期将 instance->actions 注入
+    // parser handlers 绑定菜单项 onClick——先解析后注册会导致所有菜单项无回调（静默失效）
+    registerActions();
     if (!loadSkeleton()) {
         std::printf("[App] LoadLayout failed: %s\n", m_lastError.c_str());
         return false;
@@ -205,7 +240,6 @@ bool App::init() {
     if (!m_sdl.loaded) {
         std::printf("[App] SDL3.dll 未解析（窗口 resize 同步降级）\n");
     }
-    registerActions();
     setupCanvas();
     bindToolbar();
     if (m_canvas) {
@@ -227,6 +261,23 @@ bool App::init() {
                 m_canvas->ScrollDynamicBy(e.GetValueChanged());
             });
         m_canvas->SetToolboxTree(m_ui->FindControl("tvToolbox"));
+        // 资源面板：列表 + 插入/修改/删除按钮（弹窗收集名称 + 系统目录对话框选路径）
+        m_canvas->SetResourcePanel(m_ui->FindControl("lvResource"));
+        if (auto b = m_ui->FindControl("btnResInsert"); b.IsValid())
+            b.SetCallback(PropertyNames::kEventClick,
+                          [this](const Event&) { openResourceDialog(false); });
+        if (auto b = m_ui->FindControl("btnResEdit"); b.IsValid())
+            b.SetCallback(PropertyNames::kEventClick,
+                          [this](const Event&) { openResourceDialog(true); });
+        if (auto b = m_ui->FindControl("btnResRemove"); b.IsValid())
+            b.SetCallback(PropertyNames::kEventClick,
+                          [this](const Event&) { if (m_canvas) m_canvas->RemoveSelectedResourceProvider(); });
+        m_canvas->SetEventPanel(m_ui->FindControl("ev_type"),
+                                m_ui->FindControl("ev_handler"),
+                                m_ui->FindControl("ev_suggest"),
+                                m_ui->FindControl("ev_add"),
+                                m_ui->FindControl("ev_err"),
+                                m_ui->FindControl("tabEvent"));
         m_canvas->SetPropertyControls(m_ui->FindControl("prop_x"),
                                       m_ui->FindControl("prop_y"),
                                       m_ui->FindControl("prop_w"),
@@ -237,10 +288,13 @@ bool App::init() {
                                       m_ui->FindControl("prop_enabled"));
     }
 
-    // 初始化基准尺寸
+    // 初始化基准尺寸（同时捕获主窗口句柄——仅此一窗时 [0] 即主窗）
     if (m_sdl.loaded && m_sdl.getWindowSize) {
         void* win = m_sdl.windowHandle();
-        if (win) m_sdl.getWindowSize(win, &m_lastWinW, &m_lastWinH);
+        if (win) {
+            m_sdl.mainWin = win;
+            m_sdl.getWindowSize(win, &m_lastWinW, &m_lastWinH);
+        }
     }
     return true;
 }
@@ -277,15 +331,83 @@ void App::registerActions() {
         "onMenuToggleGrid", "onMenuToggleSnap", "onMenuPreview",
         "onMenuAbout",
     };
+    // Win32 原生文件对话框（03 §13.2 薄层；无 MFC——宽字符 → UTF-8 路径）
+    auto fileDialog = [](bool save, const wchar_t* filter, const wchar_t* defExt,
+                         const wchar_t* title) -> std::string {
+        wchar_t buf[MAX_PATH] = L"";
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = GetActiveWindow();
+        ofn.lpstrFilter = filter;
+        ofn.lpstrFile = buf;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.lpstrDefExt = defExt;
+        ofn.lpstrTitle = title;
+        ofn.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |
+                    (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
+        const BOOL ok = save ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn);
+        if (!ok) return "";
+        const int len = WideCharToMultiByte(CP_UTF8, 0, buf, -1, nullptr, 0, nullptr, nullptr);
+        std::string out(len > 0 ? (size_t)(len - 1) : 0, '\0');
+        if (len > 0)
+            WideCharToMultiByte(CP_UTF8, 0, buf, -1, out.data(), len, nullptr, nullptr);
+        return out;
+    };
+    static const wchar_t* kCsdFilter =
+        L"CornerstoneDesigner 项目 (*.csd)\0*.csd\0所有文件 (*.*)\0*.*\0";
+    static const wchar_t* kJsonFilter =
+        L"UICornerstone 布局 (*.json)\0*.json\0所有文件 (*.*)\0*.*\0";
     for (const char* name : actions) {
         if (std::string(name) == "onMenuExit") {
             m_ui->RegisterAction(name, guard([this](Control) { m_exitRequested = true; }));
+        } else if (std::string(name) == "onMenuNew") {
+            m_ui->RegisterAction(name, guard([this](Control) {
+                if (m_canvas) m_canvas->NewProject();
+            }));
+        } else if (std::string(name) == "onMenuOpen") {
+            m_ui->RegisterAction(name, guard([this, fileDialog](Control) {
+                if (!m_canvas) return;
+                const std::string p = fileDialog(false, kCsdFilter, L"csd", L"打开项目");
+                if (!p.empty()) m_canvas->OpenProject(p);
+            }));
+        } else if (std::string(name) == "onMenuSave") {
+            m_ui->RegisterAction(name, guard([this, fileDialog](Control) {
+                if (!m_canvas) return;
+                std::string p = m_canvas->ProjectPath();
+                if (p.empty())
+                    p = fileDialog(true, kCsdFilter, L"csd", L"保存项目");
+                if (!p.empty()) m_canvas->SaveProject(p);
+            }));
+        } else if (std::string(name) == "onMenuSaveAs") {
+            m_ui->RegisterAction(name, guard([this, fileDialog](Control) {
+                if (!m_canvas) return;
+                const std::string p = fileDialog(true, kCsdFilter, L"csd", L"另存为");
+                if (!p.empty()) m_canvas->SaveProject(p);
+            }));
+        } else if (std::string(name) == "onMenuImportJson") {
+            m_ui->RegisterAction(name, guard([this, fileDialog](Control) {
+                if (!m_canvas) return;
+                const std::string p = fileDialog(false, kJsonFilter, L"json", L"导入 JSON 布局");
+                if (!p.empty()) m_canvas->ImportLayout(p);
+            }));
+        } else if (std::string(name) == "onMenuExportJson") {
+            m_ui->RegisterAction(name, guard([this, fileDialog](Control) {
+                if (!m_canvas) return;
+                const std::string p = fileDialog(true, kJsonFilter, L"json", L"导出 JSON 布局");
+                if (!p.empty()) m_canvas->ExportLayout(p);
+            }));
         } else if (std::string(name) == "onMenuAbout") {
             m_ui->RegisterAction(name, guard([this](Control) {
                 std::printf("[App] CornerstoneDesigner v0.1 (stage 1 skeleton)\n");
             }));
         } else if (std::string(name) == "onMenuPreview") {
             m_ui->RegisterAction(name, guard([this](Control) { togglePreview(); }));   // 预览模式 F5
+        } else if (std::string(name) == "onMenuUndo") {
+            m_ui->RegisterAction(name, guard([this](Control) { if (m_canvas) m_canvas->Undo(); }));
+        } else if (std::string(name) == "onMenuRedo") {
+            m_ui->RegisterAction(name, guard([this](Control) { if (m_canvas) m_canvas->Redo(); }));
+        } else if (std::string(name) == "onMenuDelete") {
+            m_ui->RegisterAction(name, guard([this](Control) { if (m_canvas) m_canvas->deleteSelected(); }));
         } else if (std::string(name).rfind("onMenuZoom", 0) == 0) {
             // 视图菜单缩放档（onMenuZoomNN → NN%）——与工具栏档位同路径
             const float z = std::stof(std::string(name).substr(10)) / 100.0f;
@@ -509,18 +631,267 @@ void App::openCanvasSizeDialog() {
     m_canvasSizeDlg.SetBool(PropertyNames::kVisible, 1);
 }
 
-// 设计↔预览切换：CanvasPane 预览态 + 工具栏按钮标题同步（预览/退出预览）+
-// 编辑辅助控件启停（网格开关/间距/吸附——预览只呈现设计；缩放保留供查看）。
+// 资源插入/修改对话框（懒建复用）+ 系统目录选择（SHBrowseForFolderW）
+void App::openResourceDialog(bool editMode) {
+    if (!m_canvas) return;
+    std::string initName, initPath;
+    if (editMode && !m_canvas->SelectedResourceProvider(initName, initPath)) {
+        m_canvas->SetStatusHint(u8"请先在资源列表中选择要修改的条目");
+        return;
+    }
+    m_resDlgEditMode = editMode;
+    if (!m_resDlg.IsValid()) {
+        m_resDlg = m_ui->CreateDialog(u8"确定", u8"取消", 0, 0, 360, 240);
+        if (!m_resDlg.IsValid()) return;
+        auto lbN = m_ui->CreateLabel(u8"名称", 16.0f, 20, 24, 50, 26);
+        m_dlgResName = m_ui->CreateEditBox(80, 24, 240, 26);
+        auto lbP = m_ui->CreateLabel(u8"路径", 16.0f, 20, 64, 50, 26);
+        // 路径显示：只读 EditBox（P0-83：长路径内部滚动不越界、内容不可误改、选择/复制保留）
+        m_dlgResPathEdit = m_ui->CreateEditBox(80, 64, 240, 26);
+        // 两种形态并存：文件（name → 单文件）/ 目录（name → 目录，引用 provider:name/相对路径）
+        auto setPath = [this](const std::string& out) {
+            if (out.empty()) return;
+            m_dlgResPath = out;
+            if (m_dlgResPathEdit.IsValid())
+                m_dlgResPathEdit.SetString(PropertyNames::kTextContent, out);
+        };
+        if (m_dlgResPathEdit.IsValid())
+            m_dlgResPathEdit.SetBool(PropertyNames::kReadOnly, true);   // P0-83：真只读（选择/复制/滚动保留）
+        auto btnFile = m_ui->CreateButton(u8"选择文件…", 80, 104, 120, 28);
+        btnFile.SetCallback(PropertyNames::kEventClick, [setPath](const Event&) {
+            wchar_t buf[MAX_PATH] = L"";
+            OPENFILENAMEW ofn{};
+            ofn.lStructSize = sizeof(ofn);
+            ofn.hwndOwner = GetActiveWindow();
+            ofn.lpstrFilter = L"所有文件 (*.*)\0*.*\0";
+            ofn.lpstrFile = buf;
+            ofn.nMaxFile = MAX_PATH;
+            ofn.lpstrTitle = L"选择资源文件";
+            ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+            if (!GetOpenFileNameW(&ofn)) return;
+            const int len = WideCharToMultiByte(CP_UTF8, 0, buf, -1, nullptr, 0, nullptr, nullptr);
+            std::string out(len > 0 ? (size_t)(len - 1) : 0, '\0');
+            if (len > 0)
+                WideCharToMultiByte(CP_UTF8, 0, buf, -1, out.data(), len, nullptr, nullptr);
+            setPath(out);
+        });
+        auto btnDir = m_ui->CreateButton(u8"选择目录…", 210, 104, 120, 28);
+        btnDir.SetCallback(PropertyNames::kEventClick, [setPath](const Event&) {
+            BROWSEINFOW bi{};
+            bi.hwndOwner = GetActiveWindow();
+            bi.lpszTitle = L"选择资源目录";
+            bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+            LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
+            if (!pidl) return;
+            wchar_t wpath[MAX_PATH] = L"";
+            SHGetPathFromIDListW(pidl, wpath);
+            ILFree(pidl);
+            const int len = WideCharToMultiByte(CP_UTF8, 0, wpath, -1, nullptr, 0, nullptr, nullptr);
+            std::string out(len > 0 ? (size_t)(len - 1) : 0, '\0');
+            if (len > 0)
+                WideCharToMultiByte(CP_UTF8, 0, wpath, -1, out.data(), len, nullptr, nullptr);
+            setPath(out);
+        });
+        m_resDlg.AddChild(lbN);
+        m_resDlg.AddChild(m_dlgResName);
+        m_resDlg.AddChild(lbP);
+        m_resDlg.AddChild(m_dlgResPathEdit);
+        m_resDlg.AddChild(btnFile);
+        m_resDlg.AddChild(btnDir);
+        m_resDlg.SetCallback(PropertyNames::kEventClose, [this](const Event& e) {
+            if (e.GetCloseResult() == 1 && m_canvas) {   // Confirmed
+                const std::string name =
+                    m_dlgResName.IsValid() ? m_dlgResName.GetString(PropertyNames::kTextContent) : "";
+                if (m_resDlgEditMode) m_canvas->UpdateSelectedResourceProvider(name, m_dlgResPath);
+                else                  m_canvas->AddResourceProvider(name, m_dlgResPath);
+            }
+        });
+        m_resDlg.SetBool(PropertyNames::kVisible, 0);   // 首开即关（准备复用）
+    }
+    m_dlgResPath = editMode ? initPath : "";
+    m_dlgResName.SetString(PropertyNames::kTextContent, editMode ? initName : "");
+    m_dlgResPathEdit.SetString(PropertyNames::kTextContent,
+                               m_dlgResPath.empty() ? u8"（未选择）" : m_dlgResPath);
+    m_resDlg.SetBool(PropertyNames::kVisible, 1);
+}
+
+// 菜单可用态：撤销/重做随 CanvasPane 栈状态置灰（仅变化时写；依赖引擎把带 id 的
+// 菜单项注册进 id 表——FindControl 可达；清单 P0-87。未注册前 FindControl 无效 = 无操作）
+void App::refreshMenuStates() {
+    if (!m_canvas || !m_ui) return;
+    const bool canUndo = m_canvas->CanUndo();
+    const bool canRedo = m_canvas->CanRedo();
+    if (canUndo != m_menuUndoEnabled) {
+        Control c = m_ui->FindControl("miUndo");
+        if (c.IsValid()) {
+            c.SetBool(PropertyNames::kEnabled, canUndo);
+            m_menuUndoEnabled = canUndo;
+        }
+    }
+    if (canRedo != m_menuRedoEnabled) {
+        Control c = m_ui->FindControl("miRedo");
+        if (c.IsValid()) {
+            c.SetBool(PropertyNames::kEnabled, canRedo);
+            m_menuRedoEnabled = canRedo;
+        }
+    }
+}
+
+// 预览：**独立窗体**呈现（引擎多实例）——未打开则创建并加载当前布局快照；
+// 已打开则重建刷新（引擎 LoadLayout 不清旧控件——重建最稳）。窗体关闭由
+// pumpPreviewWindow 检测回收。
 void App::togglePreview() {
     if (!m_canvas) return;
-    const bool on = !m_canvas->IsPreviewMode();
-    m_canvas->SetPreviewMode(on);
-    auto pb = m_ui->FindControl("tb_preview");
-    if (pb.IsValid()) pb.SetString(PropertyNames::kCaption, on ? u8"退出预览" : u8"预览");
-    const char* aids[] = { "tb_grid", "cb_gridcell", "tb_snap", "tb_alignctl" };
-    for (const char* id : aids) {
-        auto c = m_ui->FindControl(id);
-        if (c.IsValid()) c.SetBool(PropertyNames::kEnabled, !on);
+    if (!m_previewUi) {
+        openPreviewWindow();
+        return;
+    }
+    closePreviewWindow();
+    openPreviewWindow();
+}
+
+// 创建预览实例（独立窗口；尺寸=设计画布）+ 加载当前布局快照（含资源挂载点）
+void App::openPreviewWindow() {
+    if (!m_canvas || !m_ui) return;
+    const int w = (int)m_canvas->GetCanvasW();
+    const int h = (int)m_canvas->GetCanvasH();
+    // 画布（Bench）窗口标题（用户设置非空时采用——设计产物窗口语义）
+    std::string title = m_canvas->BenchWindowTitle();
+    if (title.empty()) title = u8"预览 - CornerstoneDesigner";
+    m_previewUi = UICornerstone::UICornerstone::Create(
+        UICornerstone::UICornerstone::Config{}
+            .WithBackend("sdl3")
+            .WithResourceRoot(exeRelative("assets"))
+            .WithWindow(title, w, h)
+            .WithWindowFlags(UIWindowFlags::Resizable));
+    if (!m_previewUi) {
+        m_canvas->SetStatusHint(u8"预览窗口创建失败");
+        std::printf("[App] preview instance create FAILED\n");
+        return;
+    }
+    const nlohmann::json layout = m_canvas->serializeLayoutJson();
+    const bool hasControls = layout.contains("controls") &&
+                             layout["controls"].is_array() && !layout["controls"].empty();
+    if (hasControls && !m_previewUi->LoadLayout(layout.dump())) {   // 空设计 → 空预览窗（引擎空布局返回 0）
+        m_canvas->SetStatusHint(u8"预览布局加载失败");
+        std::printf("[App] preview LoadLayout FAILED: %s\n", m_previewUi->GetLastError().c_str());
+        closePreviewWindow();
+        return;
+    }
+    if (auto pb = m_ui->FindControl("tb_preview"); pb.IsValid())
+        pb.SetString(PropertyNames::kCaption, u8"刷新预览");
+    m_canvas->SetStatusHint(u8"预览窗口已打开（再次点击刷新；关闭窗口退出）");
+    std::printf("[App] preview window opened (%dx%d)\n", w, h);
+}
+
+void App::closePreviewWindow() {
+    if (m_previewUi) {
+        m_previewUi.reset();
+        std::printf("[App] preview window closed\n");
+    }
+    if (m_ui) {
+        auto pb = m_ui->FindControl("tb_preview");
+        if (pb.IsValid()) pb.SetString(PropertyNames::kCaption, u8"预览");
+    }
+}
+
+// 主循环内泵预览实例（多实例：各自 ProcessEvents/Update/Render/Present）；
+// 窗体关闭（IsQuitRequested）→ 回收实例 + 恢复按钮标题
+void App::pumpPreviewWindow(double delta) {
+    if (!m_previewUi) return;
+    m_previewUi->ProcessEvents();
+    if (m_previewUi->IsQuitRequested()) {
+        closePreviewWindow();
+        return;
+    }
+    m_previewUi->Update(delta);
+    m_previewUi->Clear();
+    m_previewUi->Render();
+    m_previewUi->RenderOverlays();   // P0-52①：浮层通道（菜单弹层/下拉/右键菜单——预览缺此致主菜单点击"无反应"）
+    if (m_previewCheckPending) {     // auto=3 校验（Present 前——readback 读当前缓冲）
+        m_previewCheckPending = false;
+        runPreviewChecks();
+    }
+    m_previewUi->Present();
+}
+
+// auto=3：预览实例校验（颜色状态 + 像素捕获——Bench 背景 / 图片 / 动画内容）。
+void App::runPreviewChecks() {
+    if (!m_previewUi || !m_canvas) return;
+    // StatusBar 部分对象语义：仅设 hover → normal 保持构造缺省蓝 (0,122,204)；
+    // hover 须为样例绿（用户值应用）
+    {
+        auto sc = m_previewUi->FindControl(m_canvas->SelfTestIdOfType("status-bar"));
+        bool ok = false;
+        if (sc.IsValid()) {
+            UIColor c = sc.GetColor(PropertyNames::kBackground);
+            UIColor h = sc.GetColor(PropertyNames::kStateHover);
+            ok = (c.r == 0 && c.g == 122 && c.b == 204) &&
+                 (h.r == 0 && h.g == 255 && h.b == 0);
+        }
+        std::printf("[AUTO3] preview statusbar partial-color %s\n", ok ? "OK" : "FAIL");
+    }
+    // 菜单栏 pressed 色（用户问题 2：预览态生效回归——读回 m_activeBgColor）
+    {
+        auto mb = m_previewUi->FindControl(m_canvas->SelfTestIdOfType("menu-bar"));
+        bool ok = false;
+        if (mb.IsValid()) {
+            UIColor c = mb.GetColor(PropertyNames::kStatePressed);
+            ok = (c.r == 255 && c.g == 128 && c.b == 0);
+        }
+        std::printf("[AUTO3] preview menu pressed %s\n", ok ? "OK" : "FAIL");
+    }
+    // Bench 背景像素（样例灰 #C0C0C0FF——viewport.background 预览生效）
+    {
+        static std::vector<uint8_t> buf((size_t)1280 * 800 * 4);
+        int w = 0, h = 0;
+        bool bgOk = false;
+        if (m_previewUi->CaptureBench(buf.data(), &w, &h) && w > 0 && h > 0) {
+            int gray = 0;
+            const size_t n = (size_t)w * h;
+            const uint32_t* px = reinterpret_cast<const uint32_t*>(buf.data());
+            for (size_t i = 0; i < n; ++i) {
+                const uint32_t c = px[i];
+                const int r = c & 0xFF, g = (c >> 8) & 0xFF, b = (c >> 16) & 0xFF;
+                if (r >= 150 && r <= 220 && g >= 150 && g <= 220 && b >= 150 && b <= 220 &&
+                    std::abs(r - g) < 24 && std::abs(g - b) < 24)
+                    ++gray;   // 灰主导（readback 字节序 [R,G,B,A]；alpha 不可靠不查 A）
+            }
+            bgOk = gray > (int)(n / 4);   // 背景占多数（控件覆盖其余）
+        }
+        std::printf("[AUTO3] preview bench bg %s\n", bgOk ? "OK" : "FAIL");
+    }
+    // 图片/动画内容像素（非透明占比——预览资源加载回归，用户问题 5）
+    for (const char* tp : { "image", "animation" }) {
+        auto ic = m_previewUi->FindControl(m_canvas->SelfTestIdOfType(tp));
+        bool contentOk = false;
+        if (ic.IsValid()) {
+            static std::vector<uint8_t> cbuf((size_t)512 * 512 * 4);
+            int w = 0, h = 0;
+            if (m_previewUi->CaptureControl(ic, cbuf.data(), &w, &h) && w > 0 && h > 0) {
+                int vis = 0;
+                const size_t n = (size_t)w * h;
+                const uint32_t* px = reinterpret_cast<const uint32_t*>(cbuf.data());
+                for (size_t i = 0; i < n; ++i) {
+                    const uint32_t c = px[i];
+                    const int r = c & 0xFF, g = (c >> 8) & 0xFF, b = (c >> 16) & 0xFF;
+                    // 非灰底像素（控件内容叠在样例灰画布上）——readback 字节序 [R,G,B,A]
+                    const bool grayish = r >= 150 && r <= 220 && g >= 150 && g <= 220 &&
+                                         b >= 150 && b <= 220 &&
+                                         std::abs(r - g) < 24 && std::abs(g - b) < 24;
+                    if (!grayish) ++vis;
+                }
+                contentOk = vis > (int)(n / 50);   // ≥2% 可见
+                UICornerstone::UICornerstone::SavePixelsToFile(
+                    cbuf.data(), w, h, std::string("Temp/preview_") + tp + ".bmp");
+            }
+        }
+        std::printf("[AUTO3] preview %s content %s\n", tp, contentOk ? "OK" : "FAIL");
+        if (std::string(tp) == "animation" && ic.IsValid())
+            std::printf("[AUTO3] preview animation playing=%d loop=%d total=%d\n",
+                        ic.GetBool(PropertyNames::kPlaying),
+                        ic.GetBool(PropertyNames::kLoop),
+                        ic.GetInt(PropertyNames::kTotalFrames));
     }
 }
 
@@ -528,7 +899,9 @@ int App::run(int autoSeconds) {
     std::chrono::steady_clock::time_point deadline;
     bool autoMode = autoSeconds > 0;
     if (autoMode) {
-        deadline = std::chrono::steady_clock::now() + std::chrono::seconds(autoSeconds);
+        // auto=3（预览冒烟）需更多帧完成像素校验（Present 前捕获额外一帧）
+        deadline = std::chrono::steady_clock::now() +
+                   std::chrono::seconds(autoSeconds == 3 ? 8 : autoSeconds);
         std::printf("[App] auto=%d seconds\n", autoSeconds);
     }
 
@@ -539,8 +912,49 @@ int App::run(int autoSeconds) {
     while (!m_ui->IsQuitRequested() && !m_exitRequested) {
         m_ui->ProcessEvents();
         if (m_sdl.pollF5Key()) togglePreview();   // 预览模式切换（菜单快捷键 F5）
+        {   // F2.5 撤销/重做快捷键（Ctrl+Z / Ctrl+Y；每帧轮询保持边沿状态）
+            const bool undoEdge = m_sdl.pollUndoKey();
+            const bool redoEdge = m_sdl.pollRedoKey();
+            if ((undoEdge || redoEdge) && !m_previewUi && m_canvas) {
+                if (undoEdge) m_canvas->Undo();
+                else m_canvas->Redo();
+            }
+        }
+        refreshMenuStates();   // 菜单"撤销/重做"可用态（引擎按 item id 注册后生效——清单 P0-87）
+        if (autoMode && autoSeconds == 1 && frame == 30) {
+            // 工具条宽度跟随校验（canvasToolbar top-stretch）＋菜单项 id 可达性探针
+            auto tb = m_ui->FindControl("canvasToolbar");
+            auto ca = m_ui->FindControl("canvasArea");
+            if (tb.IsValid() && ca.IsValid()) {
+                const float bw = tb.GetRect().w, aw = ca.GetRect().w;
+                std::printf("[AUTO1] toolbar w=%.0f canvasArea w=%.0f -> %s\n",
+                            bw, aw, (std::fabs(bw - aw) < 1.0f) ? "STRETCH-OK" : "STRETCH-FAIL");
+            }
+            // P0-87 + F2.5 端到端：菜单项可达 + 空撤销栈应已置灰（refreshMenuStates 首帧写入）
+            auto mi = m_ui->FindControl("miUndo");
+            const bool miOk = mi.IsValid();
+            const bool miDisabled = miOk && !mi.GetBool(PropertyNames::kEnabled);
+            auto mr = m_ui->FindControl("miRedo");
+            const bool mrDisabled = mr.IsValid() && !mr.GetBool(PropertyNames::kEnabled);
+            std::printf("[AUTO1] miUndo valid=%d disabled=%d miRedo disabled=%d -> %s\n",
+                        miOk ? 1 : 0, miDisabled ? 1 : 0, mrDisabled ? 1 : 0,
+                        (miOk && miDisabled && mrDisabled) ? "MENU-STATE-OK" : "MENU-STATE-PENDING");
+        }
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
         syncRootToWindow();
+
+        // auto=2：项目 IO 自测（放置→保存→打开→导出→导入往返；一次性）
+        if (autoMode && autoSeconds == 2 && frame == 30 && m_canvas) {
+            m_canvas->SelfTestIo("Temp");
+        }
+        // auto=3：预览独立窗体冒烟（放置样例 → 多实例开→泵→退出）；校验延迟到
+        // 泵内 Present 前（readback 须在缓冲交换前执行）
+        if (autoMode && autoSeconds == 3 && frame == 30) {
+            if (m_canvas) m_canvas->SelfTestPlaceSample();
+            togglePreview();
+            m_previewCheckPending = (bool)m_previewUi;
+            if (m_previewCheckPending) pumpPreviewWindow(0.016);   // 立即泵一帧（Present 前跑校验）
+        }
 
         auto now = Clock::now();
         double delta = std::chrono::duration<double>(now - last).count();
@@ -563,6 +977,7 @@ int App::run(int autoSeconds) {
         if (m_canvas) m_canvas->RenderViewport();
         m_ui->RenderOverlays();   // P0-52①：owner 浮层（下拉/菜单/弹窗）重绘于画布子视口之上
         m_ui->Present();
+        pumpPreviewWindow(delta);   // 预览独立窗体（多实例泵；含关闭回收）
 
         if (frame == 0) {
             std::printf("[App] skeleton running (1920x1080)\n");

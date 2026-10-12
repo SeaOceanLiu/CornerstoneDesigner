@@ -22,11 +22,13 @@
 
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <cctype>
 #include <cstring>
 #include <algorithm>
 #include <chrono>
 #include <vector>
+#include <filesystem>
 
 namespace {
 
@@ -102,10 +104,29 @@ constexpr unsigned char kGridLineG = 0xB0;
 constexpr unsigned char kGridLineB = 0xB0;
 constexpr unsigned char kGridLineA = 0xC0;
 
-// 网格瓦片：tilePx×tilePx，白底 + 浅灰点线（每 cellPx 一条，左上边界对齐）。
+// 网格瓦片：tilePx×tilePx，底色=画布（Bench）背景色 + 对比色点线（每 cellPx 一条，
+// 左上边界对齐）。线色按底色亮度取对比（浅底加深 / 深底提亮 / 透明底中性灰）——
+// 任意底色下网格可见（用户需求：画布使用设置的背景色且网格不消失）。
 // 平铺后线在 0, cellPx, 2*cellPx… 处连续；瓦片右/下边缘不画线（由下一瓦片左/上边界提供）。
-// showLines=false 生成纯白瓦片（网格开关经瓦片重生成实现——白底/背景色保持）。
-std::vector<unsigned char> buildGridTilePng(int tilePx, int cellPx, bool showLines) {
+// showLines=false 生成纯底色瓦片（网格开关经瓦片重生成实现）。
+std::vector<unsigned char> buildGridTilePng(int tilePx, int cellPx, bool showLines,
+                                            unsigned char br, unsigned char bg,
+                                            unsigned char bb, unsigned char ba) {
+    // 对比线色：相对亮度 0.299R+0.587G+0.114B
+    const float lum = (0.299f * br + 0.587f * bg + 0.114f * bb) / 255.0f;
+    unsigned char lr, lg, lb;
+    if (ba == 0) {                 // 透明底：中性灰（可见）
+        lr = 0x9A; lg = 0x9A; lb = 0x9A;
+    } else if (lum > 0.5f) {       // 浅底 → 同色系加深（55%）
+        lr = (unsigned char)(br * 0.55f);
+        lg = (unsigned char)(bg * 0.55f);
+        lb = (unsigned char)(bb * 0.55f);
+    } else {                       // 深底 → 向白混合 55%（提亮）
+        lr = (unsigned char)(br + (255 - br) * 0.55f);
+        lg = (unsigned char)(bg + (255 - bg) * 0.55f);
+        lb = (unsigned char)(bb + (255 - bb) * 0.55f);
+    }
+    const unsigned char la = (ba == 0) ? 0xFF : (ba < 200 ? 200 : ba);   // 线不透明度下限（半透明底可读）
     std::vector<unsigned char> raw;
     raw.reserve((size_t)tilePx * ((size_t)tilePx * 4 + 1));
     for (int y = 0; y < tilePx; ++y) {
@@ -114,10 +135,10 @@ std::vector<unsigned char> buildGridTilePng(int tilePx, int cellPx, bool showLin
         for (int x = 0; x < tilePx; ++x) {
             const bool line = showLines && (yLine || (x % cellPx == 0));
             if (line && (x + y) % kGridDotStep == 0) {   // 沿线点阵（交点处必有）
-                raw.push_back(kGridLineR); raw.push_back(kGridLineG);
-                raw.push_back(kGridLineB); raw.push_back(kGridLineA);
+                raw.push_back(lr); raw.push_back(lg);
+                raw.push_back(lb); raw.push_back(la);
             } else {
-                raw.push_back(0xFF); raw.push_back(0xFF); raw.push_back(0xFF); raw.push_back(0xFF);
+                raw.push_back(br); raw.push_back(bg); raw.push_back(bb); raw.push_back(ba);
             }
         }
     }
@@ -148,8 +169,10 @@ constexpr float kPropLblH = 22.0f;             // 描述行高
 constexpr float kPropCtlH = 26.0f;             // 控件行高
 constexpr float kPropGapLbl = 2.0f;            // 描述行与控件行间距
 constexpr float kPropRowGap = 8.0f;            // 行组间距
-constexpr float kPropTextAreaH = 40.0f;        // 文本输入行高（容两行，超出内部滚动）
-constexpr float kPropItemsH = 72.0f;           // 结构化 items 行高（容三行，超出内部滚动）
+// 属性 TextArea 高度（保证≥3 整行可视——含内部滚动条出现时的扣减）：
+// 文本行高 ≈22px（16 号字号实测）+ 上下边距 ≈8 + 横/竖滚动条厚 16 → 3×22+8+16 = 90
+constexpr float kPropTextAreaH = 92.0f;        // 普通文本行：≥3 整行（滚动条出现仍满足）
+constexpr float kPropItemsH = 112.0f;          // 结构化 items 行：≥4 整行（多行数据编辑）
 constexpr float kPropCheckH = 24.0f;           // 勾选行高
 constexpr float kPropInsetX = 2.0f;            // 行控件左边距
 constexpr float kPropRowInset = 16.0f;         // 行宽左右留白合计（右侧滚动条通道）
@@ -219,6 +242,7 @@ bool isPathLikeProp(const std::string& p) {
     return p == "image" || p == "image-resource" ||
            p == "normal-image" || p == "hover-image" ||
            p == "pressed-image" || p == "disabled-image" ||
+           p == "path" ||      // P0-24：引擎 "path" ≡ "animation" 别名（Animation 资源引用读回兜底）
            p == "animation" || p == "file" || p == "font-file";
 }
 
@@ -295,7 +319,6 @@ bool CanvasPane::Create(UICornerstone::UICornerstone& ui, Control canvasArea, fl
     // 顺序关键：先注册瓦片资源（触发 owner 内存 provider 创建并挂载），
     // 再创建子视口（视口初始化时继承 owner 的 provider 指针）。
     registerGridTile();
-    registerFonts();       // 视口内 Label/Button 的字体解析依赖内存 provider
     refreshLayout();
     createGridImage();
     applyCanvasSize();     // 设计画布尺寸（基准窗体）→ bench 固定 1280×800
@@ -307,6 +330,7 @@ bool CanvasPane::Create(UICornerstone::UICornerstone& ui, Control canvasArea, fl
                 onWheel(e.GetValueChanged());
             });
     }
+    resetUndo();   // F2.5：初始基线（空画布）——保证首个操作（如放置）可撤销
     return true;
 }
 
@@ -324,6 +348,9 @@ void CanvasPane::ProcessViewportEvents() {
 }
 void CanvasPane::UpdateViewport(float deltaSeconds) {
     if (m_viewport) m_viewport->Update((double)deltaSeconds);
+    // 控件 id 行：空闲到期提交（编辑完成再改名——防逐键 churn）
+    if (m_idRenamePending && std::chrono::steady_clock::now() >= m_idRenameDeadline)
+        commitPendingIdRename();
 }
 void CanvasPane::RenderViewport() {
     if (m_viewport) m_viewport->Render();
@@ -397,6 +424,7 @@ void CanvasPane::SetCanvasSize(float w, float h) {
     m_designW = w;
     m_designH = h;
     applyCanvasSize();
+    commitUndo("canvas");   // F2.5：画布尺寸为独立撤销步
 }
 
 // 状态栏鼠标画布坐标（逻辑坐标；视口外 "-"）——取整去抖，仅变化时写入。
@@ -483,7 +511,9 @@ void CanvasPane::registerGridTile() {
     if (tileCells > kTileCells) tileCells = kTileCells;
     int tilePx = cellPx * tileCells;
 
-    std::vector<unsigned char> png = buildGridTilePng(tilePx, cellPx, m_gridVisible);
+    std::vector<unsigned char> png = buildGridTilePng(tilePx, cellPx, m_gridVisible,
+                                                      m_benchBg.r, m_benchBg.g,
+                                                      m_benchBg.b, m_benchBg.a);
     if (png.empty()) return;
     if (!m_ui->RegisterResource("dc_canvas_grid", png.data(), png.size())) {
         std::printf("[CanvasPane] RegisterResource grid tile failed\n");
@@ -519,40 +549,23 @@ void CanvasPane::rebuildGridTile() {
         createGridImage();   // 首次：创建（此时位于底层，先于放置控件）
 }
 
-// 字体注册：视口实例的 provider 继承自 owner 的内存 provider（未命中不做文件系统
-// 回退），placed 控件的字体文件须显式注册才能解析。
-void CanvasPane::registerFonts() {
-    if (!m_ui || m_resourceRoot.empty()) return;
-    static const char* kFonts[] = {
-        "fonts/HarmonyOS_Sans_SC_Regular.ttf",
-        "fonts/HarmonyOS_Sans_SC_Thin.ttf",
-        "fonts/Asul-Bold.ttf",
-        "fonts/MapleMono-NF-CN-Regular.ttf",
-        "fonts/Muyao-Softbrush.ttf",
-        "fonts/Quando-Regular.ttf",
-    };
-    // 引擎 P0-54 已修复（统一相对路径约定）——仅注册相对键（Label/状态栏/列表/菜单/
-    // 页签/树 全部按 "fonts/…" 读取）。
-    for (const char* rel : kFonts) {
-        const std::string full = m_resourceRoot + "/" + rel;
-        FILE* f = fopen(full.c_str(), "rb");
-        if (!f) continue;   // 缺失字体跳过（引擎回落内置默认）
-        fseek(f, 0, SEEK_END);
-        long size = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        if (size > 0) {
-            std::vector<unsigned char> buf((size_t)size);
-            size_t rd = fread(buf.data(), 1, (size_t)size, f);
-            if (rd == (size_t)size)
-                m_ui->RegisterResource(rel, buf.data(), buf.size());
-        }
-        fclose(f);
-    }
-}
-
 // 放置控件默认样式：白纸上可见（浅色面 + 深色字 + 描边）。
 // 编程创建的控件不带主题样式：Button 默认面色透明（露出视口深底）、Hover 蓝（引擎缺省）。
-void CanvasPane::styleControl(const std::string& toolboxId, Control ctl) {
+// UIColor → "#RRGGBBAA"（模型颜色记录用；与引擎布局 JSON 1:1）
+static std::string uiColorHex(const UIColor& c) {
+    char b[12];
+    std::snprintf(b, sizeof(b), "#%02X%02X%02X%02X", c.r, c.g, c.b, c.a);
+    return b;
+}
+// 模型颜色记录：extended["colors"][组] = {normal/hover/pressed/disabled}（引擎兼容形态）
+static void recordModelColors(ControlModel& model, const char* grp, const UIStateColor& sc) {
+    model.props.extended["colors"][grp] = {
+        {"normal", uiColorHex(sc.normal)}, {"hover", uiColorHex(sc.hover)},
+        {"pressed", uiColorHex(sc.pressed)}, {"disabled", uiColorHex(sc.disabled)},
+    };
+}
+
+void CanvasPane::styleControl(const std::string& toolboxId, Control ctl, ControlModel& model) {
     const UIStateColor face{ UIColor{0xFA, 0xFA, 0xFA, 255}, UIColor{0xE8, 0xF0, 0xFE, 255},
                              UIColor{0xD8, 0xD8, 0xD8, 255}, UIColor{0xF0, 0xF0, 0xF0, 255} };
     const UIStateColor border{ UIColor{0xB0, 0xB0, 0xB0, 255}, kPropPanelBorderFocus,
@@ -567,17 +580,27 @@ void CanvasPane::styleControl(const std::string& toolboxId, Control ctl) {
         ctl.SetStateColor(PropertyNames::kBorder, border);
         ctl.SetStateColor(PropertyNames::kText, text);
         ctl.SetStateColor(PropertyNames::kTextShadow, shadow);
+        recordModelColors(model, "background", face);
+        recordModelColors(model, "border", border);
+        recordModelColors(model, "text", text);
+        recordModelColors(model, "text-shadow", shadow);
     } else if (toolboxId == "tTabs") {
         // TabControl：页签文字/背景/边框四态显式（引擎缺省 hover 文字色偏深——
         // 在窗体/深色背景上不可读；hover 与 normal 同色）
         ctl.SetStateColor(PropertyNames::kText, text);
         ctl.SetStateColor(PropertyNames::kBackground, face);
         ctl.SetStateColor(PropertyNames::kBorder, border);
+        recordModelColors(model, "text", text);
+        recordModelColors(model, "background", face);
+        recordModelColors(model, "border", border);
     } else if (toolboxId == "tLabel" || toolboxId == "tCheck" ||
                toolboxId == "tNum" || toolboxId == "tCombo") {
         ctl.SetStateColor(PropertyNames::kText, text);
-        if (toolboxId == "tCheck")
+        recordModelColors(model, "text", text);
+        if (toolboxId == "tCheck") {
             ctl.SetStateColor(PropertyNames::kBorder, border);
+            recordModelColors(model, "border", border);
+        }
     }
 }
 
@@ -819,7 +842,8 @@ static std::string controlTypeOf(const std::string& tb) {
 // P1-a/P1-b：容器类控件（内容区可承载子控件——WinFrame 严格 ClientPanel）
 static bool isContainerType(const std::string& type) {
     return type == "panel" || type == "win-frame" ||
-           type == "popup" || type == "dialog";
+           type == "popup" || type == "dialog" ||
+           type == "tab-control";   // 放置目标 = 当前页 Panel（页 Panel 设计器自管）
 }
 
 // 视口内按工具箱 id 创建控件（坐标为视口局部物理像素）。
@@ -831,7 +855,10 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
     else if (tb == "tLabel")  ctl = m_viewport->CreateLabel(cap, 14.0f, x, y, w, h);
     else if (tb == "tCheck")  ctl = m_viewport->CreateCheckBox(cap, x, y, w, h);
     else if (tb == "tEdit")   ctl = m_viewport->CreateEditBox(x, y, w, h);
-    else if (tb == "tArea")   ctl = m_viewport->CreateTextArea(x, y, w, h);
+    else if (tb == "tArea") {
+        ctl = m_viewport->CreateTextArea(x, y, w, h);
+        if (ctl.IsValid()) ctl.SetBool(PropertyNames::kAutoScroll, false);   // P0-68：设计控件编辑式光标跟随
+    }
     else if (tb == "tBar")    ctl = m_viewport->CreateProgressBar(x, y, w, h);
     else if (tb == "tSlider") ctl = m_viewport->CreateSlider(x, y, w, h, kSliderMin, kSliderMax, kSliderDefault);
     else if (tb == "tScroll") ctl = m_viewport->CreateScrollBar(x, y, w, h, 0);
@@ -884,15 +911,24 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
         }
     } else if (tb == "tStatus")
         ctl = m_viewport->CreateStatusBar(x, y, w, h);
-    else if (tb == "tImage")
-        ctl = m_viewport->CreateImage("provider:dc_canvas_grid", x, y, w, h);
-    else if (tb == "tAni") {
+    else if (tb == "tImage") {
+        // 缺省样例图（引擎 assets 随构建拷贝；此前用画布网格纹理 provider:dc_canvas_grid
+        // 系设计器内部资源——导出后在预览/应用侧无法解析）。**存在性守卫**：加载路径
+        // 的模型已有 image（用户值）时不得覆盖。
+        const std::string img = model.props.extended.value("image", "assets/images/bitmap1.bmp");
+        ctl = m_viewport->CreateImage(img, x, y, w, h);
+        if (!model.props.extended.contains("image")) model.props.extended["image"] = img;
+    } else if (tb == "tAni") {
         // 缺省动画（assets 必备文件）：创建即加载——空路径创建引擎不支持
-        // （prepare 对未加载 throw 回滚，引擎清单 P0-25）；用户经 path 行换动画
-        ctl = m_viewport->CreateAnimation(
-            "assets/animations/rotateBtn/rotateBtn.jsonc", x, y, w, h);
+        // （prepare 对未加载 throw 回滚，引擎清单 P0-25）；用户经 path 行换动画。
+        // **存在性守卫**：加载路径的模型已有 path（用户值）时不得覆盖。
+        const std::string anim = model.props.extended.value(
+            "path", "assets/animations/rotateBtn/rotateBtn.jsonc");
+        ctl = m_viewport->CreateAnimation(anim, x, y, w, h);
         // 放置即播放（预览意图）；此后 path 换动画由引擎 wasPlaying 语义保持状态
         if (ctl.IsValid()) ctl.SetBool(PropertyNames::kPlaying, 1);
+        if (!model.props.extended.contains("path")) model.props.extended["path"] = anim;
+        if (!model.props.extended.contains("playing")) model.props.extended["playing"] = true;
     } else ctl = m_viewport->CreatePanel(x, y, w, h);   // 占位类型
     return ctl;
 }
@@ -960,7 +996,7 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
     // 逻辑 rect 直建（bench scale=zoom 负责渲染缩放）
     Control ctl = createViewportControl(toolboxId, x, y, w, h, *model);
     if (!ctl.IsValid()) return;
-    styleControl(toolboxId, ctl);   // 编程创建无主题样式：显式浅色面/深字/描边
+    styleControl(toolboxId, ctl, *model);   // 编程创建无主题样式：显式浅色面/深字/描边（同步模型）
 
     // P1-b 容器挂载：AddChild 到容器 + 坐标换算为容器局部（钳制内容区，rect 记账同步）；
     // 双击（非拖放）落容器 → 内容区居中（显式目标容器的直觉落位）
@@ -972,9 +1008,14 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
         if (ly > contentRect.h - h) ly = contentRect.h - h;
         if (lx < 0) lx = 0;
         if (ly < 0) ly = 0;
-        m_ui->AddChild(targetParent, ctl);
+        m_viewport->AddChild(targetParent, ctl);
         ctl.SetRect(lx, ly, w, h);
         model->props.rect = { lx, ly, w, h };
+        // TabControl 目标：实际挂载父 = 当前页 Panel——记账 parentId 同步解析（否则
+        // 序列化丢页内子树）
+        if (PlacedControl* tp = placedById(targetParentId))
+            if (tp->model->props.type == "tab-control")
+                targetParentId = resolvedParentIdOf(targetParentId);
         refreshPlaceTargetHint();   // 通道①命中已更新目标 → 状态栏同步
         syncModelsFromEngine();     // P0-59：容器挂载触发重排（布局容器）——同步全部模型
     }
@@ -982,6 +1023,19 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
     // P0-59：引擎 id 表注册（child-id 定位前提）——必须注册到**子视口实例**的 id 表
     // （根 bench 的 findChildById 查其自身 context；主实例注册查不到）
     if (m_viewport) m_viewport->SetControlId(ctl, m_items.back().model->props.id);
+    // 用户需求：StatusBar 缺省底拉伸（贴父容器/根底缘、水平拉伸）——顶层首次锚定自动切根布局
+    if (toolboxId == "tStatus") {
+        PlacedControl& pc = m_items.back();
+        Control par = anchorParentOf(pc);
+        if (par.IsValid()) {
+            if (pc.parentId.empty() && par.GetEnum(PropertyNames::kLayout) != "anchor")
+                par.SetEnum(PropertyNames::kLayout, "anchor");
+            par.SetString(PropertyNames::kChildTargetId, pc.model->props.id);
+            par.SetEnum(PropertyNames::kChildAnchor, "bottom-stretch");
+            pc.model->props.extended["anchor"] = "bottom-stretch";
+            syncModelsFromEngine();   // P0-60：锚点 setter 即时重排——同步全部模型
+        }
+    }
     refreshStatusRight();   // 状态栏控件数同步
     std::printf("[Canvas] placed %s id=%s at (%.0f,%.0f)\n",
                 m_items.back().model->props.type.c_str(),
@@ -998,6 +1052,7 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
     // 选中新控件（HandleControl setTarget 重新附加，alwaysOnTop 置顶）
     m_selectedId.clear();
     selectItem(m_items.back().model->props.id);
+    commitUndo();   // F2.5：放置为独立撤销步
 }
 
 bool CanvasPane::hitTest(float cx, float cy, std::string& outId) {
@@ -1037,13 +1092,16 @@ void CanvasPane::selectItem(const std::string& id) {
 
 // P2 多选：选择集统一入口（去重/过滤失效 id；末位=主选）——手柄/外框/面板/树/对齐启用同步。
 void CanvasPane::setSelection(std::vector<std::string> ids) {
+    commitPendingIdRename();   // 切换选中前先提交未完成的 id 编辑
     std::vector<std::string> norm;
     for (const auto& id : ids) {
         if (id.empty() || !findModel(id)) continue;
         if (std::find(norm.begin(), norm.end(), id) != norm.end()) continue;
         norm.push_back(id);
     }
-    if (norm == m_selIds) return;
+    const bool benchWas = m_benchSelected;
+    m_benchSelected = false;   // 控件选择/清空 → 画布取消选中（互斥）
+    if (norm == m_selIds && !benchWas) return;
     m_selIds = std::move(norm);
     m_selectedId = m_selIds.empty() ? std::string() : m_selIds.back();
 
@@ -1056,7 +1114,24 @@ void CanvasPane::setSelection(std::vector<std::string> ids) {
     fillPropertyPanel();
     syncTreeSelection();
     rebuildDynamicRows();
+    refreshEventPanel();
     if (m_clickHandler) m_clickHandler(m_selectedId, 0, 0);
+}
+
+// 选中画布（Bench）——空白单击路径；与控件选择互斥（setSelection 清 bench 标记）。
+void CanvasPane::selectBench() {
+    commitPendingIdRename();   // 切换画布前先提交未完成的 id 编辑
+    m_benchSelected = true;
+    m_selIds.clear();
+    m_selectedId.clear();
+    detachSelHandle();
+    updateSelOutlines();
+    if (m_alignCombo.IsValid()) m_alignCombo.SetBool(PropertyNames::kEnabled, false);
+    fillPropertyPanel();
+    syncTreeSelection();
+    rebuildDynamicRows();
+    refreshEventPanel();
+    if (m_clickHandler) m_clickHandler(std::string(), 0, 0);
 }
 
 // P2 多选：Ctrl+单击切换成员。
@@ -1167,7 +1242,7 @@ void CanvasPane::finalizeBand(float cx, float cy) {
     if (!dragged) {
         if (m_bandAdditive) return;                  // Ctrl 空白点击：选择不变
         if (!bandRoot.empty()) selectItem(bandRoot); // 容器内容区单击 → 选中容器本体
-        else selectItem("");                         // 画布空白单击：清空
+        else selectBench();                          // 画布空白单击：选中画布（Bench）
         return;
     }
     auto isDescendantOf = [&](const std::string& id, const std::string& root) -> bool {
@@ -1352,6 +1427,7 @@ void CanvasPane::AlignSelection(int mode) {
         }
         updateSelOutlines();
         fillPropertyPanel();
+        commitUndo();   // F2.5：等宽/等高为独立撤销步
         return;
     }
 
@@ -1398,6 +1474,7 @@ void CanvasPane::AlignSelection(int mode) {
         }
         updateSelOutlines();
         fillPropertyPanel();
+        commitUndo();   // F2.5：分布为独立撤销步
         return;
     }
 
@@ -1427,6 +1504,7 @@ void CanvasPane::AlignSelection(int mode) {
     }
     updateSelOutlines();
     fillPropertyPanel();
+    commitUndo();   // F2.5：对齐为独立撤销步
 }
 
 // 选中变化 → 属性面板回填（m_propSync 抑制回写）；未选中清零。
@@ -1434,6 +1512,26 @@ void CanvasPane::AlignSelection(int mode) {
 void CanvasPane::fillPropertyPanel() {
     if (!m_propX.IsValid()) return;
     m_propSync = true;
+    if (m_propVisible.IsValid()) m_propVisible.SetBool(PropertyNames::kVisible, true);   // 画布选中曾隐藏 → 恢复
+    if (m_propEnabled.IsValid()) m_propEnabled.SetBool(PropertyNames::kVisible, true);
+    if (m_benchSelected) {
+        // 画布（Bench）：X/Y 无意义（只读 0）；W/H = 设计画布尺寸（可编辑 → SetCanvasSize）；
+        // caption/颜色/可见/启用 隐藏（画布行在动态区）
+        m_propX.SetBool(PropertyNames::kEnabled, false);
+        m_propY.SetBool(PropertyNames::kEnabled, false);
+        m_propW.SetBool(PropertyNames::kEnabled, true);
+        m_propH.SetBool(PropertyNames::kEnabled, true);
+        m_propX.SetFloat(PropertyNames::kValue, 0);
+        m_propY.SetFloat(PropertyNames::kValue, 0);
+        m_propW.SetFloat(PropertyNames::kValue, m_designW);
+        m_propH.SetFloat(PropertyNames::kValue, m_designH);
+        if (m_propCaption.IsValid()) m_propCaption.SetBool(PropertyNames::kVisible, false);
+        if (m_propColor.IsValid()) m_propColor.SetBool(PropertyNames::kVisible, false);
+        if (m_propVisible.IsValid()) m_propVisible.SetBool(PropertyNames::kVisible, false);
+        if (m_propEnabled.IsValid()) m_propEnabled.SetBool(PropertyNames::kVisible, false);
+        m_propSync = false;
+        return;
+    }
     if (m_selIds.size() > 1) {
         float bx = 0, by = 0, bw = 0, bh = 0;
         selectionGlobalBBox(bx, by, bw, bh);
@@ -1514,6 +1612,7 @@ void CanvasPane::applyModelRect(ControlModel* m) {
     if (!m) return;
     if (PlacedControl* pc = placedById(m->props.id))
         pc->ctl.SetRect(m->props.rect.x, m->props.rect.y, m->props.rect.w, m->props.rect.h);
+    commitUndo("rect:" + m->props.id);   // F2.5：X/Y/W/H NUD（0.7s 合并）
 }
 
 void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
@@ -1528,24 +1627,37 @@ void CanvasPane::SetPropertyControls(Control x, Control y, Control w, Control h,
     m_propVisible.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
         if (m_propSync) return;
         const bool v = e.GetCheckState() != 0;
-        for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
-            if (PlacedControl* pc = placedById(id))
-                if (pc->ctl.IsValid()) pc->ctl.SetBool(PropertyNames::kVisible, v);
+        for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中
+            PlacedControl* pc = placedById(id);
+            if (!pc || !pc->ctl.IsValid()) continue;
+            pc->ctl.SetBool(PropertyNames::kVisible, v);
+            pc->model->props.visible = v;   // 模型同步（保存数据源）
+        }
+        commitUndo("b:visible");   // F2.5：可见性勾选
     });
     m_propEnabled.SetCallback(PropertyNames::kEventCheckChanged, [this](const Event& e) {
         if (m_propSync) return;
         const bool v = e.GetCheckState() != 0;
-        for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
-            if (PlacedControl* pc = placedById(id))
-                if (pc->ctl.IsValid()) pc->ctl.SetBool(PropertyNames::kEnabled, v);
+        for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中
+            PlacedControl* pc = placedById(id);
+            if (!pc || !pc->ctl.IsValid()) continue;
+            pc->ctl.SetBool(PropertyNames::kEnabled, v);
+            pc->model->props.extended["enabled"] = v;   // 模型同步（保存数据源）
+        }
+        commitUndo("b:enabled");   // F2.5：启用勾选
     });
     // NUD 事件载荷为 Float（GetValueChanged）；lambda 按值捕获（不可悬空）
     auto bindRect = [this](Control nud, int which) {
         nud.SetCallback(PropertyNames::kEventValueChanged, [this, which](const Event& e) {
             if (m_propSync) return;
+            const float v = e.GetValueChanged();
+            if (m_benchSelected) {   // 画布：W/H 行 = 设计画布尺寸
+                if (which == 2) SetCanvasSize(v, m_designH);
+                else if (which == 3) SetCanvasSize(m_designW, v);
+                return;
+            }
             ControlModel* m = findModel(m_selectedId);
             if (!m) return;
-            const float v = e.GetValueChanged();
             if (which == 0) m->props.rect.x = v;
             else if (which == 1) m->props.rect.y = v;
             else if (which == 2) m->props.rect.w = v;
@@ -1624,10 +1736,12 @@ void CanvasPane::applyCaptionTo(const std::string& id, const std::string& v) {
             ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
         if (h) {
             m_viewport->FromHandle(h).SetString(PropertyNames::kCaption, v);
+            commitUndo("t:caption");   // F2.5：caption 编辑（0.7s 合并）
             return;
         }
     }
     pc->ctl.SetString(PropertyNames::kCaption, v);
+    commitUndo("t:caption");   // F2.5：caption 编辑（0.7s 合并）
 }
 
 // P2 多选：颜色槽写回单个目标——text/text-shadow 组经内部 caption/title Label 直控
@@ -1639,17 +1753,25 @@ void CanvasPane::writeColorSlotTo(const std::string& id, const std::string& prop
     if (!m || !pc || !pc->ctl.IsValid()) return;
     char hex8[12];
     std::snprintf(hex8, sizeof(hex8), "#%02X%02X%02X%02X", c.r, c.g, c.b, c.a);
-    m->props.extended[prop + "-color"] = hex8;
+    // 引擎兼容颜色形态：extended["colors"][组][态]（与布局 JSON 1:1——保存/导出零转换）
+    const std::string state = (prop.size() > grpName.size() && prop[grpName.size()] == '.')
+        ? prop.substr(grpName.size() + 1) : "normal";
+    m->props.extended["colors"][grpName][state] = hex8;
     if (grpName == "text" || grpName == "text-shadow") {
         const char* capKey = (m->props.type == "win-frame")
             ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel;
         void* capH = pc->ctl.GetPtr(capKey);
         if (capH) {
+            // 宿主级同步：caption 重建按宿主状态色重着色（Button::rebuildCaption 用
+            // m_textColor）——仅设内部 Label 会被重建覆盖（撤销/重开后文字变灰）
+            pc->ctl.SetColor(prop.c_str(), c);
             m_viewport->FromHandle(capH).SetColor(prop.c_str(), c);
+            commitUndo("c:" + grpName);   // F2.5：颜色编辑（同组 0.7s 合并——多选批量=一步）
             return;
         }
     }
     pc->ctl.SetColor(prop.c_str(), c);
+    commitUndo("c:" + grpName);   // F2.5：颜色编辑（同组 0.7s 合并——多选批量=一步）
 }
 
 // P2 多选：string 行写回单个目标——check-box/win-frame 内部 Label 直控；
@@ -1660,16 +1782,18 @@ void CanvasPane::writeStringPropTo(const std::string& id, const std::string& pro
     PlacedControl* pc = placedById(id);
     if (!m || !pc || !pc->ctl.IsValid()) return;
     const std::string& tp = m->props.type;
+    m->props.extended[prop] = v;   // 模型同步（保存数据源——全部字符串键）
     if (tp == "check-box" || tp == "win-frame") {
         void* h = pc->ctl.GetPtr(tp == "win-frame"
             ? PropertyNames::kTitleLabel : PropertyNames::kCaptionLabel);
         if (h) {
             m_viewport->FromHandle(h).SetString(PropertyNames::kCaption, v);
+            commitUndo("t:" + prop);   // F2.5：文本编辑（同键 0.7s 合并——多选批量=一步）
             return;
         }
     }
-    if (isPathLikeProp(prop)) m->props.extended[prop] = v;
     pc->ctl.SetString(prop.c_str(), v);
+    commitUndo("t:" + prop);   // F2.5：文本编辑（同键 0.7s 合并——多选批量=一步）
 }
 
 static UIColor hexToColor(const std::string& hex);   // 定义见后（拖动恢复段）
@@ -1697,163 +1821,742 @@ void CanvasPane::applyComboItemsText(ControlModel& m, const std::string& text) {
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& l : labels) arr.push_back({ {"label", l}, {"value", l} });
     m.props.extended["items"] = std::move(arr);
-    PlacedControl* pc = placedById(m.props.id);
-    if (!pc || !pc->ctl.IsValid() || !m_ui) return;
-    m_ui->ComboBoxClearItems(pc->ctl);
-    for (const auto& l : labels) m_ui->ComboBoxAddItem(pc->ctl, l, l);
+    syncComboItems(m);
+    commitUndo("struct:" + m.props.id);   // F2.5：combo items 编辑（0.7s 合并）
 }
 
-// 结构化：status-bar items 文本 → 模型
-// （一行一段"文本|#文字色|#背景色|字号|#阴影色|偏移x|偏移y"，尾部可省）
-// + 引擎同步（按模型旧 id 移除 + 重新添加 + P0-55 段色 + P0-58 段级字号/阴影）。
+// 结构化：combo-box items 模型 → 引擎（ClearItems + AddItem；加载/打开路径复用）。
+void CanvasPane::syncComboItems(ControlModel& m) {
+    PlacedControl* pc = placedById(m.props.id);
+    if (!pc || !pc->ctl.IsValid() || !m_ui) return;
+    m_viewport->ComboBoxClearItems(pc->ctl);
+    const nlohmann::json items = m.props.extended.value("items", nlohmann::json::array());
+    if (!items.is_array()) return;
+    for (const auto& it : items) {
+        std::string lab, val;
+        if (it.is_object()) { lab = it.value("label", ""); val = it.value("value", lab); }
+        else if (it.is_string()) lab = val = it.get<std::string>();
+        if (!lab.empty()) m_viewport->ComboBoxAddItem(pc->ctl, lab, val);
+    }
+}
+
+static std::vector<std::string> splitUnescaped(const std::string& s, char sep);   // 定义见后（行式读取段）
+static std::string fieldUnescape(const std::string& s, const char* special);
+static std::string fieldEscape(const std::string& s, const char* special);
+
+// 统一结构化 item 属性（各行式编辑器共用）：
+// 背景色 → 字体色 → 字号 → 字体名 → 阴影色 → 偏移x → 偏移y
+// （严格按序、空字段跳过、尾部可省；类型不符=忽略该字段）
+struct StructItemAttrs {
+    std::string bg, tc, fontName, sc;   // '#RRGGBB[AA]' / 字体枚举 token
+    std::string hoverBg;                // P0-64：显式悬停背景色（hb# 前缀；仅悬停态）
+    int fontSize = 0;                   // 0 = 继承
+    float ox = 1.0f, oy = 1.0f;
+    float radius = 0.0f;                // P0-72①：菜单面板阴影半径（r# 前缀）
+    bool hasRadius = false;             // 显式给出（含 0——r#0 = 去掉阴影，须往返保留）
+    bool empty() const {
+        return bg.empty() && tc.empty() && fontName.empty() && sc.empty() &&
+               hoverBg.empty() && fontSize == 0 && !hasRadius;
+    }
+};
+// 引擎当前支持的字体 token（FontName 枚举 6 项；schema 枚举的超集暂不支持）。
+static bool isSupportedFontToken(const std::string& t) {
+    static const char* const kFonts[] = {
+        "asul-bold", "harmonyos-sans-sc-regular", "harmonyos-sans-sc-thin",
+        "maplemono-nf-cn-regular", "muyao-softbrush", "quando-regular",
+    };
+    for (const char* f : kFonts)
+        if (_stricmp(t.c_str(), f) == 0) return true;
+    return false;
+}
+
+// f = 按 '@' 拆分的字段序列；off = 属性起始下标（文本字段之后）。
+// 解析：'#色' 按序填 背景→字体色→阴影色（空字段=跳过色位，封顶阴影槽）；
+// 数字按序填 字号→偏移x→偏移y；其余字符串=字体名——类型容忍（误置槽位自动归位）。
+static StructItemAttrs parseStructAttrs(const std::vector<std::string>& f, size_t off) {
+    StructItemAttrs a;
+    int cpos = 0, num = 0;
+    for (size_t i = off; i < f.size(); ++i) {
+        const std::string& s = f[i];
+        if (s.empty()) {
+            if (cpos < 2) ++cpos;
+            continue;
+        }
+        if (s.size() >= 9 && s[0] == 'h' && s[1] == 'b' && s[2] == '#') {
+            a.hoverBg = s.substr(2);   // 键前缀：悬停背景色（P0-64）
+            continue;
+        }
+        if (s.size() >= 3 && s[0] == 'r' && s[1] == '#') {
+            try { a.radius = std::stof(s.substr(2)); } catch (...) { a.radius = 0.0f; }   // 菜单面板阴影半径（P0-72①）
+            if (a.radius < 0.0f) a.radius = 0.0f;
+            a.hasRadius = true;   // r#0 显式（去掉阴影）——往返保留
+            continue;
+        }
+        if (s.size() >= 8 && s[1] == '#' && (s[0] == 'b' || s[0] == 't' || s[0] == 's')) {
+            const std::string c = s.substr(1);   // 键前缀色（消歧义，免占位）：b#背景 t#字体色 s#阴影
+            if (s[0] == 'b') a.bg = c;
+            else if (s[0] == 't') a.tc = c;
+            else a.sc = c;
+            continue;
+        }
+        if (s.size() >= 7 && s[0] == '#') {
+            if (cpos == 0) a.bg = s;
+            else if (cpos == 1) a.tc = s;
+            else if (cpos == 2) a.sc = s;
+            if (cpos < 3) ++cpos;
+        } else if (std::isdigit((unsigned char)s[0]) ||
+                   ((s[0] == '-' || s[0] == '+') && s.size() > 1 &&
+                    std::isdigit((unsigned char)s[1]))) {
+            if (num == 0) {
+                try { a.fontSize = std::stoi(s); } catch (...) { a.fontSize = 0; }
+                if (a.fontSize < 0) a.fontSize = 0;
+                ++num;
+            } else if (num == 1) {
+                try { a.ox = std::stof(s); } catch (...) { a.ox = 1.0f; }
+                ++num;
+            } else if (num == 2) {
+                try { a.oy = std::stof(s); } catch (...) { a.oy = 1.0f; }
+                ++num;
+            }
+        } else if (a.fontName.empty()) {
+            a.fontName = s;
+        }
+    }
+    return a;
+}
+// 输出 item 属性到行式文本：色位仅在需要保持后续槽位时输出空占位；
+// 阴影存在而字号未设 → 输出 "0" 占位（继承字号，保证偏移归位）。
+static void appendStructAttrs(std::string& seg, const StructItemAttrs& a) {
+    const bool hasSc = !a.sc.empty();
+    std::vector<std::string> f;
+    if (!a.bg.empty()) f.push_back(a.bg);
+    else if (!a.tc.empty() || hasSc) f.push_back("");      // 占位：保持字体色槽位
+    if (!a.tc.empty()) f.push_back(a.tc);
+    else if (hasSc) f.push_back("");                      // 占位：保持阴影色槽位
+    if (a.fontSize > 0) f.push_back(std::to_string(a.fontSize));
+    else if (hasSc) f.push_back("0");                     // 占位：保持偏移数字槽位
+    if (!a.fontName.empty()) f.push_back(a.fontName);
+    if (hasSc) {
+        f.push_back(a.sc);
+        f.push_back(std::to_string((int)a.ox));
+        f.push_back(std::to_string((int)a.oy));
+    }
+    for (const auto& v : f) { seg += "@"; seg += v; }
+    if (!a.hoverBg.empty()) { seg += "@hb#"; seg += a.hoverBg; }   // 键前缀：悬停背景色
+    if (a.hasRadius) {                                            // 键前缀：菜单面板阴影半径（P0-72①；0=显式去掉）
+        seg += "@r#";
+        seg += std::to_string((int)a.radius);
+    }
+}
+
+// 结构化：status-bar items 文本 → 模型（一行一段"文本@属性..."；统一属性序）
+// + 引擎同步（按模型旧 id 移除 + 重新添加 + P0-55 段色 + P0-58 段级字号/阴影
+// + P0-63⑤ 段级字体名）。
 void CanvasPane::applyStatusBarItemsText(ControlModel& m, const std::string& text) {
     const std::vector<std::string> lines = splitNonEmptyLines(text);
-    struct Seg {
-        std::string text; std::string textColor; std::string bgColor;
-        int fontSize = 0; std::string shadowColor; float ox = 1.0f, oy = 1.0f;
-    };
+    struct Seg { std::string text; StructItemAttrs a; };
     std::vector<Seg> segs;
     for (const auto& ln : lines) {
-        std::vector<std::string> f;
-        size_t start = 0;
-        while (true) {
-            const size_t p = ln.find('|', start);
-            if (p == std::string::npos) { f.push_back(ln.substr(start)); break; }
-            f.push_back(ln.substr(start, p - start));
-            start = p + 1;
-        }
+        const std::vector<std::string> p = splitUnescaped(ln, '@');
         Seg s;
-        s.text = f.empty() ? "" : f[0];
-        if (f.size() > 1 && f[1].size() >= 7 && f[1][0] == '#') s.textColor = f[1];
-        if (f.size() > 2 && f[2].size() >= 7 && f[2][0] == '#') s.bgColor = f[2];
-        if (f.size() > 3 && !f[3].empty()) {
-            try { s.fontSize = std::stoi(f[3]); } catch (...) { s.fontSize = 0; }
-        }
-        if (s.fontSize < 0) s.fontSize = 0;
-        if (f.size() > 4 && f[4].size() >= 7 && f[4][0] == '#') s.shadowColor = f[4];
-        if (f.size() > 5 && !f[5].empty()) {
-            try { s.ox = std::stof(f[5]); } catch (...) { s.ox = 1.0f; }
-        }
-        if (f.size() > 6 && !f[6].empty()) {
-            try { s.oy = std::stof(f[6]); } catch (...) { s.oy = 1.0f; }
-        }
+        s.text = fieldUnescape(p.empty() ? std::string() : p[0], "@");
+        s.a = parseStructAttrs(p, 1);
         segs.push_back(std::move(s));
     }
-    PlacedControl* pc = placedById(m.props.id);
-    if (pc && pc->ctl.IsValid() && m_ui) {
-        const nlohmann::json old = m.props.extended.value("items", nlohmann::json::array());
-        if (old.is_array())
-            for (const auto& it : old)
-                if (it.is_object() && it.contains("id"))
-                    m_ui->StatusBarRemoveItem(pc->ctl, it.value("id", ""));
-        for (size_t i = 0; i < segs.size(); ++i) {
-            const std::string id = "stb_" + std::to_string(i);
-            m_ui->StatusBarAddItem(pc->ctl, id, segs[i].text, false);
-            if (!segs[i].textColor.empty())
-                m_ui->StatusBarSetItemTextColor(pc->ctl, id, hexToColor(segs[i].textColor), nullptr);
-            if (!segs[i].bgColor.empty())
-                m_ui->StatusBarSetItemBackgroundColor(pc->ctl, id, hexToColor(segs[i].bgColor));
-            if (segs[i].fontSize > 0)
-                m_ui->StatusBarSetItemFontSize(pc->ctl, id, (float)segs[i].fontSize);
-            if (!segs[i].shadowColor.empty())
-                m_ui->StatusBarSetItemTextShadow(pc->ctl, id,
-                    hexToColor(segs[i].shadowColor), segs[i].ox, segs[i].oy);
-        }
-    }
+    const nlohmann::json oldItems = m.props.extended.value("items", nlohmann::json::array());
     nlohmann::json arr = nlohmann::json::array();
     for (size_t i = 0; i < segs.size(); ++i) {
+        const StructItemAttrs& a = segs[i].a;
         nlohmann::json e = { {"id", "stb_" + std::to_string(i)}, {"text", segs[i].text} };
-        if (!segs[i].textColor.empty()) e["text-color"] = segs[i].textColor;
-        if (!segs[i].bgColor.empty()) e["background-color"] = segs[i].bgColor;
-        if (segs[i].fontSize > 0) e["font-size"] = segs[i].fontSize;
-        if (!segs[i].shadowColor.empty()) {
-            e["text-shadow"] = segs[i].shadowColor;
-            e["text-shadow-offset-x"] = segs[i].ox;
-            e["text-shadow-offset-y"] = segs[i].oy;
+        if (!a.bg.empty()) e["background-color"] = a.bg;
+        if (!a.hoverBg.empty()) e["hover-background-color"] = a.hoverBg;
+        if (!a.tc.empty()) e["text-color"] = a.tc;
+        if (a.fontSize > 0) e["font-size"] = a.fontSize;
+        if (!a.fontName.empty()) e["font-name"] = a.fontName;
+        if (!a.sc.empty()) {
+            e["text-shadow"] = a.sc;
+            e["text-shadow-offset-x"] = a.ox;
+            e["text-shadow-offset-y"] = a.oy;
         }
         arr.push_back(std::move(e));
     }
     m.props.extended["items"] = std::move(arr);
+    syncStatusBarItems(m, oldItems);
+    commitUndo("struct:" + m.props.id);   // F2.5：status-bar items 编辑（0.7s 合并）   // 按旧 id 移除（缩短列表不留残段）+ 重建
+}
+
+// 结构化：status-bar items 模型 → 引擎（按 oldItems 旧 id 移除 + 重新添加 + 段色/字号/
+// 字体/阴影；加载/打开路径 oldItems 传空）。
+void CanvasPane::syncStatusBarItems(ControlModel& m, const nlohmann::json& oldItems) {
+    PlacedControl* pc = placedById(m.props.id);
+    if (!pc || !pc->ctl.IsValid() || !m_ui) return;
+    if (oldItems.is_array())
+        for (const auto& it : oldItems)
+            if (it.is_object() && it.contains("id"))
+                m_viewport->StatusBarRemoveItem(pc->ctl, it.value("id", ""));
+    const nlohmann::json items = m.props.extended.value("items", nlohmann::json::array());
+    if (!items.is_array()) return;
+    for (const auto& it : items) {
+        if (!it.is_object()) continue;
+        const std::string id = it.value("id", "");
+        if (id.empty()) continue;
+        m_viewport->StatusBarAddItem(pc->ctl, id, it.value("text", ""), false);
+        const std::string tc = it.value("text-color", "");
+        if (!tc.empty()) m_viewport->StatusBarSetItemTextColor(pc->ctl, id, hexToColor(tc), nullptr);
+        const std::string bg = it.value("background-color", "");
+        if (!bg.empty()) m_viewport->StatusBarSetItemBackgroundColor(pc->ctl, id, hexToColor(bg));
+        const int fs = it.value("font-size", 0);
+        if (fs > 0) m_viewport->StatusBarSetItemFontSize(pc->ctl, id, (float)fs);
+        const std::string fn = it.value("font-name", "");
+        if (!fn.empty() && isSupportedFontToken(fn))
+            m_viewport->StatusBarSetItemFontName(pc->ctl, id, fn);
+        const std::string sc = it.value("text-shadow", "");
+        if (!sc.empty())
+            m_viewport->StatusBarSetItemTextShadow(pc->ctl, id, hexToColor(sc),
+                it.value("text-shadow-offset-x", 1.0f), it.value("text-shadow-offset-y", 1.0f));
+        const std::string hbg = it.value("hover-background-color", "");
+        if (!hbg.empty())
+            m_viewport->StatusBarSetItemHoverBackgroundColor(pc->ctl, id, hexToColor(hbg));
+    }
 }
 
 static UIColor hexToColor(const std::string& hex);   // 定义见后（拖动恢复段）
 
-// 结构化：list-view columns 文本 → 模型（一行一列"标题|宽度|文字色|字号|背景色|阴影色|
-// 偏移x|偏移y"，尾部字段可省；宽度缺省 100、字号 0=继承列头默认）+ 引擎同步
-// （按旧数量从尾移除 + 逐列添加 + 表头样式/背景/阴影）。
+// 结构化：list-view columns 文本 → 模型（一行一列"标题@宽度@属性..."；宽度缺省 100；
+// 统一属性序）+ 引擎同步（按旧数量从尾移除 + 逐列添加 + 表头样式/背景/阴影/字体）
+// + 行重放（列变更清空行单元格）。
 void CanvasPane::applyListColumnsText(ControlModel& m, const std::string& text) {
     const std::vector<std::string> lines = splitNonEmptyLines(text);
-    struct Col {
-        std::string title; float width;
-        std::string headerColor; int headerSize;
-        std::string headerBg; std::string headerShadow;
-        float ox = 1.0f, oy = 1.0f;
-    };
+    struct Col { std::string title; float width = 100.0f; StructItemAttrs a; };
     std::vector<Col> cols;
     for (const auto& ln : lines) {
-        std::vector<std::string> f;
-        size_t start = 0;
-        while (true) {
-            const size_t p = ln.find('|', start);
-            if (p == std::string::npos) { f.push_back(ln.substr(start)); break; }
-            f.push_back(ln.substr(start, p - start));
-            start = p + 1;
-        }
+        const std::vector<std::string> f = splitUnescaped(ln, '@');
         Col c;
-        c.title = f.empty() ? "" : f[0];
-        c.width = 100.0f;
+        c.title = fieldUnescape(f.empty() ? std::string() : f[0], "@");
         if (f.size() > 1 && !f[1].empty()) {
             try { c.width = std::stof(f[1]); } catch (...) { c.width = 100.0f; }
         }
         if (c.width < 20.0f) c.width = 20.0f;
-        if (f.size() > 2 && f[2].size() >= 7 && f[2][0] == '#') c.headerColor = f[2];
-        if (f.size() > 3 && !f[3].empty()) {
-            try { c.headerSize = std::stoi(f[3]); } catch (...) { c.headerSize = 0; }
-        }
-        if (c.headerSize < 0) c.headerSize = 0;
-        if (f.size() > 4 && f[4].size() >= 7 && f[4][0] == '#') c.headerBg = f[4];
-        if (f.size() > 5 && f[5].size() >= 7 && f[5][0] == '#') c.headerShadow = f[5];
-        if (f.size() > 6 && !f[6].empty()) {
-            try { c.ox = std::stof(f[6]); } catch (...) { c.ox = 1.0f; }
-        }
-        if (f.size() > 7 && !f[7].empty()) {
-            try { c.oy = std::stof(f[7]); } catch (...) { c.oy = 1.0f; }
-        }
+        c.a = parseStructAttrs(f, 2);
         cols.push_back(std::move(c));
     }
-    PlacedControl* pc = placedById(m.props.id);
-    if (pc && pc->ctl.IsValid() && m_ui) {
-        const nlohmann::json old = m.props.extended.value("columns", nlohmann::json::array());
-        const int oldCount = old.is_array() ? (int)old.size() : 0;
-        for (int i = oldCount - 1; i >= 0; --i) m_ui->ListViewRemoveColumn(pc->ctl, i);
-        for (size_t i = 0; i < cols.size(); ++i) {
-            m_ui->ListViewAddColumn(pc->ctl, cols[i].title, cols[i].width);
-            if (!cols[i].headerColor.empty() || cols[i].headerSize > 0) {
-                const UIColor hc = cols[i].headerColor.empty()
-                    ? UIColor{235, 235, 235, 255} : hexToColor(cols[i].headerColor);
-                m_ui->ListViewSetColumnHeaderStyle(pc->ctl, (int)i, hc, cols[i].headerSize);
-            }
-            if (!cols[i].headerBg.empty())
-                m_ui->ListViewSetColumnHeaderBackground(pc->ctl, (int)i, hexToColor(cols[i].headerBg));
-            if (!cols[i].headerShadow.empty())
-                m_ui->ListViewSetColumnHeaderShadow(pc->ctl, (int)i,
-                    hexToColor(cols[i].headerShadow), cols[i].ox, cols[i].oy);
-        }
-    }
+    const nlohmann::json oldCols = m.props.extended.value("columns", nlohmann::json::array());
+    const int oldColCount = oldCols.is_array() ? (int)oldCols.size() : 0;
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& c : cols) {
         nlohmann::json e = { {"title", c.title}, {"width", c.width} };
-        if (!c.headerColor.empty()) e["header-color"] = c.headerColor;
-        if (c.headerSize > 0) e["header-size"] = c.headerSize;
-        if (!c.headerBg.empty()) e["header-background"] = c.headerBg;
-        if (!c.headerShadow.empty()) {
-            e["header-shadow"] = c.headerShadow;
-            e["header-shadow-offset-x"] = c.ox;
-            e["header-shadow-offset-y"] = c.oy;
+        if (!c.a.bg.empty()) e["header-background"] = c.a.bg;
+        if (!c.a.tc.empty()) e["header-color"] = c.a.tc;
+        if (c.a.fontSize > 0) e["header-size"] = c.a.fontSize;
+        if (!c.a.fontName.empty()) e["header-font-name"] = c.a.fontName;
+        if (!c.a.sc.empty()) {
+            e["header-shadow"] = c.a.sc;
+            e["header-shadow-offset-x"] = c.a.ox;
+            e["header-shadow-offset-y"] = c.a.oy;
         }
         arr.push_back(std::move(e));
     }
     m.props.extended["columns"] = std::move(arr);
+    syncListColumns(m, oldColCount);
+    commitUndo("struct:" + m.props.id);   // F2.5：columns 编辑（0.7s 合并）   // 按引擎旧列数移除（缩短列表不留残列）+ 重建
+}
+
+// 结构化：list-view columns 模型 → 引擎（按 engineColCount 旧列数从尾移除 + 逐列添加 +
+// 表头全样式 + 行重放；加载/打开路径 engineColCount=0）。
+void CanvasPane::syncListColumns(ControlModel& m, int engineColCount) {
+    PlacedControl* pc = placedById(m.props.id);
+    if (!pc || !pc->ctl.IsValid() || !m_ui) return;
+    for (int i = engineColCount - 1; i >= 0; --i) m_viewport->ListViewRemoveColumn(pc->ctl, i);
+    const nlohmann::json cols = m.props.extended.value("columns", nlohmann::json::array());
+    if (cols.is_array()) {
+        for (size_t i = 0; i < cols.size(); ++i) {
+            const auto& c = cols[i];
+            if (!c.is_object()) continue;
+            m_viewport->ListViewAddColumn(pc->ctl, c.value("title", ""), c.value("width", 100.0f));
+            const std::string hc = c.value("header-color", "");
+            const int hs = c.value("header-size", 0);
+            if (!hc.empty() || hs > 0) {
+                const UIColor h = hc.empty() ? UIColor{235, 235, 235, 255} : hexToColor(hc);
+                m_viewport->ListViewSetColumnHeaderStyle(pc->ctl, (int)i, h, hs);
+            }
+            const std::string hb = c.value("header-background", "");
+            if (!hb.empty())
+                m_viewport->ListViewSetColumnHeaderBackground(pc->ctl, (int)i, hexToColor(hb));
+            const std::string hsh = c.value("header-shadow", "");
+            if (!hsh.empty())
+                m_viewport->ListViewSetColumnHeaderShadow(pc->ctl, (int)i, hexToColor(hsh),
+                    c.value("header-shadow-offset-x", 1.0f), c.value("header-shadow-offset-y", 1.0f));
+            const std::string hfn = c.value("header-font-name", "");
+            if (!hfn.empty() && isSupportedFontToken(hfn))
+                m_viewport->ListViewSetColumnHeaderFontName(pc->ctl, (int)i, hfn);
+        }
+    }
+    // 引擎列变更会清空既有行单元格（insertColumn 插空串）——按模型重放行内容/样式
+    const nlohmann::json rows = m.props.extended.value("rows", nlohmann::json::array());
+    syncListRows(m, rows.is_array() ? (int)rows.size() : 0);
+}
+
+static std::vector<std::string> splitUnescaped(const std::string& s, char sep);   // 定义见后（行式读取段）
+static std::string fieldUnescape(const std::string& s, const char* special);
+
+// 结构化：list-view rows 文本 → 模型（一行一记录，单元格 | 分隔；单元格"内容@属性..."，
+// 统一属性序；单元格字体名引擎暂不支持——模型保留）+ 引擎重放。
+void CanvasPane::applyListRowsText(ControlModel& m, const std::string& text) {
+    const std::vector<std::string> lines = splitNonEmptyLines(text);
+    nlohmann::json arr = nlohmann::json::array();
+    for (size_t i = 0; i < lines.size(); ++i) {
+        nlohmann::json cells = nlohmann::json::array();
+        for (const auto& seg : splitUnescaped(lines[i], '|')) {
+            const std::vector<std::string> p = splitUnescaped(seg, '@');
+            const std::string t = fieldUnescape(p.empty() ? std::string() : p[0], "|@");
+            const StructItemAttrs a = parseStructAttrs(p, 1);
+            if (a.empty()) {
+                cells.push_back(t);
+            } else {
+                nlohmann::json e = { {"text", t} };
+                if (!a.bg.empty()) e["background-color"] = a.bg;
+                if (!a.hoverBg.empty()) e["hover-background-color"] = a.hoverBg;   // P0-64③
+                if (!a.tc.empty()) e["text-color"] = a.tc;
+                if (a.fontSize > 0) e["font-size"] = a.fontSize;
+                if (!a.fontName.empty()) e["font-name"] = a.fontName;
+                if (!a.sc.empty()) {
+                    e["text-shadow"] = a.sc;
+                    e["text-shadow-offset-x"] = a.ox;
+                    e["text-shadow-offset-y"] = a.oy;
+                }
+                cells.push_back(std::move(e));
+            }
+        }
+        arr.push_back({ {"id", "row_" + std::to_string(i)}, {"cells", cells} });
+    }
+    const nlohmann::json old = m.props.extended.value("rows", nlohmann::json::array());
+    const int oldCount = old.is_array() ? (int)old.size() : 0;
+    m.props.extended["rows"] = std::move(arr);
+    syncListRows(m, oldCount);
+    commitUndo("struct:" + m.props.id);   // F2.5：rows 编辑（0.7s 合并）
+}
+
+// 结构化：list-view rows 模型 → 引擎重放（RemoveRow 从尾 + AddRow + 单元格样式/字体；
+// 列变更会清空引擎行单元格——applyListColumnsText 后亦调用本函数重放）。
+void CanvasPane::syncListRows(ControlModel& m, int engineRowCount) {
+    PlacedControl* pc = placedById(m.props.id);
+    if (!pc || !pc->ctl.IsValid() || !m_ui) return;
+    const nlohmann::json rows = m.props.extended.value("rows", nlohmann::json::array());
+    if (!rows.is_array()) return;
+    for (int i = engineRowCount - 1; i >= 0; --i) m_viewport->ListViewRemoveRow(pc->ctl, i);
+    for (const auto& r : rows) {
+        if (!r.is_object()) continue;
+        std::vector<std::string> texts;
+        const auto& cells = r.value("cells", nlohmann::json::array());
+        if (cells.is_array())
+            for (const auto& c : cells)
+                texts.push_back(c.is_string() ? c.get<std::string>()
+                                              : (c.is_object() ? c.value("text", "") : std::string()));
+        m_viewport->ListViewAddRow(pc->ctl, r.value("id", ""), texts);
+    }
+    for (int ri = 0; ri < (int)rows.size(); ++ri) {
+        const auto& r = rows[(size_t)ri];
+        if (!r.is_object()) continue;
+        const auto& cells = r.value("cells", nlohmann::json::array());
+        if (!cells.is_array()) continue;
+        for (int ci = 0; ci < (int)cells.size(); ++ci) {
+            const auto& c = cells[(size_t)ci];
+            if (!c.is_object()) continue;
+            const std::string bg = c.value("background-color", "");
+            const std::string tc = c.value("text-color", "");
+            const std::string sc = c.value("text-shadow", "");
+            const int fs = c.value("font-size", 0);
+            if (!bg.empty() || fs > 0)   // 仅字号 → 背景透明占位（alpha 0 不绘制）
+                m_viewport->ListViewSetCellStyle(pc->ctl, ri, ci,
+                    bg.empty() ? UIColor{0, 0, 0, 0} : hexToColor(bg), fs);
+            const std::string fname = c.value("font-name", "");
+            if (!fname.empty() && isSupportedFontToken(fname))
+                m_viewport->ListViewSetCellFontName(pc->ctl, ri, ci, fname);
+            const std::string hbg = c.value("hover-background-color", "");
+            if (!hbg.empty())   // P0-64③：单元格显式悬停背景（可无常态背景——P0-65① hasBg 门槛）
+                m_viewport->ListViewSetCellHoverBackgroundColor(pc->ctl, ri, ci, hexToColor(hbg));
+            if (!tc.empty()) m_viewport->ListViewSetCellTextColor(pc->ctl, ri, ci, hexToColor(tc));
+            if (!sc.empty())
+                m_viewport->ListViewSetCellShadow(pc->ctl, ri, ci, hexToColor(sc),
+                    c.value("text-shadow-offset-x", 1.0f), c.value("text-shadow-offset-y", 1.0f));
+        }
+    }
+}
+
+static std::string treeLabelEscape(const std::string& s);     // 定义见后（行式读取段）
+static std::string treeLabelUnescape(const std::string& s);
+static std::vector<std::string> splitUnescaped(const std::string& s, char sep);
+static std::string fieldUnescape(const std::string& s, const char* special);
+
+// 结构化：tree-view items 文本 → 模型（层级 = 行首 '>' 数量，1 个/层；行首空格保留为
+// 标签内容；"标签@属性..."统一属性序；标签首 '>'、'@'、'\' 经转义；空行忽略）
+// + 引擎同步（ClearItems + AddNode 重建；id 自动生成 tn_i；父索引恒小于子——父先建）。
+void CanvasPane::applyTreeItemsText(ControlModel& m, const std::string& text) {
+    const std::vector<std::string> lines = splitNonEmptyLines(text);
+    struct Node {
+        std::string id; std::string label; int parent = -1;
+        StructItemAttrs a;
+    };
+    std::vector<Node> nodes;
+    std::vector<std::pair<int, int>> stack;   // (depth, node index)
+    for (const auto& ln : lines) {
+        size_t mark = 0;
+        while (mark < ln.size() && ln[mark] == '>') ++mark;   // 层级标记（转义 '\>' 不计）
+        const int depth = (int)mark;
+        while (!stack.empty() && stack.back().first >= depth) stack.pop_back();
+        const std::vector<std::string> f = splitUnescaped(ln.substr(mark), '@');
+        Node n;
+        n.id = "tn_" + std::to_string(nodes.size() + 1);
+        n.label = treeLabelUnescape(f.empty() ? std::string() : f[0]);   // 行首空格保留；转义还原
+        n.a = parseStructAttrs(f, 1);
+        n.parent = stack.empty() ? -1 : stack.back().second;
+        nodes.push_back(std::move(n));
+        stack.push_back({ depth, (int)nodes.size() - 1 });
+    }
+    // 模型：嵌套 JSON（反向挂接——子先入父）
+    std::vector<nlohmann::json> jn(nodes.size());
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        const StructItemAttrs& a = nodes[i].a;
+        jn[i] = { {"id", nodes[i].id}, {"label", nodes[i].label} };
+        if (!a.bg.empty()) jn[i]["background-color"] = a.bg;
+        if (!a.hoverBg.empty()) jn[i]["hover-background-color"] = a.hoverBg;   // P0-64③
+        if (!a.tc.empty()) jn[i]["text-color"] = a.tc;
+        if (a.fontSize > 0) jn[i]["font-size"] = a.fontSize;
+        if (!a.fontName.empty()) jn[i]["font-name"] = a.fontName;
+        if (!a.sc.empty()) {
+            jn[i]["text-shadow"] = a.sc;
+            jn[i]["text-shadow-offset-x"] = a.ox;
+            jn[i]["text-shadow-offset-y"] = a.oy;
+        }
+    }
+    for (int i = (int)nodes.size() - 1; i >= 0; --i) {
+        if (nodes[i].parent < 0) continue;
+        auto& ch = jn[(size_t)nodes[i].parent]["children"];
+        if (ch.is_null()) ch = nlohmann::json::array();
+        ch.insert(ch.begin(), jn[i]);   // 反序遍历（子先于父完成）+ 头插 = 兄弟顺序与输入一致
+    }
+    nlohmann::json roots = nlohmann::json::array();
+    for (size_t i = 0; i < nodes.size(); ++i)
+        if (nodes[i].parent < 0) roots.push_back(jn[i]);
+    m.props.extended["items"] = std::move(roots);
+    syncTreeItems(m);
+    commitUndo("struct:" + m.props.id);   // F2.5：tree items 编辑（0.7s 合并）
+}
+
+// 结构化：tree-view items 模型 → 引擎（ClearItems + 先序 AddNode + 节点样式/字体；
+// 加载/打开路径复用）。
+void CanvasPane::syncTreeItems(ControlModel& m) {
+    PlacedControl* pc = placedById(m.props.id);
+    if (!pc || !pc->ctl.IsValid() || !m_ui) return;
+    const nlohmann::json items = m.props.extended.value("items", nlohmann::json::array());
+    if (!items.is_array()) return;
+    m_viewport->TreeViewClearItems(pc->ctl);
+    std::function<void(const nlohmann::json&, const std::string&)> walk =
+        [&](const nlohmann::json& arr, const std::string& pid) {
+        if (!arr.is_array()) return;
+        for (const auto& it : arr) {
+            if (!it.is_object()) continue;
+            const std::string id = it.value("id", "");
+            if (id.empty()) continue;
+            m_viewport->TreeViewAddNode(pc->ctl, pid, id, it.value("label", ""), true);
+            const std::string tc = it.value("text-color", "");
+            if (!tc.empty()) m_viewport->TreeViewSetNodeTextColor(pc->ctl, id, hexToColor(tc), nullptr);
+            const std::string bg = it.value("background-color", "");
+            if (!bg.empty()) m_viewport->TreeViewSetNodeBackgroundColor(pc->ctl, id, hexToColor(bg));
+            const std::string hbg = it.value("hover-background-color", "");
+            if (!hbg.empty())
+                m_viewport->TreeViewSetNodeHoverBackgroundColor(pc->ctl, id, hexToColor(hbg));
+            const std::string sc = it.value("text-shadow", "");
+            if (!sc.empty())
+                m_viewport->TreeViewSetNodeShadow(pc->ctl, id, hexToColor(sc),
+                    it.value("text-shadow-offset-x", 1.0f), it.value("text-shadow-offset-y", 1.0f));
+            // 逐节点字体：名称走专用 API（size<=0 继承）；仅字号走通用链
+            const int fs = it.value("font-size", 0);
+            const std::string fn = it.value("font-name", "");
+            const bool wantFont = !fn.empty() && isSupportedFontToken(fn);
+            if (wantFont) {
+                m_viewport->TreeViewSetNodeFont(pc->ctl, id, fn, fs);
+            } else if (fs > 0) {
+                pc->ctl.SetString(PropertyNames::kTreeItemId, id);
+                pc->ctl.SetInt(PropertyNames::kTreeItemFontSize, fs);
+            }
+            if (it.contains("children")) walk(it["children"], id);
+        }
+    };
+    walk(items, "");
+}
+
+// 放置/记账用：解析目标容器在模型中的实际父 id（TabControl → 当前页 Panel id；
+// 其余容器=自身）。序列化按 parentId 组树——TabControl 记账必须落到页 Panel。
+std::string CanvasPane::resolvedParentIdOf(const std::string& targetId) {
+    const PlacedControl* pc = placedById(targetId);
+    if (!pc || pc->model->props.type != "tab-control") return targetId;
+    const int cur = pc->ctl.IsValid() ? pc->ctl.GetInt(PropertyNames::kTabCurrentIndex) : -1;
+    const nlohmann::json tabs = pc->model->props.extended.value("tabs", nlohmann::json::array());
+    if (!tabs.is_array() || cur < 0 || cur >= (int)tabs.size()) return targetId;
+    const std::string pageId = tabs[(size_t)cur].value("page-id", "");
+    return pageId.empty() ? targetId : pageId;
+}
+
+// 销毁放置控件子树（含后代）：引擎控件销毁 + 模型条目移除 + 树节点移除（无选择语义；
+// 页 Panel 移除/清空等内部流程用）。选中项落在子树内 → 取消选中。
+void CanvasPane::removePlacedSubtree(const std::string& rootId) {
+    std::vector<std::string> toRemove;
+    std::function<void(const std::string&)> collect = [&](const std::string& pid) {
+        if (std::find(toRemove.begin(), toRemove.end(), pid) != toRemove.end()) return;
+        toRemove.push_back(pid);
+        for (auto& it : m_items)
+            if (it.parentId == pid) collect(it.model->props.id);
+    };
+    collect(rootId);
+    const bool selHit = std::find(toRemove.begin(), toRemove.end(), m_selectedId) != toRemove.end();
+    for (auto rit = toRemove.rbegin(); rit != toRemove.rend(); ++rit) {
+        if (PlacedControl* pc = placedById(*rit))
+            if (pc->ctl.IsValid()) pc->ctl.Destroy();
+        for (auto it = m_items.begin(); it != m_items.end(); ++it)
+            if (it->model->props.id == *rit) { m_items.erase(it); break; }
+        syncTreeRemove(*rit);
+    }
+    if (selHit) selectItem("");
+    refreshStatusRight();
+}
+
+// 结构化：tab-control tabs 文本 → 模型（一行一页签标题；空行忽略；页 id 按索引保留）
+// + 引擎同步（尾删 + 逐页标题/新增——页 Panel 设计器自管）。
+void CanvasPane::applyTabsText(ControlModel& m, const std::string& text) {
+    std::fflush(stdout);
+    const std::vector<std::string> lines = splitNonEmptyLines(text);
+    const nlohmann::json oldTabs = m.props.extended.value("tabs", nlohmann::json::array());
+    nlohmann::json arr = nlohmann::json::array();
+    for (size_t i = 0; i < lines.size(); ++i) {
+        nlohmann::json e = { { "title", lines[i] } };
+        if (oldTabs.is_array() && i < oldTabs.size() && oldTabs[(size_t)i].is_object())
+            e["page-id"] = oldTabs[(size_t)i].value("page-id", "");   // 改标题不清页内容
+        arr.push_back(std::move(e));
+    }
+    m.props.extended["tabs"] = std::move(arr);
+    syncTabs(m, oldTabs);
+    commitUndo("struct:" + m.props.id);   // F2.5：tabs 编辑（0.7s 合并）
+}
+
+// 结构化：tab-control tabs 模型 → 引擎（尾删多余页（引擎页 + 页 Panel 子树）+ 逐页
+// 标题/新增页；页 Panel 自管（与 TabControl 同实例））。加载路径 oldTabs 传空。
+void CanvasPane::syncTabs(ControlModel& m, const nlohmann::json& oldTabs) {
+    PlacedControl* pc = placedById(m.props.id);
+    if (!pc || !pc->ctl.IsValid() || !m_viewport) return;
+    // m_items 会在新增页时 push_back 扩容——PlacedControl* 会悬垂，句柄/rect 先取副本
+    Control tabCtl = pc->ctl;   // 非 const（Binding Tab* 方法签名 Control&）
+    const SRect tabRect = pc->model->props.rect;
+    const nlohmann::json tabs = m.props.extended.value("tabs", nlohmann::json::array());
+    const int oldCount = oldTabs.is_array() ? (int)oldTabs.size() : 0;
+    const int newCount = tabs.is_array() ? (int)tabs.size() : 0;
+    for (int i = oldCount - 1; i >= newCount; --i) {
+        const std::string pageId = oldTabs[(size_t)i].value("page-id", "");
+        m_viewport->TabRemovePage(tabCtl, i);
+        if (!pageId.empty()) removePlacedSubtree(pageId);
+    }
+    int engineCount = std::min(oldCount, newCount);
+    for (int i = 0; i < newCount; ++i) {
+        const std::string title = tabs[(size_t)i].value("title", "");
+        std::string pageId = tabs[(size_t)i].value("page-id", "");
+        PlacedControl* pagePc = pageId.empty() ? nullptr : placedById(pageId);
+        if (!pagePc || !pagePc->ctl.IsValid()) {
+            // 新增页：创建页 Panel（父=TabControl；引擎 applyCurrentPage 负责其 rect）
+            auto pageModel = std::make_unique<ControlModel>();
+            pageModel->props.type = "panel";
+            pageModel->props.id = "tabpage_" + std::to_string(++m_seq);
+            pageModel->props.extended = nlohmann::json::object();   // 恒对象（value() 安全）
+            const SRect r = tabRect;
+            pageModel->props.rect = { 0, 0, r.w, r.h };
+            Control pageCtl = createViewportControl("tPanel", 0, 0, r.w, r.h, *pageModel);
+            if (!pageCtl.IsValid()) continue;
+            pageId = pageModel->props.id;
+            m_items.push_back({ std::move(pageModel), pageCtl, m.props.id });
+            m_viewport->SetControlId(pageCtl, pageId);
+            // 挂接由 TabSetPage 完成（引擎 P0-69 §3.4：挂载前自动摘除 bench 旧父——
+            // 勿再 AddChild，否则重复挂载 assert）
+            syncTreeAdd(m.props.id, pageId, u8"页 " + std::to_string(i + 1) + u8"·" + title);
+            m.props.extended["tabs"][(size_t)i]["page-id"] = pageId;
+            pagePc = &m_items.back();
+        } else {
+            // 已有页：标题变化同步树节点标签
+            syncTreeRename(pageId, u8"页 " + std::to_string(i + 1) + u8"·" + title);
+        }
+        if (i >= engineCount) m_viewport->TabAddPage(tabCtl, title);
+        m_viewport->TabSetPage(tabCtl, i, pagePc->ctl);
+        m_viewport->TabSetTitle(tabCtl, i, title);
+    }
+}
+
+// 菜单标签转义（'\'→'\\'、'@'→'\@'；行首 '>' → '\>'）。
+static std::string menuLabelEscape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 2);
+    for (char c : s) {
+        if (c == '\\') out += "\\\\";
+        else if (c == '@') out += "\\@";
+        else out += c;
+    }
+    if (!out.empty() && out[0] == '>') out.insert(out.begin(), '\\');
+    return out;
+}
+
+// 结构化：menu-bar menus 文本 → 模型（菜单行无 '>'；项行 '>'×层级；'--'=分隔符；
+// 项"标题@快捷键"；转义 '\'） + 引擎同步（旧菜单按 caption 移除后重建——P0-69①）。
+void CanvasPane::applyMenusText(ControlModel& m, const std::string& text) {
+    const std::vector<std::string> lines = splitNonEmptyLines(text);
+    struct Node {
+        bool menu = false;          // true=顶层菜单；false=菜单项
+        bool separator = false;
+        std::string caption, shortcut;
+        StructItemAttrs a;          // 面板级属性（仅菜单行：字号/字体名/阴影半径）
+        int depth = 0, parent = -1;
+    };
+    std::vector<Node> nodes;
+    std::vector<std::pair<int, int>> stack;   // (depth, node index)
+    for (const auto& ln : lines) {
+        size_t mark = 0;
+        while (mark < ln.size() && ln[mark] == '>') ++mark;
+        const std::string rest = ln.substr(mark);
+        Node n;
+        n.depth = (int)mark;
+        if (mark == 0) {
+            n.menu = true;   // 顶层菜单行（面板级属性：@字号@字体名...@r#半径——统一属性序）
+            const std::vector<std::string> f = splitUnescaped(rest, '@');
+            n.caption = fieldUnescape(f.empty() ? std::string() : f[0], ">@");
+            n.a = parseStructAttrs(f, 1);
+        } else if (rest == "--") {
+            n.separator = true;
+        } else {
+            const std::vector<std::string> f = splitUnescaped(rest, '@');   // 首个未转义 @ 分标题/快捷键
+            n.caption = fieldUnescape(f.empty() ? std::string() : f[0], ">@");
+            if (f.size() > 1) n.shortcut = f[1];
+        }
+        while (!stack.empty() && stack.back().first >= n.depth) stack.pop_back();
+        n.parent = stack.empty() ? -1 : stack.back().second;
+        nodes.push_back(std::move(n));
+        stack.push_back({ (int)mark, (int)nodes.size() - 1 });
+    }
+    // 模型：嵌套 JSON（反序挂接 + 头插保持顺序——同 tree 修复口径）
+    std::vector<nlohmann::json> jn(nodes.size());
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        if (nodes[i].menu) {
+            jn[i] = { { "caption", nodes[i].caption }, { "items", nlohmann::json::array() } };
+            const StructItemAttrs& a = nodes[i].a;   // 面板级属性（P0-72①）
+            if (a.fontSize > 0 || !a.fontName.empty()) {
+                nlohmann::json fo = nlohmann::json::object();
+                if (a.fontSize > 0) fo["size"] = a.fontSize;
+                if (!a.fontName.empty()) fo["name"] = a.fontName;
+                jn[i]["font"] = std::move(fo);
+            }
+            if (a.hasRadius) jn[i]["shadow-radius"] = a.radius;   // 0 = 显式去掉阴影（引擎语义待定，P0-77）
+        } else if (nodes[i].separator) {
+            jn[i] = { { "type", "separator" } };
+        } else {
+            jn[i] = { { "caption", nodes[i].caption } };
+            if (!nodes[i].shortcut.empty()) jn[i]["shortcut"] = nodes[i].shortcut;
+        }
+    }
+    for (int i = (int)nodes.size() - 1; i >= 0; --i) {
+        if (nodes[i].parent < 0) continue;
+        auto& items = jn[(size_t)nodes[i].parent]["items"];
+        if (items.is_null()) items = nlohmann::json::array();
+        items.insert(items.begin(), jn[i]);
+    }
+    nlohmann::json menus = nlohmann::json::array();
+    for (size_t i = 0; i < nodes.size(); ++i)
+        if (nodes[i].parent < 0 && nodes[i].menu) menus.push_back(jn[i]);
+    const nlohmann::json oldMenus = m.props.extended.value("menus", nlohmann::json::array());
+    m.props.extended["menus"] = std::move(menus);
+    syncMenus(m, oldMenus);
+    commitUndo("struct:" + m.props.id);   // F2.5：menus 编辑（0.7s 合并）
+}
+
+// 结构化：menu-bar menus 模型 → 引擎（按 oldMenus 旧 caption 移除 + 逐菜单重建 panel；
+// 加载/打开路径 oldMenus 传空）。
+void CanvasPane::syncMenus(ControlModel& m, const nlohmann::json& oldMenus) {
+    PlacedControl* pc = placedById(m.props.id);
+    if (!pc || !pc->ctl.IsValid() || !m_viewport) return;
+    // 菜单面板/项必须创建在**画布视口实例**（与 MenuBar 同实例）——弹出定位基于
+    // 面板自身 BENCH（attachMenuPanel：bench = 面板实例 bench + MenuBar drawRect 坐标域），
+    // 创建在主实例会落到主 bench → 弹层位置错乱。
+    if (oldMenus.is_array())
+        for (const auto& om : oldMenus)
+            if (om.is_object()) m_viewport->MenuBarRemoveMenu(pc->ctl, om.value("caption", ""));
+    const nlohmann::json menus = m.props.extended.value("menus", nlohmann::json::array());
+    if (!menus.is_array()) return;
+    std::function<void(Control, const nlohmann::json&)> fill =
+        [&](Control panel, const nlohmann::json& items) {
+        if (!items.is_array()) return;
+        for (const auto& it : items) {
+            if (!it.is_object()) continue;
+            if (it.value("type", "") == "separator") {
+                m_viewport->MenuPanelAddSeparator(panel);
+                continue;
+            }
+            Control mi = m_viewport->CreateMenuItem(it.value("caption", ""), 0);
+            if (!mi.IsValid()) continue;
+            const std::string sc = it.value("shortcut", "");
+            if (!sc.empty()) mi.SetString(PropertyNames::kShortcut, sc);
+            m_viewport->MenuPanelAddItem(panel, mi);
+            if (it.contains("items") && it["items"].is_array()) {
+                Control sub = m_viewport->CreateMenuPanel(1.0f, 1.0f);
+                if (sub.IsValid()) {
+                    fill(sub, it["items"]);
+                    m_viewport->MenuItemSetSubMenu(mi, sub);
+                }
+            }
+        }
+    };
+    for (const auto& mn : menus) {
+        if (!mn.is_object()) continue;
+        Control panel = m_viewport->CreateMenuPanel(1.0f, 1.0f);
+        if (!panel.IsValid()) continue;
+        fill(panel, mn.value("items", nlohmann::json::array()));
+        // P0-72③ 已交付（引擎 addMenu 自动回放 bar 状态）——原设计器手动回放过渡已删
+        m_viewport->MenuBarAddMenu(pc->ctl, mn.value("caption", ""), panel);
+        // 每菜单属性在回放之后应用（P0-72①：menus[i].font/shadow-radius——与引擎
+        // JSON 解析同序，避免被 bar 值覆盖）
+        if (mn.contains("font") && mn["font"].is_object()) {
+            if (mn["font"].contains("size") && mn["font"]["size"].is_number())
+                panel.SetInt(PropertyNames::kFontSize, mn["font"]["size"].get<int>());
+            if (mn["font"].contains("name") && mn["font"]["name"].is_string())
+                panel.SetString(PropertyNames::kFont, mn["font"]["name"].get<std::string>());
+        }
+        if (mn.contains("shadow-radius") && mn["shadow-radius"].is_number())
+            panel.SetFloat(PropertyNames::kShadowRadius, mn["shadow-radius"].get<float>());
+    }
+}
+
+// 结构化：shape points 文本 → 模型（一行一点"x,y"；空行忽略）+ 引擎同步
+// （ShapeSetPoints 全量替换——无需移除 API）。
+void CanvasPane::applyShapePointsText(ControlModel& m, const std::string& text) {
+    const std::vector<std::string> lines = splitNonEmptyLines(text);
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& ln : lines) {
+        const size_t comma = ln.find(',');
+        if (comma == std::string::npos) continue;
+        float x = 0, y = 0;
+        try { x = std::stof(ln.substr(0, comma)); } catch (...) { continue; }
+        try { y = std::stof(ln.substr(comma + 1)); } catch (...) { continue; }
+        arr.push_back({ { "x", x }, { "y", y } });
+    }
+    m.props.extended["points"] = std::move(arr);
+    syncShapePoints(m);
+    commitUndo("struct:" + m.props.id);   // F2.5：shape points 编辑（0.7s 合并）
+}
+
+// 结构化：shape points 模型 → 引擎（全量替换）。
+void CanvasPane::syncShapePoints(ControlModel& m) {
+    PlacedControl* pc = placedById(m.props.id);
+    if (!pc || !pc->ctl.IsValid() || !m_ui) return;
+    const nlohmann::json pts = m.props.extended.value("points", nlohmann::json::array());
+    std::vector<std::pair<float, float>> out;
+    if (pts.is_array())
+        for (const auto& p : pts)
+            if (p.is_object() && p.contains("x") && p.contains("y"))
+                out.push_back({ p.value("x", 0.0f), p.value("y", 0.0f) });
+    m_viewport->ShapeSetPoints(pc->ctl, out);
 }
 
 // ── Schema 驱动动态属性区 ──
@@ -1955,8 +2658,7 @@ static std::string comboItemsText(const ControlModel& m) {
     return out;
 }
 
-// 结构化：status-bar items 模型 → 行式文本
-// （一行一段"文本|#文字色|#背景色|字号|#阴影色|偏移x|偏移y"，尾部默认字段省略）。
+// 结构化：status-bar items 模型 → 行式文本（一行一段"文本@属性..."；统一属性序）。
 static std::string statusBarItemsText(const ControlModel& m) {
     std::string out;
     const auto& ex = m.props.extended;
@@ -1966,21 +2668,19 @@ static std::string statusBarItemsText(const ControlModel& m) {
             if (it.is_object()) t = it.value("text", "");
             else if (it.is_string()) t = it.get<std::string>();
             if (t.empty()) continue;
-            const std::string tc = it.is_object() ? it.value("text-color", "") : "";
-            const std::string bg = it.is_object() ? it.value("background-color", "") : "";
-            const int fs = it.is_object() ? it.value("font-size", 0) : 0;
-            const std::string sh = it.is_object() ? it.value("text-shadow", "") : "";
-            const std::string f[] = {
-                t, tc, bg,
-                fs > 0 ? std::to_string(fs) : std::string(),
-                sh,
-                sh.empty() ? std::string() : std::to_string((int)it.value("text-shadow-offset-x", 1.0f)),
-                sh.empty() ? std::string() : std::to_string((int)it.value("text-shadow-offset-y", 1.0f)),
-            };
-            size_t last = 0;
-            for (size_t i = 1; i < 7; ++i) if (!f[i].empty()) last = i;
-            std::string line = f[0];
-            for (size_t i = 1; i <= last; ++i) line += "|" + f[i];
+            StructItemAttrs a;
+            if (it.is_object()) {
+                a.bg = it.value("background-color", "");
+                a.hoverBg = it.value("hover-background-color", "");
+                a.tc = it.value("text-color", "");
+                a.fontSize = it.value("font-size", 0);
+                a.fontName = it.value("font-name", "");
+                a.sc = it.value("text-shadow", "");
+                a.ox = it.value("text-shadow-offset-x", 1.0f);
+                a.oy = it.value("text-shadow-offset-y", 1.0f);
+            }
+            std::string line = fieldEscape(t, "@");
+            appendStructAttrs(line, a);
             if (!out.empty()) out += "\n";
             out += line;
         }
@@ -1988,32 +2688,35 @@ static std::string statusBarItemsText(const ControlModel& m) {
     return out;
 }
 
-// 结构化：list-view columns 模型 → 行式文本
-// （一行一列"标题|宽度|文字色|字号|背景色|阴影色|偏移x|偏移y"，尾部默认字段省略）。
+// 结构化：字段文本转义（'\' 与 special 字符前加 '\'）——与属性/单元格分隔消歧。
+static std::string fieldEscape(const std::string& s, const char* special) {
+    std::string out;
+    out.reserve(s.size() + 2);
+    for (char c : s) {
+        if (c == '\\' || strchr(special, c) != nullptr) out += '\\';
+        out += c;
+    }
+    return out;
+}
+
+// 结构化：list-view columns 模型 → 行式文本（一行一列"标题@宽度@属性..."；统一属性序）。
 static std::string listColumnsText(const ControlModel& m) {
     std::string out;
     const auto& ex = m.props.extended;
     if (ex.contains("columns") && ex["columns"].is_array()) {
         for (const auto& it : ex["columns"]) {
             if (!it.is_object()) continue;
-            const std::string hc = it.value("header-color", "");
-            const int hs = it.value("header-size", 0);
-            const std::string hb = it.value("header-background", "");
-            const std::string hsh = it.value("header-shadow", "");
-            const std::string f[] = {
-                it.value("title", ""),
-                std::to_string((int)it.value("width", 100.0f)),
-                hc,
-                hs > 0 ? std::to_string(hs) : std::string(),
-                hb,
-                hsh,
-                hsh.empty() ? std::string() : std::to_string((int)it.value("header-shadow-offset-x", 1.0f)),
-                hsh.empty() ? std::string() : std::to_string((int)it.value("header-shadow-offset-y", 1.0f)),
-            };
-            size_t last = 1;   // 标题|宽度 恒输出；尾部空字段截断
-            for (size_t i = 2; i < 8; ++i) if (!f[i].empty()) last = i;
-            std::string line = f[0];
-            for (size_t i = 1; i <= last; ++i) line += "|" + f[i];
+            StructItemAttrs a;
+            a.bg = it.value("header-background", "");
+            a.tc = it.value("header-color", "");
+            a.fontSize = it.value("header-size", 0);
+            a.fontName = it.value("header-font-name", "");
+            a.sc = it.value("header-shadow", "");
+            a.ox = it.value("header-shadow-offset-x", 1.0f);
+            a.oy = it.value("header-shadow-offset-y", 1.0f);
+            std::string line = fieldEscape(it.value("title", ""), "@");
+            line += "@" + std::to_string((int)it.value("width", 100.0f));
+            appendStructAttrs(line, a);
             if (!out.empty()) out += "\n";
             out += line;
         }
@@ -2036,10 +2739,198 @@ static const char* const kAnchorLabels[14] = {
 static const char* const kLayoutValues[5] = { "absolute", "h-flow", "v-flow", "anchor", "grid" };
 static const char* const kLayoutLabels[5] = { u8"绝对", "h-flow", "v-flow", "anchor", "grid" };
 
-// 结构化：按类型分发行式读取（combo/status items / list-view columns）。
-static std::string structRowText(const ControlModel& m) {
-    if (m.props.type == "list-view") return listColumnsText(m);
+// 结构化：list-view rows 模型 → 行式文本（一行一记录，单元格 | 分隔；
+// 单元格"内容@属性..."统一属性序）。
+static std::string listRowsText(const ControlModel& m) {
+    std::string out;
+    const auto& ex = m.props.extended;
+    if (ex.contains("rows") && ex["rows"].is_array()) {
+        for (const auto& it : ex["rows"]) {
+            if (!it.is_object()) continue;
+            std::string line;
+            if (it.contains("cells") && it["cells"].is_array())
+                for (const auto& c : it["cells"]) {
+                    std::string text;
+                    StructItemAttrs a;
+                    if (c.is_string()) {
+                        text = c.get<std::string>();
+                    } else if (c.is_object()) {
+                        text = c.value("text", "");
+                        a.bg = c.value("background-color", "");
+                        a.hoverBg = c.value("hover-background-color", "");
+                        a.tc = c.value("text-color", "");
+                        a.fontSize = c.value("font-size", 0);
+                        a.fontName = c.value("font-name", "");
+                        a.sc = c.value("text-shadow", "");
+                        a.ox = c.value("text-shadow-offset-x", 1.0f);
+                        a.oy = c.value("text-shadow-offset-y", 1.0f);
+                    }
+                    std::string seg = fieldEscape(text, "|@");
+                    appendStructAttrs(seg, a);
+                    if (!line.empty()) line += "|";
+                    line += seg;
+                }
+            if (!out.empty()) out += "\n";
+            out += line;
+        }
+    }
+    return out;
+}
+
+// 结构化：按未转义分隔符拆分（'\x' 序列整体保留——交由 fieldUnescape 还原）。
+static std::vector<std::string> splitUnescaped(const std::string& s, char sep) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '\\' && i + 1 < s.size()) {
+            cur += s[i];
+            cur += s[i + 1];
+            ++i;
+        } else if (s[i] == sep) {
+            out.push_back(std::move(cur));
+            cur.clear();
+        } else {
+            cur += s[i];
+        }
+    }
+    out.push_back(std::move(cur));
+    return out;
+}
+// 结构化：转义序列还原（'\\' 与 '\'+special → 原字符；其余 '\x' 保留——用户原始反斜杠不丢失）。
+static std::string fieldUnescape(const std::string& s, const char* special) {
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '\\' && i + 1 < s.size() &&
+            (s[i + 1] == '\\' || strchr(special, s[i + 1]) != nullptr)) {
+            out += s[i + 1];
+            ++i;
+        } else {
+            out += s[i];
+        }
+    }
+    return out;
+}
+
+// 结构化：tree 标签转义（'\' 与 '@' 前加 '\'；标签首 '>' → '\>'）——层级标记/属性消歧。
+static std::string treeLabelEscape(const std::string& s) {
+    std::string out = fieldEscape(s, "@");
+    if (!out.empty() && out[0] == '>') out.insert(out.begin(), '\\');
+    return out;
+}
+static std::string treeLabelUnescape(const std::string& s) { return fieldUnescape(s, ">@"); }
+
+// 结构化：tree-view items 模型 → 行式文本（层级 = 行首 '>' 数量，1 个/层；空格归标签；
+// "标签@属性..."统一属性序）。
+static std::string treeItemsText(const ControlModel& m) {
+    std::string out;
+    const auto& ex = m.props.extended;
+    std::function<void(const nlohmann::json&, int)> walk = [&](const nlohmann::json& arr, int depth) {
+        if (!arr.is_array()) return;
+        for (const auto& it : arr) {
+            if (!it.is_object()) continue;
+            if (!out.empty()) out += "\n";
+            out.append((size_t)depth, '>');
+            out += treeLabelEscape(it.value("label", ""));
+            StructItemAttrs a;
+            a.bg = it.value("background-color", "");
+            a.hoverBg = it.value("hover-background-color", "");
+            a.tc = it.value("text-color", "");
+            a.fontSize = it.value("font-size", 0);
+            a.fontName = it.value("font-name", "");
+            a.sc = it.value("text-shadow", "");
+            a.ox = it.value("text-shadow-offset-x", 1.0f);
+            a.oy = it.value("text-shadow-offset-y", 1.0f);
+            appendStructAttrs(out, a);
+            if (it.contains("children")) walk(it["children"], depth + 1);
+        }
+    };
+    if (ex.contains("items")) walk(ex["items"], 0);
+    return out;
+}
+
+// 结构化：menu-bar menus 模型 → 行式文本（菜单行无 '>'；项 '>'×层级；'--' 分隔；
+// 项"标题@快捷键"；标签转义）。
+static std::string menusText(const ControlModel& m) {
+    std::string out;
+    std::function<void(const nlohmann::json&, int)> walk = [&](const nlohmann::json& items, int depth) {
+        if (!items.is_array()) return;
+        for (const auto& it : items) {
+            if (!it.is_object()) continue;
+            if (!out.empty()) out += "\n";
+            out.append((size_t)depth, '>');
+            if (it.value("type", "") == "separator") {
+                out += "--";
+            } else {
+                out += menuLabelEscape(it.value("caption", ""));
+                const std::string sc = it.value("shortcut", "");
+                if (!sc.empty()) out += "@" + sc;
+            }
+            if (it.contains("items")) walk(it["items"], depth + 1);
+        }
+    };
+    const auto& ex = m.props.extended;
+    if (ex.contains("menus") && ex["menus"].is_array())
+        for (const auto& mn : ex["menus"]) {
+            if (!mn.is_object()) continue;
+            if (!out.empty()) out += "\n";
+            std::string line = menuLabelEscape(mn.value("caption", ""));
+            StructItemAttrs a;   // 面板级属性（P0-72①：字号/字体名/阴影半径）
+            if (mn.contains("font") && mn["font"].is_object()) {
+                if (mn["font"].contains("size") && mn["font"]["size"].is_number())
+                    a.fontSize = mn["font"]["size"].get<int>();
+                if (mn["font"].contains("name") && mn["font"]["name"].is_string())
+                    a.fontName = mn["font"]["name"].get<std::string>();
+            }
+            if (mn.contains("shadow-radius") && mn["shadow-radius"].is_number()) {
+                a.radius = mn["shadow-radius"].get<float>();
+                a.hasRadius = true;
+            }
+            appendStructAttrs(line, a);
+            out += line;
+            walk(mn.value("items", nlohmann::json::array()), 1);
+        }
+    return out;
+}
+
+// 结构化：tab-control tabs 模型 → 行式文本（一行一页签标题）。
+static std::string tabsText(const ControlModel& m) {
+    std::string out;
+    const auto& ex = m.props.extended;
+    if (ex.contains("tabs") && ex["tabs"].is_array())
+        for (const auto& t : ex["tabs"]) {
+            if (!t.is_object()) continue;
+            if (!out.empty()) out += "\n";
+            out += t.value("title", "");
+        }
+    return out;
+}
+
+// 结构化：shape points 模型 → 行式文本（一行一点"x,y"）。
+static std::string shapePointsText(const ControlModel& m) {
+    std::string out;
+    const auto& ex = m.props.extended;
+    if (ex.contains("points") && ex["points"].is_array()) {
+        for (const auto& p : ex["points"]) {
+            if (!p.is_object()) continue;
+            char b[48];
+            std::snprintf(b, sizeof(b), "%g,%g", p.value("x", 0.0f), p.value("y", 0.0f));
+            if (!out.empty()) out += "\n";
+            out += b;
+        }
+    }
+    return out;
+}
+
+// 结构化：按类型/键分发行式读取（combo/status/tree items、list columns/rows、shape points）。
+static std::string structRowText(const ControlModel& m, const std::string& key) {
+    if (m.props.type == "list-view")
+        return key == "rows" ? listRowsText(m) : listColumnsText(m);
     if (m.props.type == "status-bar") return statusBarItemsText(m);
+    if (m.props.type == "tree-view") return treeItemsText(m);
+    if (m.props.type == "shape" && key == "points") return shapePointsText(m);
+    if (m.props.type == "menu-bar" && key == "menus") return menusText(m);
+    if (m.props.type == "tab-control" && key == "tabs") return tabsText(m);
     return comboItemsText(m);
 }
 
@@ -2064,15 +2955,299 @@ static std::set<std::string> schemaKeySet(const nlohmann::json& defs, const std:
     return keys;
 }
 
+// 动态行池：同种类行跨类型复用（隐藏不销毁——内存换性能；仅首次创建走引擎 CreateX）。
+// 首次某 kind → create 创建并入容器/入库；再次 → 取出复用（可见置真），调用方随后
+// 重设 rect/样式/回调（回调覆盖注册；闭包按当前选中重绑）。未用行由 hideUnusedPoolRows 隐藏。
+Control CanvasPane::takePoolRow(const std::string& kind, const std::function<Control()>& create) {
+    auto it = m_rowPool.find(kind);
+    if (it != m_rowPool.end() && it->second.IsValid()) {
+        m_rowPoolUsed.insert(kind);
+        it->second.SetBool(PropertyNames::kVisible, true);
+        if (m_ui && !m_ui->DebugValidateHandle(it->second))   // P0-84c：Release 归属自检
+            std::printf("[CanvasPane] row handle NOT owned by main instance: %s\n", kind.c_str());
+        return it->second;
+    }
+    Control c = create();
+    if (c.IsValid()) {
+        m_propDynamic.AddChild(c);   // 仅首次创建入容器
+        if (m_ui && !m_ui->DebugValidateHandle(c))   // P0-84c：Release 归属自检
+            std::printf("[CanvasPane] row handle NOT owned by main instance (new): %s\n", kind.c_str());
+        m_rowPool[kind] = c;
+        m_rowPoolUsed.insert(kind);
+    }
+    return c;
+}
+
+// 本趟未使用的池行隐藏（常驻保留——下次同类直接复用）
+void CanvasPane::hideUnusedPoolRows() {
+    for (auto& [kind, c] : m_rowPool)
+        if (m_rowPoolUsed.count(kind) == 0 && c.IsValid())
+            c.SetBool(PropertyNames::kVisible, false);
+}
+
 // 选中控件 → 按 schema 类型生成动态属性行（label 行 + 编辑控件行）。
 // 支持 string(EditBox)/number·integer(NUD)/boolean(CheckBox)；嵌套对象、枚举、
 // 布局资源类（rect/actors/luotiAni…）首版跳过。
 // 布局自管（absolute）：Panel::addControl 不触发 v-flow reflow（仅 Bench 会），
 // 初始叠放根因——行 y 手动累加；底部 ScrollBar 做"窗口滚动"（超界行隐藏，
 // 等效裁剪——引擎 panel 无裁剪能力）。
+// 行池复用：切换控件不销毁行——未用行隐藏、复用行重排+刷值（仅首次创建慢）。
+// 画布设置对话框（P0-84 绕过）：对话框输入通道已证可用（同资源弹窗）；引擎修复
+// 画布行内联输入后本对话框可保留为便捷入口（不影响）。
+void CanvasPane::ShowBenchSettingsDialog() {
+    if (!m_ui) return;
+    if (!m_benchDlg.IsValid()) {
+        m_benchDlg = m_ui->CreateDialog(u8"确定", u8"取消", 0, 0, 380, 190);
+        if (!m_benchDlg.IsValid()) return;
+        auto lbI = m_ui->CreateLabel(u8"画布 id", 16.0f, 20, 24, 70, 26);
+        m_benchDlgId = m_ui->CreateEditBox(100, 24, 250, 26);
+        auto lbT = m_ui->CreateLabel(u8"窗口标题", 16.0f, 20, 64, 70, 26);
+        m_benchDlgTitle = m_ui->CreateEditBox(100, 64, 250, 26);
+        m_benchDlg.AddChild(lbI);
+        m_benchDlg.AddChild(m_benchDlgId);
+        m_benchDlg.AddChild(lbT);
+        m_benchDlg.AddChild(m_benchDlgTitle);
+        m_benchDlg.SetCallback(PropertyNames::kEventClose, [this](const Event& e) {
+            if (e.GetCloseResult() != 1) return;   // 取消
+            const std::string rawId = m_benchDlgId.IsValid()
+                ? m_benchDlgId.GetString(PropertyNames::kTextContent) : "";
+            const std::string title = m_benchDlgTitle.IsValid()
+                ? m_benchDlgTitle.GetString(PropertyNames::kTextContent) : "";
+            std::string id;
+            for (char c : rawId)
+                if (!std::isspace((unsigned char)c)) id += c;   // 空白（含换行）全移除
+            bool idOk = true;
+            if (id == "@bench") idOk = false;
+            for (auto& it : m_items)
+                if (it.model && it.model->props.id == id) idOk = false;
+            if (!id.empty() && !idOk) {
+                setStatusHint(u8"画布 id 未修改（空白/重复/保留键）：" + id);
+            } else if (!id.empty() && id != m_benchId) {
+                m_benchId = id;
+                syncTreeRename("@bench", benchTreeNodeLabel());
+                commitUndo("bench-id");   // F2.5：对话框 id 编辑
+                setStatusHint(u8"画布 id 已改为：" + id);
+            }
+            if (title != m_benchTitle) {
+                m_benchTitle = title;
+                commitUndo("bench-title");   // F2.5：对话框标题编辑
+            }
+            setStatusHint(u8"画布属性已更新（id / 标题）");
+            rebuildDynamicRows();   // 行显示同步
+        });
+        m_benchDlg.SetBool(PropertyNames::kVisible, 0);   // 首开即关（复用）
+    }
+    m_benchDlgId.SetString(PropertyNames::kTextContent, m_benchId);
+    m_benchDlgTitle.SetString(PropertyNames::kTextContent, m_benchTitle);
+    m_benchDlg.SetBool(PropertyNames::kVisible, 1);
+}
+
+// 画布（Bench）属性动态行：类型 / id（代码引用）/ 窗口标题 / 缩放模式 / 背景色
+// （alpha 支持——00 透明：不填充透出底层，游戏场景 UI 叠加）。行池前缀 "bench:"。
+void CanvasPane::buildBenchRows() {
+    const UIRect box = m_propDynamic.GetRect();
+    const float viewH = box.h, barW = kPropBarW;
+    if (!m_dynScroll.IsValid()) {
+        m_dynScroll = m_ui->CreateScrollBar(box.w - barW, 0.0f, barW, viewH, 0);
+        m_dynScroll.SetFloat(PropertyNames::kRangeMin, 0.0f);
+        m_dynScroll.SetFloat(PropertyNames::kPageSize, viewH);
+        m_dynScroll.SetFloat(PropertyNames::kStepSize, kPropCheckH);
+        m_dynScroll.SetCallback(PropertyNames::kEventPositionChanged,
+                                [this](const Event& e) { applyDynScroll(e.GetValueChanged()); });
+        m_propDynamic.AddChild(m_dynScroll);
+    }
+    m_dynScroll.SetBool(PropertyNames::kVisible, true);
+    m_schemaTarget = Control();
+    m_schemaType.clear();
+    const float rowW = box.w - kPropRowInset;
+    const float lblFont = kPropLblFont, lblH = kPropLblH, ctlH = kPropCtlH,
+          gapLbl = kPropGapLbl, rowGap = kPropRowGap;
+    float y = kPropInsetX;
+    int rows = 0;
+    std::string genKeys;
+    auto makeLabel = [&](const std::string& label) {
+        Control lb = takePoolRow("bench:lbl:" + label, [&] {
+            return m_ui->CreateLabel(label, lblFont, 0, 0, rowW, lblH);
+        });
+        lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
+        lb.SetRect(kPropInsetX, y, rowW, lblH);
+        m_dynamicRows.push_back(lb);
+        m_dynamicRowY.push_back(y);
+        y += lblH + gapLbl;
+    };
+    // 快路径：行集已建 → 仅刷值（同控件行池口径）
+    if (m_rowsBuiltSig == "bench" && !m_rowRefreshers.empty()) {
+        m_propSync = true;
+        for (auto& fn : m_rowRefreshers)
+            if (fn) fn();
+        m_propSync = false;
+        applyDynScroll(m_dynScroll.GetFloat(PropertyNames::kValue));
+        return;
+    }
+    m_rowsBuiltSig = "bench";
+    // 类型行
+    {
+        Control lb = takePoolRow("bench:type", [&] {
+            return m_ui->CreateLabel(u8"画布（Bench）", kPropLblFont, 0, 0, rowW, kPropLblH);
+        });
+        lb.SetColor(PropertyNames::kText, UIColor{0xE8, 0xE8, 0xE8, 255});
+        lb.SetRect(kPropInsetX, y, rowW, kPropLblH);
+        m_dynamicRows.push_back(lb);
+        m_dynamicRowY.push_back(y);
+        y += kPropLblH + kPropRowGap;
+        ++rows;
+        genKeys += " [画布]";
+    }
+    // 文本行（id / 标题）共用样式
+    auto makeTextRow = [&](const std::string& kind, const std::string& label,
+                           const std::function<std::string()>& get,
+                           const std::function<void(const std::string&)>& set) {
+        makeLabel(label);
+        Control ta = takePoolRow(kind, [&] {
+            return m_ui->CreateEditBox(kPropInsetX, y, rowW, kPropCtlH);
+        });
+        ta.SetRect(kPropInsetX, y, rowW, kPropCtlH);
+        ta.SetStateColor(PropertyNames::kBackground,
+                         UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
+        ta.SetStateColor(PropertyNames::kText,
+                         UIStateColor{kPropPanelText, kPropPanelText, kPropPanelText, kPropPanelText});
+        ta.SetStateColor(PropertyNames::kBorder,
+                         UIStateColor{kPropPanelBorder, kPropPanelBorderFocus, kPropPanelBorderFocus, kPropPanelBorder});
+        ta.SetString(PropertyNames::kTextContent, get());
+        m_rowRefreshers.push_back([ta, get]() mutable {
+            ta.SetString(PropertyNames::kTextContent, get());
+        });
+        ta.SetCallback(PropertyNames::kEventTextChanged, [this, get, set](const Event& e) {
+            if (m_propSync) return;
+            const std::string v = sanitizePropValue("caption", e.GetTextChanged());
+            if (v == get()) return;
+            set(v);
+        });
+        m_dynamicRows.push_back(ta);
+        m_dynamicRowY.push_back(y);
+        y += kPropCtlH + rowGap;
+        ++rows;
+    };
+    makeTextRow("bench:id", u8"画布 id（代码引用）",
+                [this]() { return m_benchId; },
+                [this](const std::string& v) {
+                    std::string t = v;
+                    const auto b = t.find_first_not_of(" \t");
+                    const auto e2 = t.find_last_not_of(" \t");
+                    t = (b == std::string::npos) ? std::string() : t.substr(b, e2 - b + 1);
+                    bool ok = true;
+                    for (char c : t)
+                        if (std::isspace((unsigned char)c)) ok = false;
+                    if (ok)
+                        for (auto& it : m_items)
+                            if (it.model && it.model->props.id == t) ok = false;
+                    if (!ok) {
+                        setStatusHint(u8"画布 id 未修改（空白/与控件重复）：" + t);
+                        return;
+                    }
+                    m_benchId = t;
+                    syncTreeRename("@bench", benchTreeNodeLabel());   // 树根节点显示 Bench 控件 id
+                    commitUndo("bench-id");   // F2.5：画布 id（编辑完成 0.7s 合并）
+                    setStatusHint(u8"画布 id 已改为：" + t);
+                });
+    makeTextRow("bench:title", u8"窗口标题",
+                [this]() { return m_benchTitle; },
+                [this](const std::string& v) { m_benchTitle = v; commitUndo("bench-title"); });
+    // P0-84 绕过：对话框输入通道（已证可用）——提供 id/标题 的可用编辑入口
+    {
+        makeLabel(u8"画布设置");
+        Control b = takePoolRow("bench:dlg", [&] {
+            return m_ui->CreateButton(u8"画布设置…（id / 窗口标题）", kPropInsetX, y, rowW, kPropCtlH);
+        });
+        b.SetRect(kPropInsetX, y, rowW, kPropCtlH);
+        b.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+            ShowBenchSettingsDialog();
+        });
+        m_dynamicRows.push_back(b);
+        m_dynamicRowY.push_back(y);
+        y += kPropCtlH + rowGap;
+        ++rows;
+        genKeys += " dlg";
+    }
+    // 缩放模式（off/fit/stretch；导出 viewport.scale-mode——预览/应用生效）
+    {
+        makeLabel(u8"缩放模式");
+        Control cb = takePoolRow("bench:scale", [&] {
+            Control c = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
+            m_ui->ComboBoxAddItem(c, "off", "0");
+            m_ui->ComboBoxAddItem(c, "fit", "1");
+            m_ui->ComboBoxAddItem(c, "stretch", "2");
+            return c;
+        });
+        cb.SetRect(kPropInsetX, y, rowW, ctlH);
+        cb.SetInt(PropertyNames::kSelectedIndex, m_benchScaleMode);
+        m_rowRefreshers.push_back([this, cb]() mutable {
+            cb.SetInt(PropertyNames::kSelectedIndex, m_benchScaleMode);
+        });
+        cb.SetCallback(PropertyNames::kEventSelectionChanged, [this, cb](const Event&) mutable {
+            if (m_propSync) return;
+            const int idx = cb.GetInt(PropertyNames::kSelectedIndex);
+            if (idx < 0 || idx > 2) return;
+            m_benchScaleMode = idx;
+            commitUndo("bench-scale");   // F2.5
+            setStatusHint(idx == 0 ? u8"缩放模式：off（画布跟随窗口）"
+                          : idx == 1 ? u8"缩放模式：fit（等比居中）"
+                                     : u8"缩放模式：stretch（拉伸铺满）");
+        });
+        m_dynamicRows.push_back(cb);
+        m_dynamicRowY.push_back(y);
+        y += ctlH + rowGap;
+        ++rows;
+        genKeys += " scale-mode";
+    }
+    // 背景色（ColorPicker 含 alpha；00 透明 = 不填充/透出底层——游戏场景 UI 叠加）
+    {
+        makeLabel(u8"背景色（alpha=00 透明）");
+        char hex[12];
+        std::snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X",
+                      m_benchBg.r, m_benchBg.g, m_benchBg.b, m_benchBg.a);
+        Control cp = takePoolRow("bench:bg", [&] {
+            return m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
+        });
+        cp.SetRect(kPropInsetX, y, kColorRowW, ctlH);
+        cp.SetString(PropertyNames::kColor, hex);
+        cp.SetString(PropertyNames::kTextContent, hex);
+        m_rowRefreshers.push_back([this, cp]() mutable {
+            char h2[12];
+            std::snprintf(h2, sizeof(h2), "#%02X%02X%02X%02X",
+                          m_benchBg.r, m_benchBg.g, m_benchBg.b, m_benchBg.a);
+            cp.SetString(PropertyNames::kColor, h2);
+            cp.SetString(PropertyNames::kTextContent, h2);
+        });
+        cp.SetCallback(PropertyNames::kEventColorChanged, [this](const Event& e) {
+            if (m_propSync) return;
+            m_benchBg = e.GetChangedColor();
+            applyBenchBackground();
+            commitUndo("bench-bg");   // F2.5：颜色编辑（0.7s 合并）
+        });
+        m_fixedWidthRows.insert(m_dynamicRows.size());
+        m_dynamicRows.push_back(cp);
+        m_dynamicRowY.push_back(y);
+        y += ctlH + rowGap;
+        ++rows;
+        genKeys += " background";
+    }
+    hideUnusedPoolRows();
+    m_dynScrollMax = (y + kPropInsetX) - viewH;
+    if (m_dynScrollMax < 0) m_dynScrollMax = 0;
+    m_dynScroll.SetFloat(PropertyNames::kRangeMax, m_dynScrollMax > 0 ? m_dynScrollMax : 1.0f);
+    m_dynScroll.SetFloat(PropertyNames::kValue, 0.0f);
+    m_dynScroll.SetBool(PropertyNames::kVisible, m_dynScrollMax > 0);
+    applyDynScroll(0.0f);
+    std::printf("[CanvasPane] bench rows built: %d (%s)\n", rows, genKeys.c_str());
+}
+
+// 画布背景 → 网格瓦片底色（WYSIWYG：纸面=设计区、底色=Bench 背景、网格线取对比色）。
+void CanvasPane::applyBenchBackground() {
+    rebuildGridTile();
+}
+
 void CanvasPane::rebuildDynamicRows() {
-    for (Control& c : m_dynamicRows)
-        if (c.IsValid()) c.Destroy();
     m_dynamicRows.clear();
     m_dynamicRowY.clear();
     m_fixedWidthRows.clear();
@@ -2080,22 +3255,25 @@ void CanvasPane::rebuildDynamicRows() {
     m_schemaTarget = Control();
     m_schemaTargets.clear();
     m_rowRefreshers.clear();
+    m_rowPoolUsed.clear();
     if (!m_propDynamic.IsValid()) return;
+    if (m_benchSelected) { buildBenchRows(); return; }   // 画布（Bench）行集
     const ControlModel* m = findModel(m_selectedId);
-    if (!m) {   // 未选中：动态区留空（滚动条一并隐藏）
+    if (!m) {   // 未选中：动态区留空（滚动条一并隐藏；池行全隐藏不销毁）
         if (m_dynScroll.IsValid()) m_dynScroll.SetBool(PropertyNames::kVisible, false);
         m_rowsBuiltSig.clear();
         m_schemaTargets.clear();
+        hideUnusedPoolRows();
         return;
     }
     const PlacedControl* pc = placedById(m->props.id);
-    if (!pc || !pc->ctl.IsValid()) return;
-    if (!m_schema) return;
+    if (!pc || !pc->ctl.IsValid()) { hideUnusedPoolRows(); return; }
+    if (!m_schema) { hideUnusedPoolRows(); return; }
 
     const auto& defs = (*m_schema)["$defs"];
-    if (!defs.contains(m->props.type)) return;
+    if (!defs.contains(m->props.type)) { hideUnusedPoolRows(); return; }
     const nlohmann::json& def = defs[m->props.type];
-    if (!def.contains("properties")) return;
+    if (!def.contains("properties")) { hideUnusedPoolRows(); return; }
 
     // P2 多选：批量写目标（全部选中；读回/回填以主选为准）+ 行集签名含全部类型
     m_schemaTargets.clear();
@@ -2131,7 +3309,7 @@ void CanvasPane::rebuildDynamicRows() {
     // 跳过：布局/资源/嵌套复杂对象/事件类；caption/enabled/visible 固定区已有
     // （schema 键名已统一 kebab——skip 名单同步 kebab）
     static const char* kSkip[] = {
-        "type", "id", "name", "rect", "scale", "margin",   // layout/anchor 走定制行（P0-59）
+        "type", "name", "rect", "scale", "margin",   // layout/anchor 走定制行（P0-59）；id 走重命名定制行
         "events", "context-menu", "actors", "luotiAni", "caption-label",
         "file", "resourceId", "providerName",   // 解析期键（引擎无运行时 setter）
         "match-parent-rect", "debug-draw",
@@ -2189,8 +3367,10 @@ void CanvasPane::rebuildDynamicRows() {
     // （E 签名含折叠状态：切换组时重建、状态不变时同类 refresh 复用不受影响）
     auto makeGroupHeader = [&](const std::string& name) {
         const bool collapsed = m_collapsedGroups.count(name) != 0;
-        Control hb = m_ui->CreateButton(
-            std::string(collapsed ? "▸ " : "▾ ") + name, 0, 0, rowW, kPropCtlH);
+        Control hb = takePoolRow("grp:" + name + (collapsed ? ":收" : ":开"), [&] {
+            return m_ui->CreateButton(
+                std::string(collapsed ? "▸ " : "▾ ") + name, 0, 0, rowW, kPropCtlH);
+        });
         hb.SetStateColor(PropertyNames::kBackground,
                          UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
         hb.SetStateColor(PropertyNames::kBorder,
@@ -2204,7 +3384,6 @@ void CanvasPane::rebuildDynamicRows() {
             else m_collapsedGroups.insert(name);
             rebuildDynamicRows();   // 重排：仅创建展开组的行
         });
-        m_propDynamic.AddChild(hb);
         m_dynamicRows.push_back(hb);
         m_dynamicRowY.push_back(y);
         y += ctlH + kPropRowGap;
@@ -2217,10 +3396,11 @@ void CanvasPane::rebuildDynamicRows() {
     bool commonHeaderDone = false;   // 常规组标题哨兵（colors 段后首个通用行前插入）
     std::string lastOwner;           // 当前属性分组（组切换时插组标题行）
     auto makeLabel = [&](const std::string& label) {
-        Control lb = m_ui->CreateLabel(label, lblFont, 0, 0, rowW, lblH);
+        Control lb = takePoolRow("lbl:" + label, [&] {
+            return m_ui->CreateLabel(label, lblFont, 0, 0, rowW, lblH);
+        });
         lb.SetColor(PropertyNames::kText, UIColor{0x90, 0x90, 0x90, 255});
         lb.SetRect(kPropInsetX, y, rowW, lblH);
-        m_propDynamic.AddChild(lb);
         m_dynamicRows.push_back(lb);
         m_dynamicRowY.push_back(y);
         y += lblH + gapLbl;
@@ -2278,10 +3458,11 @@ void CanvasPane::rebuildDynamicRows() {
             typeName = m_schemaType;
             typeName[0] = std::toupper((unsigned char)typeName[0]);
         }
-        Control lb = m_ui->CreateLabel(typeName, kPropLblFont, 0, 0, rowW, kPropLblH);
+        Control lb = takePoolRow("type:" + typeName, [&] {
+            return m_ui->CreateLabel(typeName, kPropLblFont, 0, 0, rowW, kPropLblH);
+        });
         lb.SetColor(PropertyNames::kText, UIColor{0xE8, 0xE8, 0xE8, 255});
         lb.SetRect(kPropInsetX, y, rowW, kPropLblH);
-        m_propDynamic.AddChild(lb);
         m_dynamicRows.push_back(lb);
         m_dynamicRowY.push_back(y);
         y += kPropLblH + kPropRowGap;
@@ -2359,7 +3540,9 @@ void CanvasPane::rebuildDynamicRows() {
             }
             makeLabel("shadow.enabled");
             {
-                Control cb = m_ui->CreateCheckBox("shadow.enabled", 0, 0, rowW, ctlH);
+                Control cb = takePoolRow("chkshadow:enabled", [&] {
+                    return m_ui->CreateCheckBox("shadow.enabled", 0, 0, rowW, ctlH);
+                });
                 cb.SetRect(kPropInsetX, y, rowW, ctlH);
                 cb.SetBool(PropertyNames::kTriState, false);
                 bool on = false;
@@ -2379,6 +3562,7 @@ void CanvasPane::rebuildDynamicRows() {
                     for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中（类型分派）
                         PlacedControl* pc2 = placedById(id);
                         if (!pc2 || !pc2->ctl.IsValid()) continue;
+                        pc2->model->props.extended["shadow"] = on2;   // 模型同步
                         if (pc2->model->props.type == "win-frame") {
                             void* h = pc2->ctl.GetPtr(PropertyNames::kTitleLabel);
                             if (h) m_viewport->FromHandle(h).SetBool(PropertyNames::kShadow, on2);
@@ -2387,7 +3571,6 @@ void CanvasPane::rebuildDynamicRows() {
                         pc2->ctl.SetBool(PropertyNames::kShadow, on2);
                     }
                 });
-                m_propDynamic.AddChild(cb);
                 m_dynamicRows.push_back(cb);
                 m_dynamicRowY.push_back(y);
                 y += ctlH + rowGap;
@@ -2398,7 +3581,9 @@ void CanvasPane::rebuildDynamicRows() {
             static const char* kOffProp[] = { "shadow-offset-x", "shadow-offset-y" };
             for (int oi = 0; oi < 2; ++oi) {
                 makeLabel(kOff[oi]);
-                Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, ctlH);
+                Control nud = takePoolRow(std::string("nudshadow:") + (oi == 0 ? "x" : "y"), [&] {
+                    return m_ui->CreateNumericUpDown(0, 0, rowW, ctlH);
+                });
                 nud.SetRect(kPropInsetX, y, rowW, ctlH);
                 nud.SetFloat(PropertyNames::kStep, kShadowStep);
                 nud.SetFloat(PropertyNames::kRangeMin, -kShadowRange);
@@ -2421,6 +3606,7 @@ void CanvasPane::rebuildDynamicRows() {
                     for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中（类型分派）
                         PlacedControl* pc2 = placedById(id);
                         if (!pc2 || !pc2->ctl.IsValid()) continue;
+                        pc2->model->props.extended[kOffProp[oi]] = v2;   // 模型同步
                         const std::string& tp2 = pc2->model->props.type;
                         const bool legacy2 = (tp2 == "button" || tp2 == "check-box" ||
                                               tp2 == "win-frame");
@@ -2433,7 +3619,6 @@ void CanvasPane::rebuildDynamicRows() {
                         if (h) m_viewport->FromHandle(h).SetFloat(kOffProp[oi], v2);
                     }
                 });
-                m_propDynamic.AddChild(nud);
                 m_dynamicRows.push_back(nud);
                 m_dynamicRowY.push_back(y);
                 y += ctlH + rowGap;
@@ -2475,7 +3660,12 @@ void CanvasPane::rebuildDynamicRows() {
 
                     // 颜色槽：直建 ColorPicker（引擎惰性化——关闭态秒建、弹窗首次打开才构建）
                     // 宽固定 120（宽度同步跳过）；color-changed → 写对应属性键
-                    Control cp = m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
+                    Control cp = takePoolRow("color:" + prop + ":" + grpName, [&] {
+                        return m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
+                    });
+                    cp.SetRect(kPropInsetX, y, kColorRowW, ctlH);
+                    cp.SetString(PropertyNames::kColor, hex);          // 复用行：重填当前值（Picker 自身 color 域）
+                    cp.SetString(PropertyNames::kTextContent, hex);
                     cp.SetCallback(PropertyNames::kEventColorChanged,
                                    [this, prop, grpName](const Event& e) {
                         const UIColor c = e.GetChangedColor();
@@ -2483,7 +3673,6 @@ void CanvasPane::rebuildDynamicRows() {
                             writeColorSlotTo(id, prop, grpName, c);
                     });
                     m_fixedWidthRows.insert(m_dynamicRows.size());
-                    m_propDynamic.AddChild(cp);
                     m_dynamicRows.push_back(cp);
                     m_dynamicRowY.push_back(y);
                     y += ctlH + rowGap;
@@ -2502,7 +3691,7 @@ void CanvasPane::rebuildDynamicRows() {
                         char hex2[12];
                         std::snprintf(hex2, sizeof(hex2), "#%02X%02X%02X%02X",
                                       cc2.r, cc2.g, cc2.b, cc2.a);
-                        cp.SetColor(prop.c_str(), cc2);
+                        cp.SetString(PropertyNames::kColor, hex2);   // Picker 自身 color 域（勿写目标属性名）
                         cp.SetString(PropertyNames::kTextContent, hex2);
                     });
                 }
@@ -2514,35 +3703,60 @@ void CanvasPane::rebuildDynamicRows() {
         // 结构化：行式列表编辑（combo-box.items / status-bar.items / list-view.columns；
         // 模型持有 + 引擎同步；单选——结构化数据不做批量写；一行一项，空行忽略）
         const bool structItems = (key == "items" && (m_schemaType == "combo-box" ||
-                                                     m_schemaType == "status-bar"));
+                                                     m_schemaType == "status-bar" ||
+                                                     m_schemaType == "tree-view"));
         const bool structCols  = (key == "columns" && m_schemaType == "list-view");
-        if (structItems || structCols) {
+        const bool structRows  = (key == "rows" && m_schemaType == "list-view");
+        const bool structPts   = (key == "points" && m_schemaType == "shape");
+        const bool structMenus = (key == "menus" && m_schemaType == "menu-bar");
+        const bool structTabs  = (key == "tabs" && m_schemaType == "tab-control");
+        if (structItems || structCols || structRows || structPts || structMenus || structTabs) {
             if (m_selIds.size() != 1) continue;
-            makeLabel(structCols ? u8"columns（标题|宽度|文字色|字号|背景色|阴影色|偏移）"
-                                 : (m_schemaType == "status-bar" ? u8"items（文本|#文字色|#背景色|字号|#阴影色|偏移）"
-                                                                 : u8"items（一行一项）"));
-            Control ta = m_ui->CreateTextArea(0, 0, rowW, kPropItemsH);
+            makeLabel(structTabs ? u8"tabs（一行一页签标题）"
+                                 : structMenus ? u8"menus（菜单行；项 > 层级，项@快捷键，-- 分隔）"
+                                 : structPts ? u8"points（一行一点 x,y）"
+                                 : structCols ? u8"columns（标题@宽度@背景色@字体色@字号@字体名@阴影色@偏移）"
+                                 : structRows ? u8"rows（| 单元格；@ 背景色@字体色@字号@字体名@阴影色@偏移）"
+                                 : (m_schemaType == "status-bar" ? u8"items（文本@背景色@字体色@字号@字体名@阴影色@偏移）"
+                                     : (m_schemaType == "tree-view" ? u8"items（> 层级；@ 背景色@字体色@字号@字体名@阴影色@偏移）"
+                                                                     : u8"items（一行一项）")));
+            Control ta = takePoolRow("struct:" + key + ":" + m_schemaType, [&] {
+                return m_ui->CreateTextArea(0, 0, rowW, kPropItemsH);
+            });
             ta.SetRect(kPropInsetX, y, rowW, kPropItemsH);
+            ta.SetBool(PropertyNames::kAutoScroll, false);   // P0-68：编辑式光标跟随（显式，不依赖缺省）
             ta.SetStateColor(PropertyNames::kBackground,
                              UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
             ta.SetStateColor(PropertyNames::kText,
                              UIStateColor{kPropPanelText, kPropPanelText, kPropPanelText, kPropPanelText});
             ta.SetStateColor(PropertyNames::kBorder,
                              UIStateColor{kPropPanelBorder, kPropPanelBorderFocus, kPropPanelBorderFocus, kPropPanelBorder});
-            ta.SetString(PropertyNames::kTextContent, structRowText(*m));
-            m_rowRefreshers.push_back([this, ta]() mutable {
+            ta.SetString(PropertyNames::kTextContent, structRowText(*m, key));
+            m_rowRefreshers.push_back([this, ta, key]() mutable {
                 if (const ControlModel* mm = findModel(m_selectedId))
-                    ta.SetString(PropertyNames::kTextContent, structRowText(*mm));
+                    ta.SetString(PropertyNames::kTextContent, structRowText(*mm, key));
             });
-            ta.SetCallback(PropertyNames::kEventTextChanged, [this](const Event& e) {
+            ta.SetCallback(PropertyNames::kEventTextChanged, [this, key](const Event& e) {
                 if (m_propSync) return;
                 ControlModel* mm = findModel(m_selectedId);
                 if (!mm) return;
-                if (mm->props.type == "list-view") applyListColumnsText(*mm, e.GetTextChanged());
-                else if (mm->props.type == "status-bar") applyStatusBarItemsText(*mm, e.GetTextChanged());
-                else applyComboItemsText(*mm, e.GetTextChanged());
+                if (mm->props.type == "list-view") {
+                    if (key == "rows") applyListRowsText(*mm, e.GetTextChanged());
+                    else applyListColumnsText(*mm, e.GetTextChanged());
+                } else if (mm->props.type == "status-bar") {
+                    applyStatusBarItemsText(*mm, e.GetTextChanged());
+                } else if (mm->props.type == "tree-view") {
+                    applyTreeItemsText(*mm, e.GetTextChanged());
+                } else if (mm->props.type == "shape") {
+                    applyShapePointsText(*mm, e.GetTextChanged());
+                } else if (mm->props.type == "menu-bar") {
+                    applyMenusText(*mm, e.GetTextChanged());
+                } else if (mm->props.type == "tab-control") {
+                    applyTabsText(*mm, e.GetTextChanged());
+                } else {
+                    applyComboItemsText(*mm, e.GetTextChanged());
+                }
             });
-            m_propDynamic.AddChild(ta);
             m_dynamicRows.push_back(ta);
             m_dynamicRowY.push_back(y);
             y += kPropItemsH + rowGap;
@@ -2570,22 +3784,30 @@ void CanvasPane::rebuildDynamicRows() {
             if (m_schemaTarget.IsValid()) cc = m_schemaTarget.GetColor(cprop.c_str());
             char hex[12];
             std::snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X", cc.r, cc.g, cc.b, cc.a);
-            Control cp = m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
+            Control cp = takePoolRow("xcolor:" + key, [&] {
+                return m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
+            });
+            cp.SetRect(kPropInsetX, y, kColorRowW, ctlH);
+            cp.SetString(PropertyNames::kColor, hex);              // 复用行：重填当前值（Picker 自身 color 域）
+            cp.SetString(PropertyNames::kTextContent, hex);
             m_rowRefreshers.push_back([this, cp, cprop]() mutable {
                 const UIColor c2 = m_schemaTarget.GetColor(cprop.c_str());
                 char h2[12];
                 std::snprintf(h2, sizeof(h2), "#%02X%02X%02X%02X", c2.r, c2.g, c2.b, c2.a);
-                cp.SetColor(cprop.c_str(), c2);
+                cp.SetString(PropertyNames::kColor, h2);           // Picker 自身 color 域（勿写目标属性名）
                 cp.SetString(PropertyNames::kTextContent, h2);
             });
             cp.SetCallback(PropertyNames::kEventColorChanged, [this, cprop](const Event& e) {
                 const UIColor c = e.GetChangedColor();
-                for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
-                    if (PlacedControl* pc2 = placedById(id))
-                        if (pc2->ctl.IsValid()) pc2->ctl.SetColor(cprop.c_str(), c);
+                const std::string h = uiColorHex(c);
+                for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中
+                    PlacedControl* pc2 = placedById(id);
+                    if (!pc2 || !pc2->ctl.IsValid()) continue;
+                    pc2->ctl.SetColor(cprop.c_str(), c);
+                    pc2->model->props.extended[cprop] = h;   // 模型同步
+                }
             });
             m_fixedWidthRows.insert(m_dynamicRows.size());
-            m_propDynamic.AddChild(cp);
             m_dynamicRows.push_back(cp);
             m_dynamicRowY.push_back(y);
             y += ctlH + rowGap;
@@ -2594,12 +3816,79 @@ void CanvasPane::rebuildDynamicRows() {
             continue;
         }
 
+        // 控件 id（用户需求：代码引用——重命名行；单选；全链更新见 renameControlId）
+        if (key == "id") {
+            if (m_selIds.size() != 1) continue;
+            ControlModel* mm = findModel(m_selectedId);
+            if (!mm) continue;
+            makeLabel(u8"控件 id（代码引用；回车或移开生效）");
+            Control ta = takePoolRow("edit:id", [&] {
+                return m_ui->CreateEditBox(kPropInsetX, y, rowW, kPropCtlH);
+            });
+            ta.SetRect(kPropInsetX, y, rowW, kPropCtlH);
+            ta.SetStateColor(PropertyNames::kBackground,
+                             UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
+            ta.SetStateColor(PropertyNames::kText,
+                             UIStateColor{kPropPanelText, kPropPanelText, kPropPanelText, kPropPanelText});
+            ta.SetStateColor(PropertyNames::kBorder,
+                             UIStateColor{kPropPanelBorder, kPropPanelBorderFocus, kPropPanelBorderFocus, kPropPanelBorder});
+            ta.SetString(PropertyNames::kTextContent,
+                         (m_idRenamePending && m_idRenameTarget == m_selectedId)
+                             ? m_idRenameText : mm->props.id);
+            m_rowRefreshers.push_back([this, ta]() mutable {
+                if (m_idRenamePending && m_idRenameTarget == m_selectedId) {
+                    ta.SetString(PropertyNames::kTextContent, m_idRenameText);   // 保留编辑中文本
+                    return;
+                }
+                ControlModel* m2 = findModel(m_selectedId);
+                if (m2) ta.SetString(PropertyNames::kTextContent, m2->props.id);
+            });
+            ta.SetCallback(PropertyNames::kEventTextChanged, [this](const Event& e) {
+                if (m_propSync) return;
+                ControlModel* m2 = findModel(m_selectedId);
+                if (!m2) return;
+                const std::string v = e.GetTextChanged();
+                if (v == m2->props.id) {   // 无变化/程序回填
+                    m_idRenamePending = false;
+                    return;
+                }
+                // 编辑完成再提交（500ms 空闲；回车立即；切换选中时提交）
+                // 仅"有效候选"启动计时——退格清空/中间非法态不自动回退（用户：删完未及时输入被复原）
+                m_idRenameTarget = m_selectedId;
+                m_idRenameText = v;
+                m_idRenamePending = true;
+                bool validCandidate = !v.empty() && v != "@bench";
+                for (char c : v)
+                    if (std::isspace((unsigned char)c)) validCandidate = false;
+                if (validCandidate)
+                    for (auto& it : m_items)
+                        if (it.model && it.model->props.id == v) validCandidate = false;
+                if (validCandidate)
+                    m_idRenameDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+                else
+                    m_idRenameDeadline = std::chrono::steady_clock::time_point::max();   // 不自动提交
+            });
+            ta.SetCallback(PropertyNames::kEventEnter, [this](const Event&) {
+                commitPendingIdRename();
+            });
+            m_dynamicRows.push_back(ta);
+            m_dynamicRowY.push_back(y);
+            y += kPropCtlH + rowGap;
+            ++rows;
+            genKeys += " id";
+            continue;
+        }
+
         // 布局模式（容器，P0-59 运行期切换）：绝对/h-flow/v-flow/anchor/grid
         if (key == "layout") {
             if (m_selIds.size() != 1) continue;
             makeLabel(u8"布局模式");
-            Control lcb = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
-            for (int i = 0; i < 5; ++i) m_ui->ComboBoxAddItem(lcb, kLayoutLabels[i], kLayoutValues[i]);
+            Control lcb = takePoolRow("enum:layout", [&] {
+                Control c = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
+                for (int i = 0; i < 5; ++i) m_ui->ComboBoxAddItem(c, kLayoutLabels[i], kLayoutValues[i]);
+                return c;
+            });
+            lcb.SetRect(kPropInsetX, y, rowW, ctlH);
             const std::string curLay = m_schemaTarget.GetEnum(PropertyNames::kLayout);
             int curIdx = 0;
             for (int i = 0; i < 5; ++i) if (curLay == kLayoutValues[i]) { curIdx = i; break; }
@@ -2622,7 +3911,6 @@ void CanvasPane::rebuildDynamicRows() {
                 mm->props.extended["layout"] = kLayoutValues[idx];
                 syncModelsFromEngine();   // 布局切换触发引擎重排——同步全部模型
             });
-            m_propDynamic.AddChild(lcb);
             m_dynamicRows.push_back(lcb);
             m_dynamicRowY.push_back(y);
             y += ctlH + rowGap;
@@ -2641,8 +3929,12 @@ void CanvasPane::rebuildDynamicRows() {
             if (!par.IsValid()) continue;
             if (key == "anchor") {
                 makeLabel(u8"锚定（父容器/根 anchor 布局下生效）");
-                Control acb = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
-                for (int i = 0; i < 14; ++i) m_ui->ComboBoxAddItem(acb, kAnchorLabels[i], kAnchorValues[i]);
+                Control acb = takePoolRow("enum:anchor", [&] {
+                    Control c = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
+                    for (int i = 0; i < 14; ++i) m_ui->ComboBoxAddItem(c, kAnchorLabels[i], kAnchorValues[i]);
+                    return c;
+                });
+                acb.SetRect(kPropInsetX, y, rowW, ctlH);
                 par.SetString(PropertyNames::kChildTargetId, selfPc->model->props.id);
                 const std::string curA = par.GetEnum(PropertyNames::kChildAnchor);
                 int curI = -1;
@@ -2675,7 +3967,6 @@ void CanvasPane::rebuildDynamicRows() {
                     s2->model->props.extended["anchor"] = kAnchorValues[idx];
                     syncModelsFromEngine();   // P0-60：引擎 setter 即时重排——同步全部模型
                 });
-                m_propDynamic.AddChild(acb);
                 m_dynamicRows.push_back(acb);
                 m_dynamicRowY.push_back(y);
                 y += ctlH + rowGap;
@@ -2685,7 +3976,9 @@ void CanvasPane::rebuildDynamicRows() {
             }
             for (int oi = 0; oi < 2; ++oi) {   // anchorOffset：X/Y 两行
                 makeLabel(oi == 0 ? u8"锚定偏移 X" : u8"锚定偏移 Y");
-                Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, kPropCtlH);
+                Control nud = takePoolRow(std::string("nudanchor:") + (oi == 0 ? "x" : "y"), [&] {
+                    return m_ui->CreateNumericUpDown(0, 0, rowW, kPropCtlH);
+                });
                 nud.SetRect(kPropInsetX, y, rowW, kPropCtlH);
                 nud.SetFloat(PropertyNames::kStep, 1.0f);
                 par.SetString(PropertyNames::kChildTargetId, selfPc->model->props.id);
@@ -2711,9 +4004,10 @@ void CanvasPane::rebuildDynamicRows() {
                     p2.SetFloat(oi == 0 ? PropertyNames::kChildAnchorOffsetX
                                         : PropertyNames::kChildAnchorOffsetY,
                                 e.GetValueChanged());
+                    s2->model->props.extended[oi == 0 ? "anchor-offset-x" : "anchor-offset-y"]
+                        = e.GetValueChanged();   // 模型同步（保存数据源）
                     syncModelsFromEngine();   // P0-60：引擎 setter 即时重排——同步全部模型
                 });
-                m_propDynamic.AddChild(nud);
                 m_dynamicRows.push_back(nud);
                 m_dynamicRowY.push_back(y);
                 y += ctlH + rowGap;
@@ -2734,17 +4028,21 @@ void CanvasPane::rebuildDynamicRows() {
         // 写回/读回经引擎 P0-46 string 别名通道 → Enum）
         if (key == "font") {
             makeLabel(key);
-            Control fcb = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
             // 引擎字体枚举清单 API（单一数据源——P047_48 批 2.3）；
             // P0-47 扩展：kFont 未设置时引擎读回实际生效的缺省字体名——
             // 无需"(缺省)"虚拟项，直接按读回名匹配选中
             const auto fontNames = UICornerstone::UICornerstone::GetFontNames();
+            Control fcb = takePoolRow("enum:font", [&] {
+                Control c = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
+                for (int i = 0; i < (int)fontNames.size(); ++i)
+                    m_ui->ComboBoxAddItem(c, fontNames[i], fontNames[i]);
+                return c;
+            });
+            fcb.SetRect(kPropInsetX, y, rowW, ctlH);
             const std::string cur = m_schemaTarget.GetString(PropertyNames::kFont);
             int curIdx = 0;
-            for (int i = 0; i < (int)fontNames.size(); ++i) {
-                m_ui->ComboBoxAddItem(fcb, fontNames[i], fontNames[i]);
+            for (int i = 0; i < (int)fontNames.size(); ++i)
                 if (ieqNoCase(cur, fontNames[i])) curIdx = i;
-            }
             fcb.SetInt(PropertyNames::kSelectedIndex, curIdx);
             m_rowRefreshers.push_back([this, fcb, fontNames]() mutable {
                 const std::string cur2 = m_schemaTarget.GetString(PropertyNames::kFont);
@@ -2758,13 +4056,14 @@ void CanvasPane::rebuildDynamicRows() {
                             [this, fcb, fontNames](const Event&) mutable {
                 const int idx = fcb.GetInt(PropertyNames::kSelectedIndex);
                 if (idx >= 0 && idx < (int)fontNames.size()) {
-                    for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
-                        if (PlacedControl* pc2 = placedById(id))
-                            if (pc2->ctl.IsValid())
-                                pc2->ctl.SetString(PropertyNames::kFont, fontNames[idx]);
+                    for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中
+                        PlacedControl* pc2 = placedById(id);
+                        if (!pc2 || !pc2->ctl.IsValid()) continue;
+                        pc2->ctl.SetString(PropertyNames::kFont, fontNames[idx]);
+                        pc2->model->props.extended["font"] = fontNames[idx];   // 模型同步
+                    }
                 }
             });
-            m_propDynamic.AddChild(fcb);
             m_dynamicRows.push_back(fcb);
             m_dynamicRowY.push_back(y);
             y += ctlH + rowGap;
@@ -2784,8 +4083,11 @@ void CanvasPane::rebuildDynamicRows() {
         if (effT == "string") {
             // TextArea：多行值（如 Label 文本含换行）直接输入真实换行，
             // 无需转义；行高 40 容两行，超出内部滚动
-            Control ta = m_ui->CreateTextArea(0, 0, rowW, kPropTextAreaH);
+            Control ta = takePoolRow("txt:" + key, [&] {
+                return m_ui->CreateTextArea(0, 0, rowW, kPropTextAreaH);
+            });
             ta.SetRect(kPropInsetX, y, rowW, kPropTextAreaH);
+            ta.SetBool(PropertyNames::kAutoScroll, false);   // P0-68：编辑式光标跟随（显式，不依赖缺省）
             // 编程创建无主题：显式深色面板协调样式
             ta.SetStateColor(PropertyNames::kBackground,
                              UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
@@ -2861,21 +4163,21 @@ void CanvasPane::rebuildDynamicRows() {
                                // （播放中换动画→重播、暂停中换→保持暂停）；
                                // 首次预览由 placeControl 放置时自动播放承担
                            });
-            m_propDynamic.AddChild(ta);
             m_dynamicRows.push_back(ta);
             m_dynamicRowY.push_back(y);
             y += kPropTextAreaH + rowGap;
         } else if (effT == "number" || effT == "integer") {
-            Control nud = m_ui->CreateNumericUpDown(0, 0, rowW, kPropCtlH);
+            Control nud = takePoolRow("nud:" + key, [&] {
+                return m_ui->CreateNumericUpDown(0, 0, rowW, kPropCtlH);
+            });
             nud.SetRect(kPropInsetX, y, rowW, kPropCtlH);
             // 按 schema 类型分派（引擎已归一：font-size 全控件 Int 域、
             // number 类走 Float 域）；读失败（0）→ 放置记录的 font-size 兜底
             const bool isInt = (t == "integer");
-            if (!isInt) {   // number 类：小数步进+1 位小数（缺省 decimals=0 会 snap 到整数
-                            // 网格且整数显示，0.1 被归零）
-                nud.SetFloat(PropertyNames::kStep, 0.1f);
-                nud.SetInt(PropertyNames::kDecimals, 1);
-            }
+            // 复用行需重设步进/小数位（number 类：0.1 步进+1 位小数——缺省 decimals=0
+            // 会 snap 到整数网格且整数显示，0.1 被归零）
+            nud.SetFloat(PropertyNames::kStep, isInt ? 1.0f : 0.1f);
+            nud.SetInt(PropertyNames::kDecimals, isInt ? 0 : 1);
             float v = isInt ? (float)m_schemaTarget.GetInt(prop.c_str())
                             : m_schemaTarget.GetFloat(prop.c_str());
             if (v <= 0 && (prop == "font-size" || prop == "caption-size"))
@@ -2896,23 +4198,30 @@ void CanvasPane::rebuildDynamicRows() {
                                     if (!pc2 || !pc2->ctl.IsValid()) continue;
                                     if (isInt) pc2->ctl.SetInt(prop.c_str(), (int)v2);
                                     else pc2->ctl.SetFloat(prop.c_str(), v2);
+                                    pc2->model->props.extended[prop] = isInt ? (int)v2 : v2;   // 模型同步
                                 }
+                                commitUndo("n:" + prop);   // F2.5：数值行（0.7s 合并）
                             });
-            m_propDynamic.AddChild(nud);
             m_dynamicRows.push_back(nud);
             m_dynamicRowY.push_back(y);
             y += ctlH + rowGap;
         } else {
-            Control cb = m_ui->CreateCheckBox(key, 0, 0, rowW, kPropCheckH);
+            Control cb = takePoolRow("chk:" + key, [&] {
+                return m_ui->CreateCheckBox(key, 0, 0, rowW, kPropCheckH);
+            });
             cb.SetRect(kPropInsetX, y, rowW, kPropCheckH);
             cb.SetBool(PropertyNames::kTriState, false);   // bool 属性两态（引擎缺省三态循环）
             // CheckBox 不发 click，发 check-changed（intVal=CheckState 枚举）
             cb.SetCallback(PropertyNames::kEventCheckChanged,
                            [this, prop](const Event& e) {
                 const bool v2 = e.GetCheckState() != 0;
-                for (const auto& id : m_selIds)   // P2 多选：批量写全部选中
-                    if (PlacedControl* pc2 = placedById(id))
-                        if (pc2->ctl.IsValid()) pc2->ctl.SetBool(prop.c_str(), v2);
+                for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中
+                    PlacedControl* pc2 = placedById(id);
+                    if (!pc2 || !pc2->ctl.IsValid()) continue;
+                    pc2->ctl.SetBool(prop.c_str(), v2);
+                    pc2->model->props.extended[prop] = v2;   // 模型同步
+                }
+                commitUndo("b:" + prop);   // F2.5：勾选行
             });
             // 勾选状态回填（引擎 getter 补齐后 text-shadow-enable 等可读回）
             cb.SetBool(PropertyNames::kChecked,
@@ -2921,7 +4230,6 @@ void CanvasPane::rebuildDynamicRows() {
                 cb.SetBool(PropertyNames::kChecked,
                            m_schemaTarget.GetBool(prop.c_str()));
             });
-            m_propDynamic.AddChild(cb);
             m_dynamicRows.push_back(cb);
             m_dynamicRowY.push_back(y);
             y += ctlH + rowGap;
@@ -2941,6 +4249,16 @@ void CanvasPane::rebuildDynamicRows() {
     // offset：label 自身 / button+check-box+win-frame 内部 Label 直控 / 其余自身键
     // 例外：list-view/tree-view 的阴影为 item 级专用键（cell/item-text-shadow），
     //   通用 shadow 键不适用——暂不生成（后续单独行）
+
+    // 行池：本趟未用行隐藏（保留常驻）；复用行统一刷值（读当前选中回填——
+    // 新建行的创建期赋值冗余但无害，复用行由此拿到新控件值）
+    hideUnusedPoolRows();
+    if (!m_rowRefreshers.empty()) {
+        m_propSync = true;
+        for (auto& fn : m_rowRefreshers)
+            if (fn) fn();
+        m_propSync = false;
+    }
 
     // 行集就绪：签名含折叠状态（切换折叠 → 重建展开组；状态不变同类 → refresh 快路径）
     {
@@ -3018,18 +4336,18 @@ void CanvasPane::applyDynScroll(float value) {
 void CanvasPane::ensureSelHandle(Control target) {
     if (!m_viewport || !m_ui) return;
     if (!m_selHandle.IsValid()) {
-        m_selHandle = m_ui->CreateHandleControl(target, 0, 0, 1, 1);
+        m_selHandle = m_viewport->CreateHandleControl(target, 0, 0, 1, 1);
         if (!m_selHandle.IsValid()) return;
-        m_ui->SetHandleRectFilter(m_selHandle, &CanvasPane::rectFilterThunk, this);
+        m_viewport->SetHandleRectFilter(m_selHandle, &CanvasPane::rectFilterThunk, this);
     } else {
-        m_ui->SetHandleTarget(m_selHandle, target);
+        m_viewport->SetHandleTarget(m_selHandle, target);
     }
 }
 
 // 取消选中/删除目标：detach（移出容器+恢复光标），实例保留复用。
 void CanvasPane::detachSelHandle() {
     if (m_selHandle.IsValid())
-        m_ui->SetHandleTarget(m_selHandle, Control());
+        m_viewport->SetHandleTarget(m_selHandle, Control());
 }
 
 // 拖拽几何过滤（HandleControl setRect 前回调，target 局部逻辑坐标）：
@@ -3217,9 +4535,16 @@ void CanvasPane::tickInput() {
                     vr.x != m->props.rect.x || vr.y != m->props.rect.y) {
                     m->props.rect = SRect{ vr.x, vr.y, vr.w, vr.h };
                     fillPropertyPanel();
+                    m_engineRectDirty = true;   // F2.5：引擎手柄拖拽/缩放中
+                    m_engineRectId = m_selectedId;
                 }
             }
         }
+    }
+    if (m_engineRectDirty && !down) {   // F2.5：松开 → 手柄拖拽/缩放一次撤销步
+        m_engineRectDirty = false;
+        if (!m_engineRectId.empty()) commitUndo("rect:" + m_engineRectId);
+        m_engineRectId.clear();
     }
 
     // 拖动已选中控件
@@ -3333,6 +4658,13 @@ void CanvasPane::tickInput() {
                     }
                 }
             }
+            if (m_dragOrigValid) {   // F2.5：拖动有位移 → 撤销步（单击未移动不记录）
+                if (ControlModel* dm = findModel(m_dragId))
+                    if (dm->props.rect.x != m_dragOrigRect.x ||
+                        dm->props.rect.y != m_dragOrigRect.y)
+                        commitUndo("rect:" + m_dragId);
+                m_dragOrigValid = false;
+            }
             m_dragId.clear();   // 松开结束拖动
             m_groupDrag = false;
             m_groupEntries.clear();
@@ -3362,7 +4694,7 @@ void CanvasPane::tickInput() {
             int ht = 0;
             // 坐标域：m_handleAreas 基于 target getDrawRect（父链递归到视口根，
             // 视口根 rect=窗口全局位置）→ 全局域，传 SDL 窗口坐标原样
-            const bool hh = m_ui->HandleHitTest(m_selHandle, wx, wy, ht);
+            const bool hh = m_viewport->HandleHitTest(m_selHandle, wx, wy, ht);
             if (hh) {
                 // 多选 + 主选本体移动区（HandleType::Move=1）→ 组拖动（引擎路径增量）
                 if (m_selIds.size() > 1 && ht == 1) beginGroupDrag(m_selectedId);
@@ -3417,6 +4749,10 @@ void CanvasPane::tickInput() {
                 }
                 m_dragId = hit;
                 beginGroupDrag(hit);
+                if (ControlModel* dm = findModel(hit)) {   // F2.5：记录起始 rect（未移动不记历史）
+                    m_dragOrigRect = dm->props.rect;
+                    m_dragOrigValid = true;
+                }
             }
         } else {
             // P2 框选：空白处按下 → 启动橡皮筋（松开判定空白点击/框选）
@@ -3545,12 +4881,26 @@ void CanvasPane::applyAlignSnap(float& x, float& y, float w, float h,
 }
 
 // 右侧控件树：select 事件 → 选中画布控件（m_treeSync 抑制编程式回环）。
+// 画布（Bench）控件树的根节点：固定内部键（不与控件 id 冲突——重命名校验保留），
+// 标签展示 Bench 控件 id（用户需求：根节点显示 Bench 的控件 id）
+static constexpr const char* kBenchTreeNode = "@bench";
+
+std::string CanvasPane::benchTreeNodeLabel() const {
+    return m_benchId.empty() ? u8"画布" : (u8"画布 " + m_benchId);
+}
+
 void CanvasPane::SetCanvasTree(Control tree) {
     m_canvasTree = tree;
     if (!m_canvasTree.IsValid()) return;
+    m_ui->TreeViewAddNode(m_canvasTree, "", kBenchTreeNode, benchTreeNodeLabel());
     m_canvasTree.SetCallback(PropertyNames::kEventSelect, [this](const Event& e) {
         if (m_treeSync) return;
         const std::string id = e.GetNodeId();
+        if (id == kBenchTreeNode) {   // 画布根节点 → 选中画布（Bench 属性）
+            selectBench();
+            setPlaceTarget(std::string());
+            return;
+        }
         if (id.empty() || !findModel(id)) return;   // 空选/未知节点忽略
         selectItem(id);
         // P1-b 通道②：树选中容器 → 设为当前放置目标；选中非容器 → 回画布根
@@ -3580,6 +4930,20 @@ bool CanvasPane::resolveContainer(const std::string& id, Control& outParent, SRe
         if (!outParent.IsValid()) return false;
         const auto cr = outParent.GetRect();
         outContentRect = { gx + cr.x, gy + cr.y, cr.w, cr.h };
+        return true;
+    }
+    if (pc->model->props.type == "tab-control") {
+        // 放置目标 = 当前页 Panel（current-index → 模型 tabs[i].page-id）
+        const int cur = pc->ctl.GetInt(PropertyNames::kTabCurrentIndex);   // 运行时键 "currentIndex"（camelCase）
+        const nlohmann::json tabs = pc->model->props.extended.value("tabs", nlohmann::json::array());
+        if (!tabs.is_array() || cur < 0 || cur >= (int)tabs.size()) return false;
+        PlacedControl* pagePc = placedById(tabs[(size_t)cur].value("page-id", ""));
+        if (!pagePc || !pagePc->ctl.IsValid()) return false;
+        outParent = pagePc->ctl;
+        float px = 0, py = 0;
+        globalOriginOf(*pagePc, px, py);
+        const auto pr = pagePc->ctl.GetRect();
+        outContentRect = { px, py, pr.w, pr.h };
         return true;
     }
     outParent = pc->ctl;
@@ -3616,6 +4980,1305 @@ void CanvasPane::writeStatusItem(const char* itemId, const std::string& text) {
 
 void CanvasPane::setStatusHint(const std::string& text) {
     writeStatusItem("statusHint", text);
+}
+
+// ══════════════ 项目/布局 IO（菜单：新建/打开/保存/另存为/导入 JSON/导出 JSON）══════════════
+
+// UTF-8 路径 → filesystem::path（MSVC 文件流窄字符按 ANSI 解释——中文/非 ASCII
+// 路径会打开失败或生成乱码文件名；u8path 走宽字符路径）
+static std::filesystem::path utf8Path(const std::string& s) {
+    return std::filesystem::u8path(s);
+}
+
+// 引擎控件类型串 → 工具箱 id（controlTypeOf 反查；加载/打开路径用）
+static std::string toolboxIdOf(const std::string& type) {
+    static const char* kAll[] = {
+        "tBtn", "tLabel", "tImage", "tCheck", "tEdit", "tArea", "tBar",
+        "tSlider", "tScroll", "tShape", "tPanel", "tWin", "tSplit", "tTabs",
+        "tCombo", "tList", "tTree", "tNum", "tColor", "tMenu", "tStatus",
+        "tAni", "tDialog", "tCtx", "tPopup", "tConfirm",
+    };
+    for (const char* tb : kAll)
+        if (controlTypeOf(tb) == type) return tb;
+    return "";
+}
+
+// 单个模型 → 引擎兼容属性 JSON（不含 children；保存 .csd 与导出 JSON 共用）。
+// schema 感知：仅导出该类型 def（+common）声明的键——strict 校验零外溢
+// （模型含放置期记账键如 font-size/caption，类型不支持时不得外发）。
+static nlohmann::json modelPropsJson(const ControlModel& m, const nlohmann::json& defs) {
+    nlohmann::json j;
+    j["type"] = m.props.type;
+    if (!m.props.id.empty()) j["id"] = m.props.id;
+    j["rect"] = { { "x", m.props.rect.x }, { "y", m.props.rect.y },
+                  { "w", m.props.rect.w }, { "h", m.props.rect.h } };
+    if (!m.props.visible) j["visible"] = false;
+    const auto& ex = m.props.extended;
+    // 支持键集合（与属性面板 merged 同口径：类型 def + common）
+    std::set<std::string> supported;
+    const bool hasDefs = defs.is_object();
+    if (hasDefs && defs.contains(m.props.type) && defs[m.props.type].contains("properties"))
+        for (auto it = defs[m.props.type]["properties"].begin();
+             it != defs[m.props.type]["properties"].end(); ++it)
+            supported.insert(it.key());
+    if (hasDefs && defs.contains("common") && defs["common"].contains("properties"))
+        for (auto it = defs["common"]["properties"].begin();
+             it != defs["common"]["properties"].end(); ++it)
+            supported.insert(it.key());
+    auto isSupported = [&](const std::string& k) {
+        return !hasDefs || supported.count(k) != 0;
+    };
+    if (ex.contains("enabled") && isSupported("enabled")) j["enabled"] = ex["enabled"];
+    // 颜色：仅导出该类型声明的组/态子集（resolveColorGroups 口径）
+    if (ex.contains("colors") && ex["colors"].is_object() && isSupported("colors")) {
+        nlohmann::json out = nlohmann::json::object();
+        const auto groups = resolveColorGroups(defs, defs.contains(m.props.type)
+            ? defs[m.props.type] : nlohmann::json::object());
+        for (auto& [grp, states] : ex["colors"].items()) {
+            if (!states.is_object()) continue;
+            auto git = groups.find(grp);
+            if (git == groups.end()) continue;   // 类型未声明该色组——不外发
+            nlohmann::json st = nlohmann::json::object();
+            for (auto& [sname, hex] : states.items()) {
+                bool declared = false;
+                for (const auto& s : git->second)
+                    if (s == sname) { declared = true; break; }
+                if (declared && hex.is_string()) st[sname] = hex;
+            }
+            if (!st.empty()) out[grp] = std::move(st);
+        }
+        if (!out.empty()) j["colors"] = std::move(out);
+    }
+    if (ex.contains("caption") && isSupported("caption")) j["caption"] = ex["caption"];
+    // 字体：对象形态 {name,size} + 顶层 font-size 双发（各类型解析器覆盖面差异：
+    // label/button/edit-box/combo-box 读 font 对象；list-view/status-bar/tab-control 读顶层）
+    const bool wantFont = (ex.contains("font") && isSupported("font")) ||
+                          (ex.contains("font-size") && isSupported("font-size"));
+    if (wantFont) {
+        nlohmann::json f = nlohmann::json::object();
+        if (ex.contains("font") && ex["font"].is_string() && isSupported("font"))
+            f["name"] = ex["font"];
+        if (ex.contains("font-size") && ex["font-size"].is_number() && isSupported("font-size"))
+            f["size"] = (int)ex["font-size"].get<float>();
+        if (!f.empty()) j["font"] = std::move(f);
+        if (ex.contains("font-size") && ex["font-size"].is_number() && isSupported("font-size"))
+            j["font-size"] = (int)ex["font-size"].get<float>();
+    }
+    if (ex.contains("layout") && ex["layout"].is_string() && isSupported("layout"))
+        j["layout"] = { { "type", ex["layout"].get<std::string>() } };
+    if (ex.contains("anchor") && ex["anchor"].is_string() && isSupported("anchor"))
+        j["anchor"] = ex["anchor"];
+    if ((ex.contains("anchor-offset-x") || ex.contains("anchor-offset-y")) &&
+        isSupported("anchorOffset")) {
+        j["anchorOffset"] = { { "left", ex.value("anchor-offset-x", 0.0f) },
+                              { "top", ex.value("anchor-offset-y", 0.0f) } };
+    }
+    for (auto& [k, v] : ex.items()) {
+        static const char* kHandled[] = {
+            "enabled", "colors", "caption", "font", "font-size", "color",
+            "layout", "anchor", "anchor-offset-x", "anchor-offset-y" };
+        bool handled = false;
+        for (const char* h : kHandled)
+            if (k == h) { handled = true; break; }
+        if (handled) continue;
+        if (!isSupported(k)) continue;   // 类型不支持的键不外发（strict）
+        if (!j.contains(k)) j[k] = v;
+    }
+    return j;
+}
+
+// 模型树 → 引擎兼容布局 JSON（顶层 viewport + controls；保存 .csd 的 layout 段与导出共用）
+nlohmann::json CanvasPane::serializeLayoutJson() const {
+    const nlohmann::json defs = m_schema ? (*m_schema)["$defs"] : nlohmann::json::object();
+    nlohmann::json j;
+    {
+        // 画布（Bench）属性随导出：背景色（alpha=0 透明——引擎不填充/透出底层）、
+        // 缩放模式（off 省略）、id（代码引用——引擎 viewport.id 键待支持，先携带）
+        nlohmann::json vp = { { "width", m_designW }, { "height", m_designH } };
+        char hex8[12];
+        std::snprintf(hex8, sizeof(hex8), "#%02X%02X%02X%02X",
+                      m_benchBg.r, m_benchBg.g, m_benchBg.b, m_benchBg.a);
+        vp["background"] = hex8;
+        if (m_benchScaleMode == 1) vp["scale-mode"] = "fit";
+        else if (m_benchScaleMode == 2) vp["scale-mode"] = "stretch";
+        if (!m_benchId.empty()) vp["id"] = m_benchId;
+        j["viewport"] = std::move(vp);
+    }
+    std::function<nlohmann::json(const ControlModel&)> node = [&](const ControlModel& m) {
+        nlohmann::json jj = modelPropsJson(m, defs);
+        // 动画：playing 缺省按放置语义（放置即播放）——旧项目模型未记录时导出补 true
+        if (m.props.type == "animation" && !jj.contains("playing")) jj["playing"] = true;
+        if (m.props.type == "tab-control") {
+            // 页 Panel 入 tabs[i].page（引擎 JSON 形态）；page-id 为设计器记账——不外发
+            nlohmann::json tabsOut = nlohmann::json::array();
+            const auto& tabs = m.props.extended.value("tabs", nlohmann::json::array());
+            if (tabs.is_array())
+                for (const auto& t : tabs) {
+                    if (!t.is_object()) continue;
+                    nlohmann::json entry = { { "title", t.value("title", "") } };
+                    for (const auto& it : m_items)
+                        if (it.model->props.id == t.value("page-id", "")) {
+                            entry["page"] = node(*it.model);
+                            break;
+                        }
+                    tabsOut.push_back(std::move(entry));
+                }
+            jj["tabs"] = std::move(tabsOut);
+            return jj;   // 不输出 children（页 Panel 已入 tabs[i].page）
+        }
+        nlohmann::json kids = nlohmann::json::array();
+        for (const auto& it : m_items)
+            if (it.parentId == m.props.id) kids.push_back(node(*it.model));
+        if (!kids.empty()) jj["children"] = std::move(kids);
+        return jj;
+    };
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& it : m_items)
+        if (it.parentId.empty()) arr.push_back(node(*it.model));
+    j["controls"] = std::move(arr);
+    if (!m_resourceProviders.empty()) {   // 布局级资源挂载点（引擎 LoadLayout 顶层键）
+        nlohmann::json rp = nlohmann::json::array();
+        for (const auto& p : m_resourceProviders)
+            rp.push_back({ { "name", p.first }, { "path", p.second } });
+        j["resourceProviders"] = std::move(rp);
+    }
+    return j;
+}
+
+// ─────────────────────────── 事件面板（F4） ───────────────────────────
+// 事件类型注册表（04 §3.2）：JSON 导出名 / Binding 事件名 / 适用控件类型（逗号集）
+struct EventSpec { const char* json; const char* bind; const char* types; };
+static const EventSpec kEventSpecs[] = {
+    { "onClick",            "click",             "button,label,check-box,combo-box,color-picker,numeric-up-down" },
+    { "onTextChanged",      "text-changed",      "edit-box,text-area" },
+    { "onEnter",            "enter",             "edit-box,text-area" },
+    { "onSelectionChanged", "selection-changed", "combo-box,list-view" },
+    { "onSelect",           "select",            "tree-view,list-view" },
+    { "onExpand",           "expand",            "tree-view" },
+    { "onCollapse",         "collapse",          "tree-view" },
+    { "onCheckChanged",     "check-changed",     "check-box" },
+    { "onValueChanged",     "value-changed",     "slider,scroll-bar,numeric-up-down,progress-bar" },
+    { "onColorChanged",     "color-changed",     "color-picker" },
+    { "onPositionChanged",  "position-changed",  "win-frame" },
+    { "onClose",            "close",             "win-frame" },
+};
+
+static const EventSpec* findEventSpecByJson(const std::string& json) {
+    for (const auto& sp : kEventSpecs)
+        if (json == sp.json) return &sp;
+    return nullptr;
+}
+
+// 模型属性 → 引擎控件（加载/打开路径；复用设计期写回助手——颜色/文本特例一致）
+void CanvasPane::applyModelToEngine(PlacedControl& pc) {
+    if (!pc.ctl.IsValid()) return;
+    ControlModel& m = *pc.model;
+    Control ctl = pc.ctl;
+    auto& ex = m.props.extended;
+    // 导入归一：树/状态栏项 background-color 对象形态（{normal,hover}——引擎导出/外部
+    // 布局口径）拆回独立键（编辑模型口径：background-color 串 + hover-background-color）
+    if (m.props.type == "tree-view" || m.props.type == "status-bar") {
+        std::function<void(nlohmann::json&)> splitBg = [&](nlohmann::json& arr) {
+            if (!arr.is_array()) return;
+            for (auto& it : arr) {
+                if (!it.is_object()) continue;
+                if (it.contains("background-color") && it["background-color"].is_object()) {
+                    const nlohmann::json bc = it["background-color"];
+                    if (bc.contains("normal") && bc["normal"].is_string())
+                        it["background-color"] = bc["normal"];
+                    else
+                        it.erase("background-color");
+                    if (bc.contains("hover") && bc["hover"].is_string())
+                        it["hover-background-color"] = bc["hover"];
+                }
+                if (it.contains("children")) splitBg(it["children"]);
+            }
+        };
+        if (ex.contains("items")) splitBg(ex["items"]);
+    }
+    if (!m.props.visible) ctl.SetBool(PropertyNames::kVisible, false);
+    if (ex.contains("enabled") && ex["enabled"].is_boolean())
+        ctl.SetBool(PropertyNames::kEnabled, ex["enabled"].get<bool>());
+    // 颜色（组/态 → writeColorSlotTo 语义：text/text-shadow 走内部 Label）
+    if (ex.contains("colors") && ex["colors"].is_object()) {
+        for (auto& [grp, states] : ex["colors"].items()) {
+            if (!states.is_object()) continue;
+            for (auto& [st, hex] : states.items()) {
+                if (!hex.is_string()) continue;
+                const std::string prop = grp + (st == "normal" ? "" : "." + st);
+                writeColorSlotTo(m.props.id, prop, grp, hexToColor(hex.get<std::string>()));
+            }
+        }
+    }
+    if (ex.contains("caption") && ex["caption"].is_string())
+        applyCaptionTo(m.props.id, ex["caption"].get<std::string>());
+    // 字体（运行时通用通道：kFont 字符串别名 + kFontSize）
+    if (ex.contains("font") && ex["font"].is_string())
+        ctl.SetString(PropertyNames::kFont, ex["font"].get<std::string>());
+    if (ex.contains("font-size") && ex["font-size"].is_number())
+        ctl.SetInt(PropertyNames::kFontSize, ex["font-size"].get<int>());
+    // 结构化数据（模型 → 引擎同步；复用文本编辑路径的同步函数）
+    if (m.props.type == "combo-box" && ex.contains("items")) syncComboItems(m);
+    if (m.props.type == "status-bar" && ex.contains("items"))
+        syncStatusBarItems(m, nlohmann::json::array());   // 新建控件无旧段
+    if (m.props.type == "list-view" && ex.contains("columns"))
+        syncListColumns(m, 0);   // 新建控件无旧列
+    if (m.props.type == "tree-view" && ex.contains("items")) syncTreeItems(m);
+    if (m.props.type == "menu-bar" && ex.contains("menus"))
+        syncMenus(m, nlohmann::json::array());   // 新建控件无旧菜单
+    if (m.props.type == "tab-control" && ex.contains("tabs"))
+        syncTabs(m, nlohmann::json::array());    // 新建控件无旧页（页 Panel 由 walk 预建时幂等挂接）
+    // 容器布局（锚定生效前提——先于锚定）
+    if (ex.contains("layout") && ex["layout"].is_string())
+        ctl.SetEnum(PropertyNames::kLayout, ex["layout"].get<std::string>());
+    // 锚定（子控件级：父容器/根 child-id + anchor；顶层首次自动切根布局）
+    if (ex.contains("anchor") && ex["anchor"].is_string()) {
+        Control par = anchorParentOf(pc);
+        if (par.IsValid()) {
+            if (pc.parentId.empty() && par.GetEnum(PropertyNames::kLayout) != "anchor")
+                par.SetEnum(PropertyNames::kLayout, "anchor");
+            par.SetString(PropertyNames::kChildTargetId, m.props.id);
+            par.SetEnum(PropertyNames::kChildAnchor, ex["anchor"].get<std::string>());
+        }
+    }
+    if (ex.contains("anchor-offset-x") || ex.contains("anchor-offset-y")) {
+        Control par = anchorParentOf(pc);
+        if (par.IsValid()) {
+            par.SetString(PropertyNames::kChildTargetId, m.props.id);
+            par.SetFloat(PropertyNames::kChildAnchorOffsetX, ex.value("anchor-offset-x", 0.0f));
+            par.SetFloat(PropertyNames::kChildAnchorOffsetY, ex.value("anchor-offset-y", 0.0f));
+        }
+    }
+    // 其余 extended 键：schema 类型分派（enum→SetEnum / boolean / integer / number /
+    // x-color→SetColor / string→writeStringPropTo；未知键按 JSON 类型兜底）
+    const auto& defs = m_schema ? (*m_schema)["$defs"] : nlohmann::json::object();
+    for (auto& [k, v] : ex.items()) {
+        static const char* kHandled[] = {
+            "enabled", "colors", "caption", "font", "font-size", "color",
+            "layout", "anchor", "anchor-offset-x", "anchor-offset-y" };
+        bool handled = false;
+        for (const char* h : kHandled)
+            if (k == h) { handled = true; break; }
+        if (handled) continue;
+        if (m.props.type == "combo-box" && k == "items") continue;
+        if (m.props.type == "status-bar" && k == "items") continue;
+        if (m.props.type == "list-view" && (k == "columns" || k == "rows")) continue;
+        if (m.props.type == "tree-view" && k == "items") continue;
+        // schema 规格（类型 def → common 兜底）
+        const nlohmann::json* spec = nullptr;
+        if (defs.contains(m.props.type) && defs[m.props.type].contains("properties") &&
+            defs[m.props.type]["properties"].contains(k))
+            spec = &defs[m.props.type]["properties"][k];
+        else if (defs.contains("common") && defs["common"].contains("properties") &&
+                 defs["common"]["properties"].contains(k))
+            spec = &defs["common"]["properties"][k];
+        bool isColorKey = false;
+        if (spec) {
+            if (spec->value("x-color", false)) isColorKey = true;
+            else if (spec->contains("$ref") && (*spec)["$ref"].is_string()) {
+                const std::string ref = (*spec)["$ref"].get<std::string>();
+                const std::string dn = ref.substr(ref.find_last_of('/') + 1);
+                if (defs.contains(dn) && defs[dn].value("x-color", false)) isColorKey = true;
+            }
+        }
+        if (isColorKey && v.is_string()) {
+            ctl.SetColor(k.c_str(), hexToColor(v.get<std::string>()));
+        } else if (spec && spec->contains("enum") && v.is_string()) {
+            ctl.SetEnum(k.c_str(), v.get<std::string>());
+        } else if (spec && spec->value("type", "") == "boolean") {
+            if (v.is_boolean()) ctl.SetBool(k.c_str(), v.get<bool>());
+        } else if (spec && spec->value("type", "") == "integer") {
+            if (v.is_number()) ctl.SetInt(k.c_str(), v.get<int>());
+        } else if (spec && spec->value("type", "") == "number") {
+            if (v.is_number()) ctl.SetFloat(k.c_str(), v.get<float>());
+        } else if (v.is_boolean()) {
+            ctl.SetBool(k.c_str(), v.get<bool>());
+        } else if (v.is_number_integer()) {
+            ctl.SetInt(k.c_str(), v.get<int>());
+        } else if (v.is_number()) {
+            ctl.SetFloat(k.c_str(), v.get<float>());
+        } else if (v.is_string()) {
+            writeStringPropTo(m.props.id, k, v.get<std::string>());
+        }
+    }
+    // 事件实演：模型 events → 引擎回调（设计期打点；导出后由宿主 RegisterAction 接管）
+    // 注意：不得用空回调"解绑"——绑定层会把空 std::function 包成有效 thunk，
+    // 事件触发即 std::bad_function_call（VC 运行库异常）；加载控件为新建无需解绑。
+    if (ex.contains("events") && ex["events"].is_object()) {
+        for (auto e = ex["events"].begin(); e != ex["events"].end(); ++e) {
+            if (!e.value().is_string()) continue;
+            if (const EventSpec* sp = findEventSpecByJson(e.key())) {
+                const std::string cid = m.props.id;
+                const std::string handler = e.value().get<std::string>();
+                ctl.SetCallback(sp->bind, [cid, handler](const Event&) {
+                    std::printf("[Events] %s: %s\n", cid.c_str(), handler.c_str());
+                });
+            }
+        }
+    }
+}
+
+// 清空画布（新建/打开/导入前置）：后代先删（控件销毁 + 模型条目移除 + 树节点移除）
+// ── F2.5 撤销/重做（快照式：serializeLayoutJson → 栈；同键 0.7s 合并）──
+
+namespace {
+struct UndoSuspendGuard {
+    bool& flag;
+    bool prev;
+    explicit UndoSuspendGuard(bool& f) : flag(f), prev(f) { flag = true; }
+    ~UndoSuspendGuard() { flag = prev; }
+};
+double undoNowSeconds() {
+    return std::chrono::duration<double>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+}   // namespace
+
+void CanvasPane::commitUndo(const std::string& coalesceKey) {
+    if (m_undoSuspended) return;
+    const std::string snap = serializeLayoutJson().dump();
+    const double now = undoNowSeconds();
+    if (m_undoStack.empty()) {
+        m_undoStack.push_back(snap);
+        m_undoPos = 0;
+        m_undoKey = coalesceKey;
+        m_undoTime = now;
+        return;
+    }
+    if (!coalesceKey.empty() && coalesceKey == m_undoKey && now - m_undoTime < 0.7) {
+        m_undoStack[m_undoPos] = snap;   // 合并：覆盖当前位置（保留最终值）
+        m_undoTime = now;
+        return;
+    }
+    m_undoStack.resize(m_undoPos + 1);   // 新操作清空重做段
+    m_undoStack.push_back(snap);
+    if (m_undoStack.size() > kMaxUndoSteps)
+        m_undoStack.erase(m_undoStack.begin());
+    m_undoPos = m_undoStack.size() - 1;
+    m_undoKey = coalesceKey;
+    m_undoTime = now;
+}
+
+void CanvasPane::resetUndo() {
+    m_undoStack.clear();
+    m_undoStack.push_back(serializeLayoutJson().dump());
+    m_undoPos = 0;
+    m_undoKey.clear();
+    m_undoTime = 0.0;
+}
+
+void CanvasPane::restoreSnapshot(const std::string& json) {
+    nlohmann::json layout = nlohmann::json::parse(json, nullptr, false);
+    if (layout.is_discarded()) return;
+    m_undoSuspended = true;
+    if (buildFromLayoutJson(layout, true)) refreshStatusRight();
+    m_undoSuspended = false;
+}
+
+bool CanvasPane::Undo() {
+    if (m_undoPos == 0) return false;
+    m_undoPos--;
+    restoreSnapshot(m_undoStack[m_undoPos]);
+    m_undoKey.clear();
+    m_undoTime = 0.0;
+    setStatusHint(u8"已撤销");
+    return true;
+}
+
+bool CanvasPane::Redo() {
+    if (m_undoPos + 1 >= m_undoStack.size()) return false;
+    m_undoPos++;
+    restoreSnapshot(m_undoStack[m_undoPos]);
+    m_undoKey.clear();
+    m_undoTime = 0.0;
+    setStatusHint(u8"已重做");
+    return true;
+}
+
+void CanvasPane::clearCanvas() {
+    std::vector<std::string> toRemove;
+    std::function<void(const std::string&)> collect = [&](const std::string& pid) {
+        if (std::find(toRemove.begin(), toRemove.end(), pid) != toRemove.end()) return;
+        toRemove.push_back(pid);
+        for (auto& it : m_items)
+            if (it.parentId == pid) collect(it.model->props.id);
+    };
+    for (auto& it : m_items)
+        if (it.parentId.empty()) collect(it.model->props.id);
+    for (auto rit = toRemove.rbegin(); rit != toRemove.rend(); ++rit) {
+        if (PlacedControl* pc = placedById(*rit))
+            if (pc->ctl.IsValid()) pc->ctl.Destroy();
+        for (auto it = m_items.begin(); it != m_items.end(); ++it)
+            if (it->model->props.id == *rit) { m_items.erase(it); break; }
+        syncTreeRemove(*rit);
+    }
+    m_dragId.clear();
+    m_dragParentId.clear();
+    m_dragCtl = Control();
+    m_placeTargetId.clear();
+    selectItem("");
+    refreshPlaceTargetHint();
+    refreshStatusRight();
+}
+
+// 布局 JSON → 画布（打开/导入共用）：清空 → 逐控件创建（设计器自身创建路径——
+// 避免引擎解析器覆盖面差异）→ 模型属性应用 → 树/状态同步。useViewportSize=true 时
+// 读取顶层 viewport 设置设计画布尺寸（导入外部布局）。
+bool CanvasPane::buildFromLayoutJson(const nlohmann::json& layout, bool useViewportSize) {
+    if (!m_viewport || !layout.is_object() || !layout.contains("controls") ||
+        !layout["controls"].is_array())
+        return false;
+    UndoSuspendGuard undoSuspend(m_undoSuspended);   // 加载/重建期间不记录撤销
+    clearCanvas();
+    if (layout.contains("viewport") && layout["viewport"].is_object()) {
+        const auto& vp = layout["viewport"];
+        if (useViewportSize) {
+            const float w = vp.value("width", 0.0f);
+            const float h = vp.value("height", 0.0f);
+            if (w > 0 && h > 0) SetCanvasSize(w, h);
+        }
+        // 画布（Bench）属性回填（导入/打开均生效）
+        m_benchBg = UIColor{0, 0, 0, 0};
+        if (vp.contains("background") && vp["background"].is_string())
+            m_benchBg = hexToColor(vp["background"].get<std::string>());
+        m_benchScaleMode = 0;
+        if (vp.contains("scale-mode") && vp["scale-mode"].is_string()) {
+            const std::string sm = vp["scale-mode"].get<std::string>();
+            m_benchScaleMode = (sm == "fit") ? 1 : (sm == "stretch") ? 2 : 0;
+        }
+        m_benchId = vp.value("id", std::string());
+        applyBenchBackground();
+    }
+    // 资源挂载点（顶层 resourceProviders）——回填列表 + 挂载
+    m_resourceProviders.clear();
+    if (layout.contains("resourceProviders") && layout["resourceProviders"].is_array())
+        for (const auto& rp : layout["resourceProviders"])
+            if (rp.is_object()) {
+                const std::string n = rp.value("name", "");
+                const std::string p = rp.value("path", "");
+                if (!n.empty() && !p.empty()) m_resourceProviders.push_back({ n, p });
+            }
+    refreshResourceList();
+    mountResourceProviders();
+    bool ok = true;
+    int count = 0;
+    std::function<void(std::unique_ptr<ControlModel>, const std::string&)> walk =
+        [&](std::unique_ptr<ControlModel> model, const std::string& pid) {
+        if (!model) return;
+        const std::string tb = toolboxIdOf(model->props.type);
+        if (tb.empty()) {
+            std::printf("[CanvasPane] load: unknown type '%s' skipped\n", model->props.type.c_str());
+            ok = false;
+            return;
+        }
+        std::vector<std::unique_ptr<ControlModel>> kids;
+        kids.swap(model->children);
+        const std::string id = model->props.id;
+        const SRect r = model->props.rect;
+        Control ctl = createViewportControl(tb, r.x, r.y, r.w, r.h, *model);
+        if (!ctl.IsValid()) { ok = false; return; }
+        if (!pid.empty()) {
+            if (PlacedControl* par = placedById(pid)) {
+                if (par->ctl.IsValid()) m_viewport->AddChild(par->ctl, ctl);
+                ctl.SetRect(r.x, r.y, r.w, r.h);   // 容器子控件：局部坐标
+            }
+        }
+        m_items.push_back({ std::move(model), ctl, pid });
+        if (m_viewport) m_viewport->SetControlId(ctl, id);
+        // TabControl 特例：tabs[i].page → 页 Panel（parentId=TabControl；引擎挂接由
+        // applyModelToEngine → syncTabs 统一完成）
+        const size_t tabIdx = m_items.size() - 1;   // 递归会追加——用下标防悬垂
+        if (m_items[tabIdx].model->props.type == "tab-control") {
+            const nlohmann::json tabs =
+                m_items[tabIdx].model->props.extended.value("tabs", nlohmann::json::array());
+            nlohmann::json tabsModel = nlohmann::json::array();
+            if (tabs.is_array())
+                for (const auto& t : tabs) {
+                    if (!t.is_object()) continue;
+                    const nlohmann::json pj = t.value("page", nlohmann::json::object());
+                    auto pageModel = ControlModel::fromJson(pj.is_object() ? pj : nlohmann::json::object());
+                    if (!pageModel) continue;
+                    if (pageModel->props.type.empty()) pageModel->props.type = "panel";
+                    if (pageModel->props.id.empty())
+                        pageModel->props.id = "tabpage_" + std::to_string(++m_seq);
+                    const std::string pageId = pageModel->props.id;
+                    tabsModel.push_back({ { "title", t.value("title", "") }, { "page-id", pageId } });
+                    walk(std::move(pageModel), id);   // 创建页 Panel + 后代
+                }
+            m_items[tabIdx].model->props.extended["tabs"] = std::move(tabsModel);
+        }
+        applyModelToEngine(m_items.back());
+        const std::string cap = m_items.back().model->props.extended.value("caption", "");
+        syncTreeAdd(pid, id, cap + " " + id);
+        ++count;
+        for (auto& k : kids) walk(std::move(k), id);
+    };
+    for (const auto& cj : layout["controls"]) {
+        auto model = ControlModel::fromJson(cj);
+        if (model) walk(std::move(model), "");
+    }
+    selectItem("");
+    refreshPlaceTargetHint();
+    refreshStatusRight();
+    std::printf("[CanvasPane] layout loaded: %d controls (ok=%d)\n", count, (int)ok);
+    return ok;
+}
+
+// 保存 .csd（metadata + layout 整包；layout 为唯一数据源）
+bool CanvasPane::SaveProject(const std::string& path) {
+    nlohmann::json csd;
+    csd["app"] = "CornerstoneDesigner";
+    csd["version"] = 1;
+    csd["metadata"] = { { "canvas", { { "width", m_designW }, { "height", m_designH },
+                                      { "title", m_benchTitle } } } };
+    csd["layout"] = serializeLayoutJson();
+    std::ofstream f(utf8Path(path), std::ios::binary);   // 宽字符路径
+    if (!f) {
+        setStatusHint(u8"保存失败：无法写入文件");
+        std::printf("[CanvasPane] save failed (open): %s\n", path.c_str());
+        return false;
+    }
+    f << csd.dump(2);
+    const bool ok = f.good();
+    f.close();
+    if (ok) {
+        m_projectPath = path;
+        setStatusHint(u8"已保存：" + path);
+        std::printf("[CanvasPane] project saved: %s\n", path.c_str());
+    } else {
+        setStatusHint(u8"保存失败：写入错误");
+    }
+    return ok;
+}
+
+// 打开 .csd（清空前置；画布尺寸取 metadata.canvas）
+bool CanvasPane::OpenProject(const std::string& path) {
+    std::ifstream f(utf8Path(path), std::ios::binary);   // 宽字符路径
+    if (!f) { setStatusHint(u8"打开失败：无法读取文件"); return false; }
+    std::string text((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    nlohmann::json csd;
+    try {
+        csd = nlohmann::json::parse(text);
+    } catch (const std::exception& e) {
+        std::printf("[CanvasPane] project parse failed: %s\n", e.what());
+        setStatusHint(u8"打开失败：JSON 解析错误");
+        return false;
+    }
+    if (!csd.contains("layout")) { setStatusHint(u8"打开失败：缺少 layout 段"); return false; }
+    const float w = csd.contains("metadata") ? csd["metadata"].value("canvas", nlohmann::json::object()).value("width", 0.0f) : 0.0f;
+    const float h = csd.contains("metadata") ? csd["metadata"].value("canvas", nlohmann::json::object()).value("height", 0.0f) : 0.0f;
+    m_benchTitle = csd.contains("metadata")
+        ? csd["metadata"].value("canvas", nlohmann::json::object()).value("title", std::string()) : std::string();
+    if (!buildFromLayoutJson(csd["layout"], false)) {
+        setStatusHint(u8"打开失败：layout 无效");
+        return false;
+    }
+    if (w > 0 && h > 0) SetCanvasSize(w, h);
+    resetUndo();   // F2.5：打开文档 = 新撤销基线
+    m_projectPath = path;
+    setStatusHint(u8"已打开：" + path);
+    std::printf("[CanvasPane] project opened: %s\n", path.c_str());
+    return true;
+}
+
+// 导出引擎兼容布局 JSON（F7.1：LayoutParser 可解析；N4 验收面）
+bool CanvasPane::ExportLayout(const std::string& path) {
+    const nlohmann::json j = serializeLayoutJson();
+    std::ofstream f(utf8Path(path), std::ios::binary);   // 宽字符路径
+    if (!f) {
+        setStatusHint(u8"导出失败：无法写入文件");
+        return false;
+    }
+    f << j.dump(2);
+    const bool ok = f.good();
+    f.close();
+    if (ok) {
+        // F4.3 事件列表导出（与布局同目录同名基）：events.h（函数签名）+ event_list.json（机器可读）
+        const auto binds = collectEventBindings();
+        std::string base = path;
+        const auto dot = base.find_last_of('.');
+        const auto sep = base.find_last_of("/\\");
+        if (dot != std::string::npos && (sep == std::string::npos || dot > sep))
+            base = base.substr(0, dot);
+        {
+            std::ofstream h(utf8Path(base + "_events.h"), std::ios::binary);
+            if (h) {
+                h << "// events.h - Auto-generated by CornerstoneDesigner\n"
+                     "#pragma once\n"
+                     "#include \"UICornerstoneAPI.h\"\n"
+                     "#ifdef __cplusplus\nextern \"C\" {\n#endif\n";
+                std::vector<std::string> seen;
+                for (const auto& b : binds)
+                    if (std::find(seen.begin(), seen.end(), b.handler) == seen.end()) {
+                        seen.push_back(b.handler);
+                        h << "void " << b.handler << "(UIControlHandle ctl, void* user);\n";
+                    }
+                h << "#ifdef __cplusplus\n}\n#endif\n";
+            }
+        }
+        {
+            std::ofstream l(utf8Path(base + "_event_list.json"), std::ios::binary);
+            if (l) {
+                nlohmann::json arr = nlohmann::json::array();
+                for (const auto& b : binds)
+                    arr.push_back({ { "control", b.controlId },
+                                    { "event", b.jsonEvent },
+                                    { "handler", b.handler } });
+                l << arr.dump(2);
+            }
+        }
+        setStatusHint(u8"已导出：" + path + u8"（含事件列表）");
+        std::printf("[CanvasPane] layout exported: %s (events=%zu)\n", path.c_str(), binds.size());
+    } else {
+        setStatusHint(u8"导出失败：写入错误");
+    }
+    return ok;
+}
+
+// 导入引擎布局 JSON（画布尺寸取顶层 viewport——存在时）
+bool CanvasPane::ImportLayout(const std::string& path) {
+    std::ifstream f(utf8Path(path), std::ios::binary);   // 宽字符路径
+    if (!f) { setStatusHint(u8"导入失败：无法读取文件"); return false; }
+    std::string text((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(text);
+    } catch (const std::exception& e) {
+        std::printf("[CanvasPane] import parse failed: %s\n", e.what());
+        setStatusHint(u8"导入失败：JSON 解析错误");
+        return false;
+    }
+    if (!buildFromLayoutJson(j, true)) {
+        setStatusHint(u8"导入失败：controls 无效");
+        return false;
+    }
+    resetUndo();   // F2.5：导入 = 新撤销基线
+    setStatusHint(u8"已导入：" + path);
+    std::printf("[CanvasPane] layout imported: %s\n", path.c_str());
+    return true;
+}
+
+// auto=2 自测：放置 → 保存 → 打开 → 导出 → 导入 往返校验（dir 为临时目录）
+bool CanvasPane::SelfTestIo(const std::string& dir) {
+    int pass = 0, fail = 0;
+    auto check = [&](bool ok, const char* what) {
+        if (ok) ++pass;
+        else { ++fail; std::printf("  FAIL: %s\n", what); }
+        std::fflush(stdout);
+    };
+    std::fflush(stdout);
+    NewProject();
+    SetCanvasSize(1440.0f, 900.0f);
+    placeControl("tBtn", 120, 80, false);
+    placeControl("tLabel", 320, 80, false);
+    placeControl("tList", 200, 260, false);
+    placeControl("tTree", 480, 260, false);
+    placeControl("tMenu", 200, 60, false);
+    placeControl("tTabs", 700, 420, false);
+    placeControl("tPanel", 620, 120, false);
+    placeControl("tStatus", 400, 700, false);
+    placeControl("tImage", 900, 120, false);
+    placeControl("tAni", 900, 320, false);
+    // 容器子控件（放置目标通道）
+    std::string panelId;
+    for (auto& it : m_items)
+        if (it.model->props.type == "panel") panelId = it.model->props.id;
+    m_placeTargetId = panelId;
+    placeControl("tLabel", 0, 0, false);
+    m_placeTargetId.clear();
+
+    // 写入可校验属性：颜色 / 字号 / 结构化（列头全样式 + 单元格对象）
+    std::string listId, childId;
+    for (auto& it : m_items) {
+        if (it.model->props.type == "list-view") {
+            listId = it.model->props.id;
+            it.model->props.extended["colors"]["background"]["normal"] = "#112233FF";
+            it.model->props.extended["font-size"] = 15;
+            it.model->props.extended["columns"] = nlohmann::json::array({
+                { { "title", u8"列A" }, { "width", 120.0f }, { "header-color", "#FF0000FF" },
+                  { "header-size", 16 }, { "header-font-name", "quando-regular" } } });
+            it.model->props.extended["rows"] = nlohmann::json::array({
+                { { "id", "r0" }, { "cells", nlohmann::json::array({
+                    "A1", { { "text", "B1" }, { "background-color", "#00FF00FF" },
+                            { "hover-background-color", "#0000FFFF" }, { "font-size", 12 } } }) } } });
+        }
+        if (!it.parentId.empty()) childId = it.model->props.id;
+    }
+    // 树 items 兄弟顺序（回归：模型嵌套反序构建曾致显示与输入相反）——附 hb#
+    // （悬停背景；导出对象形态回归——用户问题 3/4）
+    for (auto& it : m_items) {
+        if (it.model->props.type != "tree-view") continue;
+        applyTreeItemsText(*it.model, u8">A@hb#00112233\n>>A1\n>>A2\n>B");
+    }
+    // 状态栏段 hb#（悬停背景——导出对象形态回归）
+    for (auto& it : m_items) {
+        if (it.model->props.type != "status-bar") continue;
+        applyStatusBarItemsText(*it.model, u8"左段@b#11223344@hb#AABBCCDD\n右段");
+    }
+    // 菜单结构（P0-69：层级/快捷键/分隔符 + 顺序往返；P0-72① 面板级属性：字号/字体名/阴影半径）
+    for (auto& it : m_items) {
+        if (it.model->props.type != "menu-bar") continue;
+        applyMenusText(*it.model,
+                       u8"文件@@@12@harmonyos-sans-sc-regular@r#12\n>新建@Ctrl+N\n>--\n>退出\n帮助\n>关于");
+        const auto& menus = it.model->props.extended.value("menus", nlohmann::json::array());
+        check(menus.size() == 2 && menus[0].contains("font") &&
+              menus[0]["font"].value("size", 0) == 12 &&
+              menus[0]["font"].value("name", "") == "harmonyos-sans-sc-regular" &&
+              menus[0].value("shadow-radius", 0.0f) == 12.0f,
+              "menus: panel attrs (font/shadow-radius)");
+        const std::string rt = menusText(*it.model);
+        check(rt.find("r#12") != std::string::npos &&
+              rt.find("harmonyos-sans-sc-regular") != std::string::npos,
+              "menus: panel attrs round-trip text");
+    }
+    // StatusBar 颜色（回归：背景/悬停色须随导出携带 + 引擎应用）
+    for (auto& it : m_items) {
+        if (it.model->props.type != "status-bar") continue;
+        writeColorSlotTo(it.model->props.id, "background", "background", UIColor{255, 0, 0, 255});
+        writeColorSlotTo(it.model->props.id, "background.hover", "background", UIColor{0, 255, 0, 255});
+    }
+    // Image provider 路径（回归：加载不得被放置默认值覆盖——曾丢失 provider:test/xxx）
+    for (auto& it : m_items) {
+        if (it.model->props.type != "image") continue;
+        writeStringPropTo(it.model->props.id, "image", "provider:test/bombBlock.jsonc");
+    }
+    // TabControl：页签 + 页内放置（方案 A：页 Panel 自管 + 容器语义）
+    std::string tabsId;
+    for (auto& it : m_items)
+        if (it.model->props.type == "tab-control") tabsId = it.model->props.id;
+    try {
+        if (!tabsId.empty()) {
+            if (ControlModel* tm = findModel(tabsId)) applyTabsText(*tm, u8"首页\n设置");
+            m_placeTargetId = tabsId;              // 放置目标=TabControl → 当前页 Panel
+            placeControl("tLabel", 0, 0, false);
+            m_placeTargetId.clear();
+        }
+    } catch (const std::exception& e) {
+        std::fflush(stdout);
+    }
+    const int n0 = (int)m_items.size();   // 全部构建完成后（含页 Panel/页内控件）
+    const int childCount0 = (int)std::count_if(m_items.begin(), m_items.end(),
+        [](const PlacedControl& p) { return !p.parentId.empty(); });
+    const std::string csd = dir + u8"/自测.csd";   // 中文文件名：覆盖宽字符路径
+    const std::string js = dir + u8"/自测.json";
+    check(!listId.empty() && !childId.empty(), "setup: list-view & container child placed");
+    // 控件 id 重命名（用户需求回归：模型/子引用/拒绝非法/导出携带）
+    {
+        check(renameControlId(panelId, "myPanel"), "rename: panel id");
+        bool idOk = false, refOk = false;
+        for (auto& it : m_items) {
+            if (it.model->props.id == "myPanel") idOk = true;
+            if (it.model->props.id == childId && it.parentId == "myPanel") refOk = true;
+        }
+        check(idOk, "rename: model id updated");
+        check(refOk, "rename: child parentId updated");
+        check(!renameControlId("myPanel", ""), "rename: empty rejected");
+        check(!renameControlId("myPanel", childId), "rename: duplicate rejected");
+    }
+    // 连续改名无残留（模拟逐键改名的树同步——中间 id 不应残留节点）
+    {
+        const std::string b0 = "myPanel", b1 = b0 + "A", b2 = b1 + "B", b3 = b2 + "C";
+        check(renameControlId(b0, b1), "rename-seq: 1");
+        check(renameControlId(b1, b2), "rename-seq: 2");
+        check(renameControlId(b2, b3), "rename-seq: 3");
+        if (m_canvasTree.IsValid() && m_ui) {
+            check(!m_ui->TreeViewSelectNode(m_canvasTree, b0), "rename-seq: original node gone");
+            check(!m_ui->TreeViewSelectNode(m_canvasTree, b1), "rename-seq: intermediate-1 gone");
+            check(!m_ui->TreeViewSelectNode(m_canvasTree, b2), "rename-seq: intermediate-2 gone");
+            check(m_ui->TreeViewSelectNode(m_canvasTree, b3), "rename-seq: final node present");
+        }
+        check(renameControlId(b3, b0), "rename-seq: restore");
+        for (auto& it : m_items) it.parentId = (it.parentId == b3) ? b0 : it.parentId;
+    }
+    // 事件面板（F4）：绑定/校验/去重/建议命名
+    {
+        std::string bId;
+        for (auto& it : m_items)
+            if (it.model->props.type == "button") bId = it.model->props.id;
+        check(!bId.empty(), "events: button found");
+        check(addEventBinding(bId, "onClick", "onBtn1_Click"), "events: bind onClick");
+        check(!isValidIdentifier("1abc") && isValidIdentifier("_a1"), "events: identifier rules");
+        check(!addEventBinding(bId, "onTextChanged", "onX"), "events: non-applicable event rejected");
+        check(!addEventBinding(bId, "onClick", "onBtn1_Click"), "events: duplicate handler rejected");
+        const std::string sug = suggestHandlerName(bId, "onClick");
+        check(sug.rfind("on", 0) == 0 && sug.find("Click") != std::string::npos,
+              "events: suggest name");
+    }
+    // 画布（Bench）属性往返：背景（alpha=00 透明——游戏叠加场景）/缩放模式/id/标题
+    m_benchBg = UIColor{0x11, 0x22, 0x33, 0x00};
+    m_benchScaleMode = 1;   // fit
+    m_benchId = "mainCanvas";
+    m_benchTitle = u8"游戏 UI";
+    selectBench();
+    check(m_benchSelected && m_selectedId.empty(), "bench: select (rows built)");
+    {
+        // 画布 id/标题行存在且值正确（读回验证——用户"无法添加"回归）
+        int idRows = 0, titleRows = 0;
+        for (auto& r : m_dynamicRows) {
+            if (!r.IsValid()) continue;
+            std::string tx = r.GetString(PropertyNames::kTextContent);
+            if (tx.empty()) tx = r.GetString(PropertyNames::kCaption);   // 值显示行为 Label
+            if (tx == m_benchId) ++idRows;
+            if (!m_benchTitle.empty() && tx == m_benchTitle) ++titleRows;
+        }
+        check(idRows >= 1 && titleRows >= 1, "bench: id/title rows present with values");
+    }
+    selectItem("");
+    check(!m_benchSelected, "bench: cleared by control-selection path");
+    check(SaveProject(csd), "SaveProject");
+    NewProject();
+    std::fflush(stdout);
+    check(m_items.empty(), "NewProject clears canvas");
+    check(OpenProject(csd), "OpenProject");
+    std::fflush(stdout);
+    check((int)m_items.size() == n0, "open: control count preserved");
+    const int childCount1 = (int)std::count_if(m_items.begin(), m_items.end(),
+        [](const PlacedControl& p) { return !p.parentId.empty(); });
+    check(childCount1 == childCount0, "open: parentId relationships preserved");
+    check((int)m_designW == 1440 && (int)m_designH == 900, "open: canvas size from metadata");
+    {
+        bool evOk = false;
+        for (auto& it : m_items)
+            if (it.model->props.type == "button") {
+                const auto& ev = it.model->props.extended.value("events", nlohmann::json::object());
+                evOk = ev.is_object() && ev.value("onClick", "") == "onBtn1_Click";
+            }
+        check(evOk, "open: event binding preserved");
+    }
+    check(m_benchBg.r == 0x11 && m_benchBg.g == 0x22 && m_benchBg.b == 0x33 && m_benchBg.a == 0x00,
+          "open: bench background (transparent) preserved");
+    check(m_benchScaleMode == 1, "open: bench scale-mode preserved");
+    check(m_benchId == "mainCanvas", "open: bench id preserved");
+    check(m_benchTitle == u8"游戏 UI", "open: bench title preserved");
+    for (auto& it : m_items) {
+        if (it.model->props.type != "list-view") continue;
+        const auto& ex = it.model->props.extended;
+        check(ex.value("font-size", 0) == 15, "open: font-size preserved");
+        check(ex.contains("colors") && ex["colors"].contains("background") &&
+              ex["colors"]["background"].contains("normal") &&
+              ex["colors"]["background"]["normal"].get<std::string>() == "#112233FF",
+              "open: colors preserved");
+        check(ex.contains("columns") && ex["columns"].size() == 1 &&
+              ex["columns"][0].value("header-font-name", "") == "quando-regular" &&
+              ex["columns"][0].value("header-size", 0) == 16,
+              "open: columns header style preserved");
+        check(ex.contains("rows") && ex["rows"][0]["cells"].size() == 2 &&
+              ex["rows"][0]["cells"][1].value("text", "") == "B1" &&
+              ex["rows"][0]["cells"][1].value("hover-background-color", "") == "#0000FFFF",
+              "open: rows object cells preserved");
+        // 引擎应用验证：字号读回
+        int fs = it.ctl.GetInt(PropertyNames::kFontSize);
+        check(fs == 15, "open: engine font-size applied");
+    }
+    for (auto& it : m_items) {
+        if (it.model->props.type != "tree-view") continue;
+        const auto& ex = it.model->props.extended;
+        check(ex.contains("items") && ex["items"].size() == 2 &&
+              ex["items"][0].value("label", "") == "A" &&
+              ex["items"][1].value("label", "") == "B",
+              "open: tree root order preserved");
+        check(ex["items"][0].contains("children") && ex["items"][0]["children"].size() == 2 &&
+              ex["items"][0]["children"][0].value("label", "") == "A1" &&
+              ex["items"][0]["children"][1].value("label", "") == "A2",
+              "open: tree sibling order preserved");
+    }
+    for (auto& it : m_items) {
+        if (it.model->props.type != "menu-bar") continue;
+        const auto& ex = it.model->props.extended;
+        check(ex.contains("menus") && ex["menus"].size() == 2 &&
+              ex["menus"][0].value("caption", "") == "文件" &&
+              ex["menus"][1].value("caption", "") == "帮助",
+              "open: menus top-level preserved");
+        const auto& mi = ex["menus"][0]["items"];
+        check(mi.size() == 3 && mi[0].value("caption", "") == "新建" &&
+              mi[0].value("shortcut", "") == "Ctrl+N" &&
+              mi[1].value("type", "") == "separator" &&
+              mi[2].value("caption", "") == "退出",
+              "open: menu items order/shortcut/separator preserved");
+        check(ex["menus"][1]["items"][0].value("caption", "") == "关于",
+              "open: second menu items preserved");
+    }
+    for (auto& it : m_items) {
+        if (it.model->props.type != "tab-control") continue;
+        const auto& ex = it.model->props.extended;
+        check(ex.contains("tabs") && ex["tabs"].size() == 2 &&
+              ex["tabs"][0].value("title", "") == "首页" &&
+              ex["tabs"][1].value("title", "") == "设置",
+              "open: tabs titles preserved");
+        const std::string p0 = ex["tabs"][0].value("page-id", "");
+        check(!p0.empty() && !ex["tabs"][1].value("page-id", "").empty(),
+              "open: tab page ids present");
+        int inPage = 0;
+        for (auto& it2 : m_items)
+            if (it2.parentId == p0 && it2.model->props.type == "label") ++inPage;
+        check(inPage == 1, "open: control inside tab page preserved");
+    }
+    check(ExportLayout(js), "ExportLayout");
+    NewProject();
+    check(ImportLayout(js), "ImportLayout");
+    check((int)m_items.size() == n0, "import: control count preserved");
+    bool listOk = false;
+    for (auto& it : m_items)
+        if (it.model->props.type == "list-view" && it.model->props.extended.contains("rows"))
+            listOk = true;
+    check(listOk, "import: structured data preserved");
+    // 引擎级：StatusBar 颜色已应用（背景 normal/hover 与模型一致）
+    bool sbColorOk = false;
+    for (auto& it : m_items) {
+        if (it.model->props.type != "status-bar" || !it.ctl.IsValid()) continue;
+        UIColor c = it.ctl.GetColor(PropertyNames::kBackground);
+        sbColorOk = (c.r == 255 && c.g == 0 && c.b == 0);
+    }
+    check(sbColorOk, "import: status-bar colors applied to engine");
+    // 回归：Image 的 provider 路径经保存/打开保持（不得被放置默认值覆盖）
+    bool imgPathOk = false;
+    for (auto& it : m_items)
+        if (it.model->props.type == "image")
+            imgPathOk = it.model->props.extended.value("image", "") == "provider:test/bombBlock.jsonc";
+    check(imgPathOk, "import: image provider path preserved");
+    // 导出 JSON 文件级校验：StatusBar 颜色携带（背景 normal/hover）
+    {
+        std::ifstream jf(utf8Path(js), std::ios::binary);
+        std::string jt((std::istreambuf_iterator<char>(jf)), std::istreambuf_iterator<char>());
+        bool colorsOk = false, renameOk = false, benchOk = false;
+        nlohmann::json jj;
+        try {
+            jj = nlohmann::json::parse(jt);
+            if (jj.contains("viewport") && jj["viewport"].is_object()) {
+                const auto& vp = jj["viewport"];
+                benchOk = vp.value("background", "") == "#11223300" &&
+                          vp.value("scale-mode", "") == "fit" &&
+                          vp.value("id", "") == "mainCanvas";
+            }
+            std::function<void(const nlohmann::json&)> walk = [&](const nlohmann::json& n) {
+                if (n.is_object()) {
+                    if (n.value("type", "") == "status-bar" && n.contains("colors")) {
+                        const auto& c = n["colors"];
+                        if (c.contains("background") &&
+                            c["background"].value("normal", "") == "#FF0000FF" &&
+                            c["background"].value("hover", "") == "#00FF00FF")
+                            colorsOk = true;
+                    }
+                    if (n.value("id", "") == "myPanel") renameOk = true;
+                    if (n.contains("controls") && n["controls"].is_array())
+                        for (auto& x : n["controls"]) walk(x);
+                    if (n.contains("children") && n["children"].is_array())
+                        for (auto& x : n["children"]) walk(x);
+                }
+            };
+            walk(jj);
+        } catch (...) {}
+        check(colorsOk, "export: status-bar colors carried");
+        check(renameOk, "export: renamed id carried");
+        check(benchOk, "export: bench viewport carried (bg alpha/scale/id)");
+        // 树/状态栏项 hb# → 独立 hover-background-color 键（引擎 P0-75 已支持；模型 1:1）
+        bool hbOk = false, hbTreeOk = false;
+        std::function<void(const nlohmann::json&)> walkHb = [&](const nlohmann::json& n) {
+            if (n.is_object()) {
+                if (n.value("type", "") == "status-bar" && n.contains("items") && n["items"].is_array() &&
+                    !n["items"].empty()) {
+                    const auto& it0 = n["items"][0];
+                    if (it0.value("background-color", "") == "#11223344" &&
+                        it0.value("hover-background-color", "") == "#AABBCCDD" &&
+                        !it0["background-color"].is_object())
+                        hbOk = true;
+                }
+                if (n.value("type", "") == "tree-view" && n.contains("items") && n["items"].is_array() &&
+                    !n["items"].empty()) {
+                    const auto& it0 = n["items"][0];
+                    if (it0.value("hover-background-color", "") == "#00112233" &&
+                        !it0.contains("background-color"))
+                        hbTreeOk = true;   // 仅 hover：不引入常态背景
+                }
+                for (const char* k : { "controls", "children" }) {
+                    if (n.contains(k) && n[k].is_array())
+                        for (auto& x : n[k]) walkHb(x);
+                }
+            }
+        };
+        walkHb(jj);
+        check(hbOk, "export: status-bar item hb# standalone key");
+        check(hbTreeOk, "export: tree item hb# standalone key");
+        // 菜单面板属性（P0-72①）导出携带
+        bool menuOk = false;
+        std::function<void(const nlohmann::json&)> walkMenu = [&](const nlohmann::json& n) {
+            if (n.is_object()) {
+                if (n.value("type", "") == "menu-bar" && n.contains("menus") && n["menus"].is_array() &&
+                    !n["menus"].empty()) {
+                    const auto& m0 = n["menus"][0];
+                    if (m0.value("shadow-radius", 0.0f) == 12.0f &&
+                        m0.contains("font") && m0["font"].value("size", 0) == 12)
+                        menuOk = true;
+                }
+                for (const char* k : { "controls", "children" }) {
+                    if (n.contains(k) && n[k].is_array())
+                        for (auto& x : n[k]) walkMenu(x);
+                }
+            }
+        };
+        walkMenu(jj);
+        check(menuOk, "export: menu panel attrs carried");
+        // F4.3：事件列表文件（与导出同名基）
+        {
+            std::string base = js;
+            const auto dot = base.find_last_of('.');
+            base = (dot == std::string::npos) ? base : base.substr(0, dot);
+            std::ifstream hf(utf8Path(base + "_events.h"), std::ios::binary);
+            std::string ht((std::istreambuf_iterator<char>(hf)), std::istreambuf_iterator<char>());
+            std::ifstream lf(utf8Path(base + "_event_list.json"), std::ios::binary);
+            std::string lt((std::istreambuf_iterator<char>(lf)), std::istreambuf_iterator<char>());
+            check(ht.find("void onBtn1_Click(UIControlHandle ctl, void* user);") != std::string::npos,
+                  "export: events.h signature");
+            check(lt.find("onBtn1_Click") != std::string::npos &&
+                  lt.find("\"event\": \"onClick\"") != std::string::npos,
+                  "export: event_list.json entry");
+        }
+    }
+    // F2.5 撤销/重做：放置 / 属性（颜色）/ 删除 三步往返
+    {
+        const size_t n0 = m_items.size();
+        placeControl("tBtn", 200, 200, false);
+        check(m_items.size() == n0 + 1, "undo: place applied");
+        const std::string pid = m_items.back().model->props.id;
+        check(Undo() && m_items.size() == n0, "undo: place undone");
+        check(Redo() && m_items.size() == n0 + 1, "redo: place redone");
+        {
+            // 文本色回放保真：撤销/重建后宿主 + 内部 Label 文本色均为样式色 #333333
+            //（回归：曾因宿主状态色未同步，重建后 caption 用缺省色渲染为灰）
+            PlacedControl* pcB = placedById(pid);
+            UIColor hostT{0, 0, 0, 0}, labT{0, 0, 0, 0};
+            void* capH2 = nullptr;
+            if (pcB && pcB->ctl.IsValid()) {
+                hostT = pcB->ctl.GetColor("text");
+                capH2 = pcB->ctl.GetPtr(PropertyNames::kCaptionLabel);
+            }
+            if (capH2) labT = m_viewport->FromHandle(capH2).GetColor("text");
+            check(hostT.r == 0x33 && hostT.g == 0x33 && hostT.b == 0x33,
+                  "undo: host text color #333333 after rebuild");
+            check(labT.r == 0x33 && labT.g == 0x33 && labT.b == 0x33,
+                  "undo: caption label text color #333333 after rebuild");
+        }
+        auto bgNormalOf = [&](const std::string& id) -> std::string {
+            const ControlModel* mm = findModel(id);
+            if (!mm) return std::string();
+            return mm->props.extended.value("colors", nlohmann::json::object())
+                .value("background", nlohmann::json::object())
+                .value("normal", std::string());
+        };
+        const std::string oldC = bgNormalOf(pid);
+        writeColorSlotTo(pid, "background", "background", UIColor{0x11, 0x22, 0x33, 0xFF});
+        const std::string newC = bgNormalOf(pid);
+        check(!newC.empty() && newC != oldC, "undo: color write applied");
+        check(Undo(), "undo: color undone (flag)");
+        check(bgNormalOf(pid) == oldC, "undo: color restored");
+        check(Redo(), "redo: color redone (flag)");
+        check(bgNormalOf(pid) == newC, "redo: color restored");
+        selectItem(pid);
+        deleteSelected();
+        check(m_items.size() == n0, "undo: delete applied");
+        check(Undo() && m_items.size() == n0 + 1, "undo: delete undone");
+        check(Redo() && m_items.size() == n0, "redo: delete redone");
+    }
+    // F2.5 动态行覆盖：X/Y/W/H NUD（applyModelRect）与 caption（applyCaptionTo）可撤销
+    {
+        placeControl("tBtn", 300, 300, false);
+        const std::string pid2 = m_items.back().model->props.id;
+        ControlModel* mm2 = findModel(pid2);
+        const SRect r0 = mm2->props.rect;
+        mm2->props.rect.x = r0.x + 40.0f;
+        applyModelRect(mm2);
+        check(Undo(), "undo: NUD x change undoable");
+        ControlModel* after = findModel(pid2);
+        check(after != nullptr && after->props.rect.x == r0.x, "undo: NUD x restored");
+        const std::string oldCap = after != nullptr
+            ? after->props.extended.value("caption", std::string()) : std::string();
+        applyCaptionTo(pid2, u8"新标题");
+        check(Undo(), "undo: caption edit undoable");
+        ControlModel* after2 = findModel(pid2);
+        check(after2 != nullptr && after2->props.extended.value("caption", std::string()) == oldCap,
+              "undo: caption restored");
+    }
+    // F2.5 动态行覆盖：结构化文本行（tree items）可撤销
+    {
+        const std::string tid = SelfTestIdOfType("tree-view");
+        if (!tid.empty()) {
+            ControlModel* tm2 = findModel(tid);
+            const nlohmann::json oldItems =
+                tm2->props.extended.value("items", nlohmann::json::array());
+            applyTreeItemsText(*tm2, u8">X@#AABBCCDD");
+            check(Undo(), "undo: structured tree items undoable");
+            ControlModel* after3 = findModel(tid);
+            check(after3 != nullptr &&
+                  after3->props.extended.value("items", nlohmann::json::array()) == oldItems,
+                  "undo: tree items restored");
+        }
+    }
+    NewProject();
+    std::printf("[SELFTEST-IO] pass=%d fail=%d\n", pass, fail);
+    return fail == 0;
+}
+
+// auto=3 冒烟：放置少量样例控件（预览窗口多实例测试用）
+void CanvasPane::SelfTestPlaceSample() {
+    NewProject();
+    placeControl("tBtn", 200, 150, false);
+    placeControl("tLabel", 420, 150, false);
+    placeControl("tList", 300, 350, false);
+    placeControl("tStatus", 200, 500, false);
+    placeControl("tImage", 700, 150, false);
+    placeControl("tAni", 700, 350, false);
+    placeControl("tMenu", 200, 60, false);
+    // 预览冒烟数据（用户场景回归）：StatusBar **仅设 hover**（部分对象语义——引擎
+    // 曾把未给出的 normal 重置为黑，构造缺省 VSCode 蓝丢失；P0-74④ 修复后应保持蓝）
+    for (auto& it : m_items) {
+        if (it.model->props.type == "status-bar")
+            writeColorSlotTo(it.model->props.id, "background.hover", "background", UIColor{0, 255, 0, 255});
+    }
+    // 菜单栏 pressed 色（用户问题 2：预览态生效回归）
+    for (auto& it : m_items)
+        if (it.model->props.type == "menu-bar")
+            writeColorSlotTo(it.model->props.id, "background.pressed", "background",
+                             UIColor{255, 128, 0, 255});
+    // 资源 provider 挂载回归（用户实测口径：test=引擎样例目录；svg 图 + jsonc 动画。
+    // 帧注册覆盖两种 src：资产相对键（先资源根）与 jsonc 相对（次 jsonc 目录）——
+    // 决定性用例（src 仅 jsonc 目录存在）曾验证通过，用例文件在 Temp/ani_test）
+    m_resourceProviders.push_back(
+        { "test", "D:/GitSpace/UIControls/subModules/assets/animations/bombBlock" });
+    refreshResourceList();
+    mountResourceProviders();   // 设计器画布同步挂载（编辑态 provider 引用回归）
+    for (auto& it : m_items) {
+        if (it.model->props.type == "image")
+            writeStringPropTo(it.model->props.id, "image", "provider:test/bomb.svg");
+        if (it.model->props.type == "animation")
+            writeStringPropTo(it.model->props.id, "path", "provider:test/bombBlock.jsonc");
+    }
+    // 画布背景灰（#C0C0C0FF——用户问题 1 实测值）
+    m_benchBg = UIColor{0xC0, 0xC0, 0xC0, 255};
+    applyBenchBackground();
+}
+
+std::string CanvasPane::SelfTestIdOfType(const std::string& type) const {
+    for (auto& it : m_items)
+        if (it.model->props.type == type) return it.model->props.id;
+    return std::string();
+}
+
+// 新建（清空画布 + 解绑项目路径 + 缺省画布尺寸 + 清资源）
+void CanvasPane::NewProject() {
+    clearCanvas();
+    SetCanvasSize(1280.0f, 800.0f);
+    m_resourceProviders.clear();
+    refreshResourceList();
+    mountResourceProviders();
+    m_projectPath.clear();
+    resetUndo();   // F2.5：新建 = 新撤销基线
+    setStatusHint(u8"已新建项目");
+}
+
+// ── 资源面板（布局级 resourceProviders）──
+
+void CanvasPane::SetResourcePanel(Control list) {
+    m_resList = list;
+    if (m_resList.IsValid())
+        m_resList.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event&) {
+            std::string n, p;   // 选中行 → 状态栏显示全路径（列宽有限）
+            if (SelectedResourceProvider(n, p)) setStatusHint(u8"资源：" + n + " = " + p);
+        });
+    refreshResourceList();
+    mountResourceProviders();
+}
+
+// 列表重填（列已在 main_layout.json 声明：名称/路径；行 id rp_i）。
+// 注：C ABI RemoveRow 恒返回 1（不反映越界）——按记账行数移除，禁用 while 探测。
+void CanvasPane::refreshResourceList() {
+    if (!m_resList.IsValid() || !m_ui) return;
+    for (int i = m_resRows - 1; i >= 0; --i) m_ui->ListViewRemoveRow(m_resList, i);
+    for (size_t i = 0; i < m_resourceProviders.size(); ++i) {
+        std::vector<std::string> cells = { m_resourceProviders[i].first,
+                                           m_resourceProviders[i].second };
+        m_ui->ListViewAddRow(m_resList, "rp_" + std::to_string(i), cells);
+    }
+    m_resRows = (int)m_resourceProviders.size();
+}
+
+// 插入（App 弹窗收集名称+目录后调用）：非空 + 名称唯一校验 → 入列 + 刷新 + 挂载
+bool CanvasPane::AddResourceProvider(const std::string& name, const std::string& path) {
+    if (name.empty() || path.empty()) {
+        setStatusHint(u8"资源添加失败：名称/路径为空");
+        return false;
+    }
+    for (const auto& rp : m_resourceProviders)
+        if (rp.first == name) {
+            setStatusHint(u8"资源名重复：" + name + u8"（未添加）");
+            return false;
+        }
+    m_resourceProviders.push_back({ name, path });
+    refreshResourceList();
+    mountResourceProviders();
+    setStatusHint(u8"已添加资源：" + name + " = " + path);
+    std::printf("[CanvasPane] resource provider added: %s = %s\n", name.c_str(), path.c_str());
+    return true;
+}
+
+// 选中行（App 弹窗回填用）
+bool CanvasPane::SelectedResourceProvider(std::string& name, std::string& path) const {
+    if (!m_resList.IsValid()) return false;
+    const int idx = m_resList.GetInt(PropertyNames::kSelectedIndex);
+    if (idx < 0 || idx >= (int)m_resourceProviders.size()) return false;
+    name = m_resourceProviders[(size_t)idx].first;
+    path = m_resourceProviders[(size_t)idx].second;
+    return true;
+}
+
+// 修改选中行：非空 + 名称唯一（排除自身）→ 更新 + 刷新 + 挂载
+bool CanvasPane::UpdateSelectedResourceProvider(const std::string& name, const std::string& path) {
+    if (!m_resList.IsValid() || !m_ui) return false;
+    const int idx = m_resList.GetInt(PropertyNames::kSelectedIndex);
+    if (idx < 0 || idx >= (int)m_resourceProviders.size()) {
+        setStatusHint(u8"请先在资源列表中选择要修改的条目");
+        return false;
+    }
+    if (name.empty() || path.empty()) {
+        setStatusHint(u8"资源修改失败：名称/路径为空");
+        return false;
+    }
+    for (size_t i = 0; i < m_resourceProviders.size(); ++i)
+        if ((int)i != idx && m_resourceProviders[i].first == name) {
+            setStatusHint(u8"资源名重复：" + name + u8"（未修改）");
+            return false;
+        }
+    m_resourceProviders[(size_t)idx] = { name, path };
+    refreshResourceList();
+    mountResourceProviders();
+    setStatusHint(u8"已修改资源：" + name + " = " + path);
+    return true;
+}
+
+// 删除（列表选中行）
+void CanvasPane::RemoveSelectedResourceProvider() {
+    if (!m_resList.IsValid() || !m_ui) return;
+    const int idx = m_resList.GetInt(PropertyNames::kSelectedIndex);
+    if (idx < 0 || idx >= (int)m_resourceProviders.size()) {
+        setStatusHint(u8"请先在资源列表中选择要删除的条目");
+        return;
+    }
+    const std::string name = m_resourceProviders[(size_t)idx].first;
+    m_resourceProviders.erase(m_resourceProviders.begin() + idx);
+    refreshResourceList();
+    mountResourceProviders();
+    setStatusHint(u8"已删除资源：" + name);
+}
+
+// 设计态挂载：经 LoadLayout 顶层 resourceProviders（引擎 mountPath 懒加载；
+// 无独立运行时挂载 API——布局挂载路径无 controls 亦执行）
+void CanvasPane::mountResourceProviders() {
+    if (!m_viewport) return;
+    nlohmann::json j;
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& rp : m_resourceProviders)
+        arr.push_back({ { "name", rp.first }, { "path", rp.second } });
+    j["resourceProviders"] = std::move(arr);
+    m_viewport->LoadLayout(j.dump());
 }
 
 // 状态栏右段：缩放/设计尺寸/控件数/网格（缩放/画布尺寸/网格开关/增删控件时刷新）。
@@ -3662,8 +6325,8 @@ void CanvasPane::syncTreeAdd(const std::string& parentId, const std::string& id,
                              const std::string& label) {
     if (!m_canvasTree.IsValid() || !m_ui) return;
     m_treeSync = true;
-    // P1-a 层级：容器子控件挂到父控件节点下（节点 id 与控件 id 同一空间）
-    m_ui->TreeViewAddNode(m_canvasTree, parentId, id, label);
+    // P1-a 层级：容器子控件挂到父控件节点下（顶层挂画布根节点）
+    m_ui->TreeViewAddNode(m_canvasTree, parentId.empty() ? kBenchTreeNode : parentId, id, label);
     m_treeSync = false;
 }
 
@@ -3672,6 +6335,355 @@ void CanvasPane::syncTreeRemove(const std::string& id) {
     m_treeSync = true;
     m_ui->TreeViewRemoveNode(m_canvasTree, id);
     m_treeSync = false;
+}
+
+void CanvasPane::syncTreeRename(const std::string& id, const std::string& label) {
+    if (!m_canvasTree.IsValid() || !m_ui) return;
+    m_treeSync = true;
+    m_ui->TreeViewSetNodeLabel(m_canvasTree, id, label);
+    m_treeSync = false;
+}
+
+// 控件 id 重命名（用户需求：代码引用）——模型/引用/引擎注册/锚定父/控件树 全链更新。
+// 引擎 id 表：空串注册=移除该控件全部 id（CABI SetControlId 语义）→ 再注册新 id。
+// 控件 id 行：提交待改名（切换选中/回车/空闲到期调用）；失败还原行显示
+void CanvasPane::commitPendingIdRename() {
+    if (!m_idRenamePending) return;
+    m_idRenamePending = false;
+    const std::string target = m_idRenameTarget;
+    const std::string text = m_idRenameText;
+    m_idRenameTarget.clear();
+    m_idRenameText.clear();
+    ControlModel* m = findModel(target);
+    if (!m || text == m->props.id) return;
+    if (!renameControlId(target, text)) {
+        setStatusHint(u8"id 未修改（空/重复/含空白/保留键）：" + text);
+        rebuildDynamicRows();   // 行刷新还原为当前 id
+    } else {
+        commitUndo();   // F2.5：重命名为独立撤销步
+    }
+}
+
+bool CanvasPane::renameControlId(const std::string& oldId, std::string newId) {
+    if (newId == oldId) return true;
+    const auto b = newId.find_first_not_of(" \t");
+    const auto e2 = newId.find_last_not_of(" \t");
+    newId = (b == std::string::npos) ? std::string() : newId.substr(b, e2 - b + 1);
+    if (newId.empty()) return false;
+    if (newId == kBenchTreeNode) return false;   // 树根节点内部键保留
+    for (char c : newId)
+        if (std::isspace((unsigned char)c)) return false;   // 含内部空白不允许（代码引用友好）
+    ControlModel* m = findModel(oldId);
+    PlacedControl* pc = placedById(oldId);
+    if (!m || !pc) return false;
+    for (auto& it : m_items)
+        if (it.model && it.model->props.id == newId) return false;   // 重复
+    // 锚定/底拉伸父容器：child-id 若指向旧 id → 换新（需在改 id 前判断）
+    Control anchorPar = anchorParentOf(*pc);
+    const bool anchorWas = anchorPar.IsValid() &&
+        anchorPar.GetString(PropertyNames::kChildTargetId) == oldId;
+    // 1) 模型 id + 引用（子 parentId / tabs page-id）
+    m->props.id = newId;
+    for (auto& it : m_items) {
+        if (it.parentId == oldId) it.parentId = newId;
+        auto& ex = it.model->props.extended;
+        if (ex.contains("tabs") && ex["tabs"].is_array())
+            for (auto& t : ex["tabs"])
+                if (t.is_object() && t.value("page-id", "") == oldId) t["page-id"] = newId;
+    }
+    if (m_placeTargetId == oldId) m_placeTargetId = newId;
+    if (m_selectedId == oldId) m_selectedId = newId;
+    for (auto& s : m_selIds) if (s == oldId) s = newId;
+    // 2) 引擎 id 注册（清旧 + 注册新；子视口实例表——与放置注册同一通道）
+    if (m_viewport && pc->ctl.IsValid()) {
+        m_viewport->SetControlId(pc->ctl, "");
+        m_viewport->SetControlId(pc->ctl, newId);
+    }
+    // 3) 锚定父 child-id 同步
+    if (anchorWas) anchorPar.SetString(PropertyNames::kChildTargetId, newId);
+    // 4) 控件树：节点 id 即控件 id——移除根节点（连带子树）→ 按原顺序重建
+    if (m_canvasTree.IsValid() && m_ui) {
+        const std::string rootParent = pc->parentId;
+        std::vector<const PlacedControl*> sub;
+        sub.push_back(pc);
+        std::function<void(const std::string&)> collect = [&](const std::string& pid) {
+            for (auto& it : m_items)
+                if (it.parentId == pid) {
+                    sub.push_back(&it);
+                    collect(it.model->props.id);
+                }
+        };
+        collect(newId);
+        m_treeSync = true;
+        m_ui->TreeViewRemoveNode(m_canvasTree, oldId);
+        for (const PlacedControl* sp : sub) {
+            const std::string cap = sp->model->props.extended.value("caption", std::string());
+            const std::string par = sp == pc ? rootParent : sp->parentId;
+            m_ui->TreeViewAddNode(m_canvasTree, par.empty() ? kBenchTreeNode : par,
+                                  sp->model->props.id, cap + " " + sp->model->props.id);
+        }
+        m_treeSync = false;
+        syncTreeSelection();
+    }
+    // 5) 序号防撞：新 id 形如 "xxx_N" 时抬高生成序号（避免后续放置再撞）
+    {
+        const auto us = newId.find_last_of('_');
+        if (us != std::string::npos && us + 1 < newId.size()) {
+            try {
+                const int n = std::stoi(newId.substr(us + 1));
+                if (n > m_seq) m_seq = n;
+            } catch (...) {}
+        }
+    }
+    setStatusHint(u8"控件 id 已改为：" + newId);
+    return true;
+}
+
+// ─────────────────────────── 事件面板（F4） ───────────────────────────
+bool CanvasPane::isValidIdentifier(const std::string& name) const {
+    if (name.empty()) return false;
+    if (!(std::isalpha((unsigned char)name[0]) || name[0] == '_')) return false;
+    for (char c : name)
+        if (!(std::isalnum((unsigned char)c) || c == '_')) return false;
+    return true;
+}
+
+bool CanvasPane::isHandlerNameUnique(const std::string& name) const {
+    for (const auto& it : m_items) {
+        const auto& ev = it.model->props.extended.value("events", nlohmann::json::object());
+        if (!ev.is_object()) continue;
+        for (auto e = ev.begin(); e != ev.end(); ++e)
+            if (e.value().is_string() && e.value().get<std::string>() == name) return false;
+    }
+    return true;
+}
+
+std::string CanvasPane::suggestHandlerName(const std::string& ctrlId,
+                                           const std::string& jsonEvent) const {
+    std::string base = "on";   // on + Capitalize(id) + "_" + 事件后缀（onClick → Click）
+    bool up = true;
+    for (char c : ctrlId) {
+        if (!std::isalnum((unsigned char)c)) { up = true; continue; }
+        base += up ? (char)std::toupper((unsigned char)c) : c;
+        up = false;
+    }
+    base += "_";
+    base += (jsonEvent.size() > 2) ? jsonEvent.substr(2) : jsonEvent;
+    if (isHandlerNameUnique(base)) return base;
+    for (int n = 2;; ++n) {
+        const std::string cand = base + std::to_string(n);
+        if (isHandlerNameUnique(cand)) return cand;
+    }
+}
+
+bool CanvasPane::addEventBinding(const std::string& ctrlId, const std::string& jsonEvent,
+                                 const std::string& handler) {
+    const EventSpec* spec = findEventSpecByJson(jsonEvent);
+    if (!spec) return false;
+    if (!isValidIdentifier(handler)) return false;
+    if (!isHandlerNameUnique(handler)) return false;
+    PlacedControl* pc = placedById(ctrlId);
+    if (!pc) return false;
+    const std::string typeSet = std::string(",") + spec->types + ",";
+    if (typeSet.find("," + pc->model->props.type + ",") == std::string::npos)
+        return false;   // 事件不适用于该控件类型
+    pc->model->props.extended["events"][jsonEvent] = handler;
+    // 引擎实演：桥接回调（设计期打点；导出后由宿主 RegisterAction 接管）
+    if (pc->ctl.IsValid()) {
+        const EventSpec* sp = spec;
+        const std::string cid = ctrlId;
+        pc->ctl.SetCallback(sp->bind, [cid, handler](const Event&) {
+            std::printf("[Events] %s: %s\n", cid.c_str(), handler.c_str());
+        });
+    }
+    commitUndo();   // F2.5：事件绑定为独立撤销步
+    return true;
+}
+
+bool CanvasPane::removeEventBinding(const std::string& ctrlId, const std::string& jsonEvent) {
+    PlacedControl* pc = placedById(ctrlId);
+    if (!pc) return false;
+    auto& ev = pc->model->props.extended["events"];
+    if (!ev.is_object() || !ev.contains(jsonEvent)) return false;
+    ev.erase(jsonEvent);
+    if (ev.empty()) pc->model->props.extended.erase("events");
+    if (pc->ctl.IsValid()) {
+        if (const EventSpec* sp = findEventSpecByJson(jsonEvent))
+            pc->ctl.SetCallback(sp->bind, nullptr);   // P0-86 落地：空回调=解绑（binding 直传 nullptr→引擎 erase）
+    }
+    commitUndo();   // F2.5：事件解绑为独立撤销步
+    return true;
+}
+
+std::vector<CanvasPane::EventBinding> CanvasPane::collectEventBindings() const {
+    std::vector<EventBinding> out;
+    for (const auto& it : m_items) {
+        const auto& ev = it.model->props.extended.value("events", nlohmann::json::object());
+        if (!ev.is_object()) continue;
+        for (auto e = ev.begin(); e != ev.end(); ++e)
+            if (e.value().is_string())
+                out.push_back({ it.model->props.id, e.key(), e.value().get<std::string>() });
+    }
+    return out;
+}
+
+// 事件面板接线：存句柄 + 隐藏样例行 + 绑定交互（下拉/建议/添加/实时校验）
+void CanvasPane::SetEventPanel(Control typeCombo, Control handlerEdit, Control suggestBtn,
+                               Control addBtn, Control errLabel, Control listHost) {
+    if (!m_ui) return;
+    m_evType = typeCombo;
+    m_evHandler = handlerEdit;
+    m_evSuggest = suggestBtn;
+    m_evAdd = addBtn;
+    m_evErr = errLabel;
+    m_evHost = listHost;
+    if (auto row = m_ui->FindControl("bd_row"); row.IsValid())
+        row.SetBool(PropertyNames::kVisible, false);   // 样例行：仅作列宽参考
+    // 事件类型下拉：选择即预填建议命名
+    if (m_evType.IsValid())
+        m_evType.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event&) {
+            if (!m_evHandler.IsValid() || m_selectedId.empty()) return;
+            const int idx = m_evType.GetInt(PropertyNames::kSelectedIndex);
+            if (idx < 0 || idx >= (int)m_evTypeItems.size()) return;
+            if (m_evHandler.GetString(PropertyNames::kTextContent).empty())
+                m_evHandler.SetString(PropertyNames::kTextContent,
+                                      suggestHandlerName(m_selectedId, m_evTypeItems[(size_t)idx]));
+        });
+    // handler 实时校验
+    if (m_evHandler.IsValid())
+        m_evHandler.SetCallback(PropertyNames::kEventTextChanged, [this](const Event& e) {
+            if (!m_evErr.IsValid()) return;
+            const std::string v = sanitizePropValue("caption", e.GetTextChanged());
+            if (v.empty()) { m_evErr.SetString(PropertyNames::kCaption, ""); return; }
+            if (!isValidIdentifier(v))
+                m_evErr.SetString(PropertyNames::kCaption, u8"handler 非 C 标识符（A-Za-z_ 开头）");
+            else if (!isHandlerNameUnique(v))
+                m_evErr.SetString(PropertyNames::kCaption, u8"handler 已存在（须唯一）");
+            else
+                m_evErr.SetString(PropertyNames::kCaption, "");
+        });
+    if (m_evSuggest.IsValid())
+        m_evSuggest.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+            if (m_selectedId.empty() || !m_evHandler.IsValid()) return;
+            const int idx = m_evType.GetInt(PropertyNames::kSelectedIndex);
+            const std::string json = (idx >= 0 && idx < (int)m_evTypeItems.size())
+                                         ? m_evTypeItems[(size_t)idx] : std::string();
+            if (json.empty()) return;
+            m_evHandler.SetString(PropertyNames::kTextContent,
+                                  suggestHandlerName(m_selectedId, json));
+            if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption, "");
+        });
+    if (m_evAdd.IsValid())
+        m_evAdd.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+            if (m_selectedId.empty()) {
+                setStatusHint(u8"请先选中一个控件再绑定事件");
+                return;
+            }
+            const int idx = m_evType.GetInt(PropertyNames::kSelectedIndex);
+            const std::string json = (idx >= 0 && idx < (int)m_evTypeItems.size())
+                                         ? m_evTypeItems[(size_t)idx] : std::string();
+            const std::string handler = m_evHandler.IsValid()
+                ? sanitizePropValue("caption", m_evHandler.GetString(PropertyNames::kTextContent))
+                : std::string();
+            if (json.empty()) { setStatusHint(u8"无可用事件类型（该控件已全部绑定）"); return; }
+            if (!isValidIdentifier(handler)) {
+                if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption,
+                                                         u8"handler 非 C 标识符（A-Za-z_ 开头）");
+                setStatusHint(u8"事件绑定失败：handler 名不合法");
+                return;
+            }
+            if (!isHandlerNameUnique(handler)) {
+                if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption,
+                                                         u8"handler 已存在（须唯一）");
+                setStatusHint(u8"事件绑定失败：handler 重名");
+                return;
+            }
+            if (addEventBinding(m_selectedId, json, handler)) {
+                setStatusHint(u8"已绑定：" + m_selectedId + " " + json + " → " + handler);
+                refreshEventPanel();
+            }
+        });
+}
+
+// 刷新事件面板：事件下拉（按类型过滤、扣除已绑定）+ 建议命名预填 + 已绑定动态行
+void CanvasPane::refreshEventPanel() {
+    if (!m_ui || !m_evType.IsValid()) return;
+    for (auto& r : m_evRows)
+        if (r.IsValid()) r.Destroy();
+    m_evRows.clear();
+    m_evTypeItems.clear();
+    m_ui->ComboBoxClearItems(m_evType);
+    const ControlModel* m = findModel(m_selectedId);
+    const bool hasSel = (m != nullptr);
+    m_evType.SetBool(PropertyNames::kEnabled, hasSel);
+    if (m_evHandler.IsValid()) {
+        m_evHandler.SetBool(PropertyNames::kEnabled, hasSel);
+        if (!hasSel) m_evHandler.SetString(PropertyNames::kTextContent, "");
+    }
+    if (m_evSuggest.IsValid()) m_evSuggest.SetBool(PropertyNames::kEnabled, hasSel);
+    if (m_evAdd.IsValid()) m_evAdd.SetBool(PropertyNames::kEnabled, hasSel);
+    if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption, "");
+    if (auto note = m_ui->FindControl("evtNote"); note.IsValid())
+        note.SetBool(PropertyNames::kVisible, true);
+    if (!hasSel) return;
+    const std::string& tp2 = m->props.type;
+    const auto& ev = m->props.extended.value("events", nlohmann::json::object());
+    for (const auto& sp : kEventSpecs) {
+        const std::string types = std::string(",") + sp.types + ",";
+        if (types.find("," + tp2 + ",") == std::string::npos) continue;
+        if (ev.is_object() && ev.contains(sp.json)) continue;   // 一事件一绑定
+        m_ui->ComboBoxAddItem(m_evType, sp.json, sp.json);
+        m_evTypeItems.push_back(sp.json);
+    }
+    if (!m_evTypeItems.empty()) {
+        m_evType.SetInt(PropertyNames::kSelectedIndex, 0);
+        if (m_evHandler.IsValid() && m_evHandler.GetString(PropertyNames::kTextContent).empty())
+            m_evHandler.SetString(PropertyNames::kTextContent,
+                                  suggestHandlerName(m->props.id, m_evTypeItems[0]));
+    }
+    // 已绑定列表（动态行：控件 id / 事件 / handler / 删除）
+    if (ev.is_object() && !ev.empty()) {
+        if (auto note = m_ui->FindControl("evtNote"); note.IsValid())
+            note.SetBool(PropertyNames::kVisible, false);   // 有绑定则不显示空态注释
+        for (auto e = ev.begin(); e != ev.end(); ++e) {
+            if (!e.value().is_string()) continue;
+            const std::string json = e.key();
+            const std::string handler = e.value().get<std::string>();
+            Control row = m_ui->CreatePanel(0, 0, 464, 32);
+            if (!row.IsValid()) continue;
+            row.SetEnum(PropertyNames::kLayout, "h-flow");
+            row.SetBool(PropertyNames::kBorderVisible, false);
+            row.SetBool(PropertyNames::kTransparent, true);
+            auto mk = [&](const std::string& caption, float w) {
+                Control lb = m_ui->CreateLabel(caption, 16.0f, 0, 0, w, 32);
+                if (lb.IsValid()) {
+                    lb.SetColor(PropertyNames::kText, UIColor{0xE0, 0xE0, 0xE0, 255});
+                    row.AddChild(lb);
+                }
+            };
+            mk(m->props.id, 60.0f);
+            mk(json, 90.0f);
+            Control hb = m_ui->CreateLabel(handler, 16.0f, 0, 0, 200, 32);
+            if (hb.IsValid()) {
+                hb.SetColor(PropertyNames::kText, UIColor{0x8F, 0xC8, 0xFF, 255});
+                hb.SetFloat(PropertyNames::kChildFlowWeight, 1.0f);
+                row.AddChild(hb);
+            }
+            const std::string cid = m->props.id;
+            Control del = m_ui->CreateButton(u8"删除", 0, 0, 56, 32);
+            if (del.IsValid()) {
+                del.SetCallback(PropertyNames::kEventClick, [this, cid, json](const Event&) {
+                    if (removeEventBinding(cid, json)) {
+                        setStatusHint(u8"已解除绑定：" + cid + " " + json);
+                        refreshEventPanel();
+                    }
+                });
+                row.AddChild(del);
+            }
+            m_evHost.AddChild(row);
+            m_evRows.push_back(row);
+        }
+    }
 }
 
 void CanvasPane::syncTreeSelection() {
@@ -3712,6 +6724,7 @@ void CanvasPane::deleteSelected() {
     selectItem("");   // 取消选中 → 属性面板清零 + 选中框隐藏
     refreshPlaceTargetHint();   // P1-b：目标容器被删 → 提示回画布根
     refreshStatusRight();       // 状态栏控件数同步
+    commitUndo();               // F2.5：删除为独立撤销步
 }
 
 void CanvasPane::SetToolboxTree(Control tree) {
