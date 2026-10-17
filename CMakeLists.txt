@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+﻿cmake_minimum_required(VERSION 3.16)
 project(CornerstoneDesigner C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -55,5 +55,14 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${UICORNERSTONE_ROOT}/docs/schema/declarative-ui.schema.json
             $<TARGET_FILE_DIR:CornerstoneDesigner>/schema/declarative-ui.schema.json
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_FILE_DIR:CornerstoneDesigner>/sdk/include
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${UICORNERSTONE_ROOT}/binding/include/UICornerstoneAPI.h
+            ${UICORNERSTONE_ROOT}/binding/include/PropertyNames.h
+            $<TARGET_FILE_DIR:CornerstoneDesigner>/sdk/include
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${UICORNERSTONE_ROOT}/binding
+            $<TARGET_FILE_DIR:CornerstoneDesigner>/sdk/binding
     )
 endif()

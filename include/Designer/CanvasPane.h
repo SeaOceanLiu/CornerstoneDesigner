@@ -220,6 +220,10 @@ public:
     bool SaveProject(const std::string& path);      // 写 .csd（metadata + layout 整包）
     bool OpenProject(const std::string& path);      // 读 .csd → 重建画布（清空前置）
     bool ExportLayout(const std::string& path);     // 写引擎兼容布局 JSON（F7.1）
+    bool moveTabPage(const std::string& tabsId, int from, int to);   // 页序调整（拖动排序内核）
+    bool ExportCode(const std::string& dir);        // F4.4/F7.2/F7.3：可编译 C 宿主工程导出
+    bool ExportCodeCpp(const std::string& dir);     // F7.4：可编译 C++（C++ Binding）宿主工程导出
+    void SetShareDir(const std::string& dir) { m_shareDir = dir; }   // 设计器 exe 目录（sdk 头/DLL/assets 分发源）
     bool ImportLayout(const std::string& path);     // 读引擎布局 JSON → 重建画布
     void NewProject();                              // 清空画布（新建）
     nlohmann::json serializeLayoutJson() const;     // 模型树 → 引擎兼容布局 JSON（保存/导出共用）
@@ -328,7 +332,31 @@ private:
     void applyTabsText(ControlModel& m, const std::string& text);          // 结构化：tab-control tabs（一行一页签标题）
     void syncTabs(ControlModel& m, const nlohmann::json& oldTabs);
     void removePlacedSubtree(const std::string& rootId);                   // 销毁放置控件子树（引擎/模型/树）
-    std::string resolvedParentIdOf(const std::string& targetId);           // 目标容器 → 实际父 id（TabControl→当前页 Panel）
+    std::string resolvedParentIdOf(const std::string& targetId);
+    void syncTabCurrentToPage(const std::string& pageId);   // 树选页 Panel → 切换所属 TabControl 当前页
+    bool effectivelyVisible(const PlacedControl& pc);        // 自身+祖先链引擎可见位（隐藏页子树不参与命中）
+    bool isTabPage(const std::string& id);                   // id 是否 Tab 页 Panel（父为 TabControl）
+    bool isSelectedTabPage();                                // 选中项=Tab 页 Panel（禁手柄/禁反向同步）
+    int  tabItemIndexAt(const std::string& tabId, float cx, float cy,
+                        bool clampToNearest);   // P0-91① 页签项命中（局部→画布；clamp=拖放就近钳位）
+    void writeTabColorTo(const std::string& id, const std::string& key, const UIColor& c);  // P0-90 页签配色
+    // Tab 页删除：文本行 ↔ 旧页配对（标题优先；等行数按序兜底=就地改标题）+ 确认弹窗
+    nlohmann::json pairTabsWithOld(const nlohmann::json& oldTabs,
+                                   const std::vector<std::string>& lines,
+                                   std::vector<std::string>& deletedOut);
+    void showTabDeleteConfirm(const std::string& tabsId, const std::string& pendingText,
+                              const std::string& msg);
+    Control m_tabDeleteDlg;                                  // 删除页确认对话框（懒建复用）
+    Control m_tabDeleteLabel;
+    std::string m_pendingTabsId;                             // 待确认的 tabs 编辑（id/文本）
+    std::string m_pendingTabsText;
+    bool m_tabDeleteConfirmed = false;                       // 确认后放行一次（防弹窗循环）
+    // 页签排序拖动（P0-91③：TabGetItemRect 判落点 + TabMovePage 迁移）
+    std::string m_tabDragId;
+    int m_tabDragFrom = -1;
+    int m_tabDragTo = -1;
+    bool m_tabDragActive = false;
+    Control m_tabDragGhost;                  // 拖动光标旁小图标（拖动可见性反馈）           // 目标容器 → 实际父 id（TabControl→当前页 Panel）
     void applyShapePointsText(ControlModel& m, const std::string& text);   // 结构化：shape points（一行一点 x,y）
     void syncShapePoints(ControlModel& m);
     void applyModelToEngine(PlacedControl& pc);     // 模型属性 → 引擎控件（加载应用）
@@ -401,6 +429,21 @@ private:
     SRect m_dragOrigRect{ 0, 0, 0, 0 };
     void restoreSnapshot(const std::string& json);
     void resetUndo();
+
+    // F4.4/F7.2 代码导出生成器（ExportLayout 事件侧车与 ExportCode 共用）
+    std::string buildEventsHeaderText() const;   // events.h（唯一 handler 声明序）
+    std::string buildEventsSourceText() const;   // events.c 骨架实现
+    std::string buildEventListText() const;      // event_list.json（机器可读）
+    std::string buildMainCText() const;          // F7.3：宿主 main.c（LoadLibrary 显式 C ABI）
+    std::string buildMainCppText() const;        // F7.4：宿主 main.cpp（C++ Binding）
+    std::string buildHostCMakeText() const;      // F7.3/F7.4：生成工程 CMakeLists.txt（C 版）
+    std::string buildHostCppCMakeText() const;   // F7.4：生成工程 CMakeLists.txt（C++ Binding 版）
+    std::string buildHostReadmeText(bool cpp) const;   // 生成工程 README（C / C++）
+    std::string buildBuildScriptText(bool release) const;   // 生成工程一键构建脚本（bat，CRLF）
+    bool exportProject(const std::string& dir, bool cpp);   // 共用导出实现
+    static std::string cEscape(const std::string& s);        // C 字符串转义
+    bool validateEventBindings(std::string& badName) const;   // 非法标识符/重名 → false
+    std::string m_shareDir;                      // 设计器 exe 目录（App 注入）
 
     bool  m_mouseWasDown = false;
     bool  m_dragging = false;

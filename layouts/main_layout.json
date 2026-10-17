@@ -76,9 +76,15 @@
                                     }
                                 },
                                 {
-                                    "caption": "导出代码",
+                                    "caption": "导出为可编译C项目",
                                     "events": {
                                         "onClick": "onMenuExportCode"
+                                    }
+                                },
+                                {
+                                    "caption": "导出为可编译C++项目",
+                                    "events": {
+                                        "onClick": "onMenuExportCpp"
                                     }
                                 },
                                 {

@@ -15,6 +15,8 @@
 
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <thread>
 
 #ifdef _WIN32
@@ -49,6 +51,25 @@ std::string exeRelative(const std::string& rel) {
     return exeDirPath() + "/" + rel;
 }
 
+// UTF-8 ↔ 宽字符（对话框路径：Win32 文件 API 需宽字符；空串安全）
+std::wstring utf8ToWide(const std::string& s) {
+    if (s.empty()) return std::wstring();
+    const int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+    std::wstring out(len > 0 ? (size_t)(len - 1) : 0, L'\0');
+    if (len > 0) MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, out.data(), len);
+    return out;
+}
+std::string wideToUtf8(const wchar_t* w) {
+    if (!w) return std::string();
+    const int len = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    std::string out(len > 0 ? (size_t)(len - 1) : 0, '\0');
+    if (len > 0) WideCharToMultiByte(CP_UTF8, 0, w, -1, out.data(), len, nullptr, nullptr);
+    return out;
+}
+
+// 对话框记忆目录配置文件（exe 同目录；F5.4 最近文件规划复用同一配置）
+constexpr const char* kSettingsFileName = "designer_settings.json";
+
 }  // namespace
 
 namespace Designer {
@@ -70,6 +91,8 @@ bool App::SdlApi::load() {
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(GetProcAddress((HMODULE)dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindowSize"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(GetProcAddress((HMODULE)dll, "SDL_GetMouseState"));
+    getMouseFocus = reinterpret_cast<void*(*)()>(GetProcAddress((HMODULE)dll, "SDL_GetMouseFocus"));
+    getKeyboardFocus = reinterpret_cast<void*(*)()>(GetProcAddress((HMODULE)dll, "SDL_GetKeyboardFocus"));
     getKeyboardState = reinterpret_cast<const unsigned char*(*)(int*)>(GetProcAddress((HMODULE)dll, "SDL_GetKeyboardState"));
     createSystemCursor = reinterpret_cast<void*(*)(int)>(GetProcAddress((HMODULE)dll, "SDL_CreateSystemCursor"));
     setCursor = reinterpret_cast<void*(*)(void*)>(GetProcAddress((HMODULE)dll, "SDL_SetCursor"));
@@ -79,6 +102,8 @@ bool App::SdlApi::load() {
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(dlsym(dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(dlsym(dll, "SDL_GetWindowSize"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(dlsym(dll, "SDL_GetMouseState"));
+    getMouseFocus = reinterpret_cast<void*(*)()>(dlsym(dll, "SDL_GetMouseFocus"));
+    getKeyboardFocus = reinterpret_cast<void*(*)()>(dlsym(dll, "SDL_GetKeyboardFocus"));
     getKeyboardState = reinterpret_cast<const unsigned char*(*)(int*)>(dlsym(dll, "SDL_GetKeyboardState"));
     createSystemCursor = reinterpret_cast<void*(*)(int)>(dlsym(dll, "SDL_CreateSystemCursor"));
     setCursor = reinterpret_cast<void*(*)(void*)>(dlsym(dll, "SDL_SetCursor"));
@@ -91,6 +116,25 @@ bool App::SdlApi::load() {
 // 左键状态 + 窗口内坐标（SDL_GetMouseState 相对当前焦点窗口，与引擎事件坐标同系）
 bool App::SdlApi::pollMouse(float& x, float& y) {
     if (!getMouseState) return false;
+    // 焦点守卫：鼠标不在主窗口（如预览独立窗体）时 SDL_GetMouseState 的坐标是
+    // 相对焦点窗口的——误读会致画布假框选/假点击；此时报告"远离+未按下"
+    if (mainWindow && getMouseFocus) {
+        void* focus = getMouseFocus();
+        static void* lastLogged = (void*)-1;
+        if (focus != lastLogged) {
+            int n = 0;
+            void* const* ws = getWindows
+                ? reinterpret_cast<void* const*>(getWindows(&n)) : nullptr;
+            std::printf("[Focus] mouse focus=%p main=%p windows=%d w0=%p -> %s\n",
+                        focus, mainWindow, n, (ws && n > 0) ? ws[0] : nullptr,
+                        focus == mainWindow ? "IN" : "BLOCKED");
+            lastLogged = focus;
+        }
+        if (focus != mainWindow) {
+            x = -100000.0f; y = -100000.0f;
+            return false;
+        }
+    }
     float mx = 0, my = 0;
     unsigned buttons = getMouseState(&mx, &my);
     x = mx; y = my;
@@ -101,6 +145,10 @@ bool App::SdlApi::pollMouse(float& x, float& y) {
 bool App::SdlApi::pollDeleteKey() {
     static bool wasDown = false;
     if (!getKeyboardState) return false;
+    if (mainWindow && getKeyboardFocus && getKeyboardFocus() != mainWindow) {
+        wasDown = false;
+        return false;
+    }
     int numkeys = 0;
     const unsigned char* state = getKeyboardState(&numkeys);
     if (!state || numkeys <= 76) return false;
@@ -114,6 +162,10 @@ bool App::SdlApi::pollDeleteKey() {
 bool App::SdlApi::pollF5Key() {
     static bool wasDown = false;
     if (!getKeyboardState) return false;
+    if (mainWindow && getKeyboardFocus && getKeyboardFocus() != mainWindow) {
+        wasDown = false;
+        return false;
+    }
     int numkeys = 0;
     const unsigned char* state = getKeyboardState(&numkeys);
     if (!state || numkeys <= 62) return false;
@@ -127,6 +179,10 @@ bool App::SdlApi::pollF5Key() {
 bool App::SdlApi::pollUndoKey() {
     static bool wasDown = false;
     if (!getKeyboardState) return false;
+    if (mainWindow && getKeyboardFocus && getKeyboardFocus() != mainWindow) {
+        wasDown = false;
+        return false;
+    }
     int numkeys = 0;
     const unsigned char* state = getKeyboardState(&numkeys);
     if (!state || numkeys <= 29) return false;
@@ -140,6 +196,10 @@ bool App::SdlApi::pollUndoKey() {
 bool App::SdlApi::pollRedoKey() {
     static bool wasDown = false;
     if (!getKeyboardState) return false;
+    if (mainWindow && getKeyboardFocus && getKeyboardFocus() != mainWindow) {
+        wasDown = false;
+        return false;
+    }
     int numkeys = 0;
     const unsigned char* state = getKeyboardState(&numkeys);
     if (!state || numkeys <= 28) return false;
@@ -153,6 +213,10 @@ bool App::SdlApi::pollRedoKey() {
 // 中键状态 + 窗口坐标（画布平移）
 bool App::SdlApi::pollMiddle(float& x, float& y) {
     if (!getMouseState) return false;
+    if (mainWindow && getMouseFocus && getMouseFocus() != mainWindow) {
+        x = -100000.0f; y = -100000.0f;
+        return false;
+    }
     float mx = 0, my = 0;
     unsigned buttons = getMouseState(&mx, &my);
     x = mx; y = my;
@@ -231,6 +295,7 @@ bool App::init() {
     }
     // 动作注册必须先于布局解析：引擎在 LoadLayout 解析期将 instance->actions 注入
     // parser handlers 绑定菜单项 onClick——先解析后注册会导致所有菜单项无回调（静默失效）
+    loadSettings();   // 对话框记忆目录（exe 同目录 designer_settings.json）
     registerActions();
     if (!loadSkeleton()) {
         std::printf("[App] LoadLayout failed: %s\n", m_lastError.c_str());
@@ -240,6 +305,10 @@ bool App::init() {
     if (!m_sdl.loaded) {
         std::printf("[App] SDL3.dll 未解析（窗口 resize 同步降级）\n");
     }
+    // 焦点守卫主窗 = 设计器自身 SDL 枚举的首窗（SDL_Window*）。
+    // 注：引擎 binding 的 GetNativeWindowHandle() 返回的不是 SDL_Window*（与 SDL_GetMouseFocus
+    // 的指针空间不一致），曾致守卫恒阻塞——设计器 SDL 全部输入失效（工具拖放/页签拖动死、假框选消失）。
+    m_sdl.mainWindow = m_sdl.windowHandle();
     setupCanvas();
     bindToolbar();
     if (m_canvas) {
@@ -307,6 +376,65 @@ bool App::loadSkeleton() {
     return true;
 }
 
+// 系统目录选择（导出代码等）——宽字符 → UTF-8；取消返回空串
+// 旧 SDK 头未暴露 BFFM 常量时兜底（值取自 Win32 文档）
+#ifndef BFFM_INITIALIZER
+#define BFFM_INITIALIZER 1
+#endif
+#ifndef BFFM_SETSELECTIONW
+#define BFFM_SETSELECTIONW (WM_USER + 103)
+#endif
+
+// SHBrowseForFolderW 初始定位回调（BFFM_INITIALIZER 时按 lParam 选中目录）
+static int CALLBACK browseInitProc(HWND hwnd, UINT msg, LPARAM lp, LPARAM data) {
+    (void)lp;
+    if (msg == BFFM_INITIALIZER && data)
+        SendMessageW(hwnd, BFFM_SETSELECTIONW, TRUE, data);
+    return 0;
+}
+
+static std::string pickFolderDialog(const wchar_t* title, const std::string& initDir) {
+    std::wstring wInit;
+    if (!initDir.empty() && std::filesystem::exists(std::filesystem::u8path(initDir)))
+        wInit = utf8ToWide(initDir);
+    BROWSEINFOW bi{};
+    bi.hwndOwner = GetActiveWindow();
+    bi.lpszTitle = title;
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+    if (!wInit.empty()) {
+        bi.lpfn = browseInitProc;
+        bi.lParam = (LPARAM)wInit.c_str();
+    }
+    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
+    if (!pidl) return "";
+    wchar_t wpath[MAX_PATH] = L"";
+    SHGetPathFromIDListW(pidl, wpath);
+    ILFree(pidl);
+    const int len = WideCharToMultiByte(CP_UTF8, 0, wpath, -1, nullptr, 0, nullptr, nullptr);
+    std::string out(len > 0 ? (size_t)(len - 1) : 0, '\0');
+    if (len > 0)
+        WideCharToMultiByte(CP_UTF8, 0, wpath, -1, out.data(), len, nullptr, nullptr);
+    return out;
+}
+
+// 对话框记忆目录：settings 读写（exe 同目录 designer_settings.json；容错——缺失/损坏即空）
+void App::loadSettings() {
+    std::ifstream f(std::filesystem::u8path(exeRelative(kSettingsFileName)), std::ios::binary);
+    if (!f) return;
+    const nlohmann::json j = nlohmann::json::parse(f, nullptr, false);
+    if (!j.is_object()) return;
+    m_lastFileDir = j.value("lastFileDir", std::string());
+    m_lastFolderDir = j.value("lastFolderDir", std::string());
+}
+
+void App::saveSettings() const {
+    nlohmann::json j;
+    j["lastFileDir"] = m_lastFileDir;
+    j["lastFolderDir"] = m_lastFolderDir;
+    std::ofstream f(std::filesystem::u8path(exeRelative(kSettingsFileName)), std::ios::binary);
+    if (f) f << j.dump(2);
+}
+
 void App::registerActions() {
     // 全部 JSON 事件动作先注册为占位（未实现的动作给出提示），后续阶段逐一接线。
     auto placeholder = [this](Control ctl) {
@@ -322,7 +450,7 @@ void App::registerActions() {
     };
     const char* actions[] = {
         "onMenuNew", "onMenuOpen", "onMenuSave", "onMenuSaveAs",
-        "onMenuImportJson", "onMenuExportJson", "onMenuExportCode",
+        "onMenuImportJson", "onMenuExportJson", "onMenuExportCode", "onMenuExportCpp",
         "onMenuRecent", "onMenuExit",
         "onMenuUndo", "onMenuRedo", "onMenuCopy", "onMenuPaste", "onMenuDelete",
         "onMenuFront", "onMenuBack", "onMenuMoveUp", "onMenuMoveDown",
@@ -331,10 +459,15 @@ void App::registerActions() {
         "onMenuToggleGrid", "onMenuToggleSnap", "onMenuPreview",
         "onMenuAbout",
     };
-    // Win32 原生文件对话框（03 §13.2 薄层；无 MFC——宽字符 → UTF-8 路径）
-    auto fileDialog = [](bool save, const wchar_t* filter, const wchar_t* defExt,
-                         const wchar_t* title) -> std::string {
+    // Win32 原生文件对话框（03 §13.2 薄层；无 MFC——宽字符 → UTF-8 路径）。
+    // 记忆目录：打开/保存共用 m_lastFileDir（初始定位 + 选择后回写 settings）
+    auto fileDialog = [this](bool save, const wchar_t* filter, const wchar_t* defExt,
+                             const wchar_t* title) -> std::string {
         wchar_t buf[MAX_PATH] = L"";
+        std::wstring wInit;
+        if (!m_lastFileDir.empty() &&
+            std::filesystem::exists(std::filesystem::u8path(m_lastFileDir)))
+            wInit = utf8ToWide(m_lastFileDir);
         OPENFILENAMEW ofn{};
         ofn.lStructSize = sizeof(ofn);
         ofn.hwndOwner = GetActiveWindow();
@@ -343,15 +476,18 @@ void App::registerActions() {
         ofn.nMaxFile = MAX_PATH;
         ofn.lpstrDefExt = defExt;
         ofn.lpstrTitle = title;
+        if (!wInit.empty()) ofn.lpstrInitialDir = wInit.c_str();
         ofn.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |
                     (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
         const BOOL ok = save ? GetSaveFileNameW(&ofn) : GetOpenFileNameW(&ofn);
         if (!ok) return "";
-        const int len = WideCharToMultiByte(CP_UTF8, 0, buf, -1, nullptr, 0, nullptr, nullptr);
-        std::string out(len > 0 ? (size_t)(len - 1) : 0, '\0');
-        if (len > 0)
-            WideCharToMultiByte(CP_UTF8, 0, buf, -1, out.data(), len, nullptr, nullptr);
-        return out;
+        const std::wstring wsel(buf);
+        const size_t slash = wsel.find_last_of(L"/\\");
+        if (slash != std::wstring::npos) {
+            m_lastFileDir = wideToUtf8(wsel.substr(0, slash).c_str());
+            saveSettings();
+        }
+        return wideToUtf8(buf);
     };
     static const wchar_t* kCsdFilter =
         L"CornerstoneDesigner 项目 (*.csd)\0*.csd\0所有文件 (*.*)\0*.*\0";
@@ -396,6 +532,28 @@ void App::registerActions() {
                 const std::string p = fileDialog(true, kJsonFilter, L"json", L"导出 JSON 布局");
                 if (!p.empty()) m_canvas->ExportLayout(p);
             }));
+        } else if (std::string(name) == "onMenuExportCode") {
+            // F4.4/F7.2/F7.3：选目录 → 可编译 C 项目（裸 C ABI 宿主 + 构建脚本 + 运行时）
+            m_ui->RegisterAction(name, guard([this](Control) {
+                if (!m_canvas) return;
+                const std::string cdir = pickFolderDialog(L"选择 C 项目导出目录", m_lastFolderDir);
+                if (!cdir.empty()) {
+                    m_lastFolderDir = cdir;
+                    saveSettings();
+                    m_canvas->ExportCode(cdir);
+                }
+            }));
+        } else if (std::string(name) == "onMenuExportCpp") {
+            // F7.4：选目录 → 可编译 C++ 项目（C++ Binding 宿主 + binding 包 + 构建脚本）
+            m_ui->RegisterAction(name, guard([this](Control) {
+                if (!m_canvas) return;
+                const std::string cdir = pickFolderDialog(L"选择 C++ 项目导出目录", m_lastFolderDir);
+                if (!cdir.empty()) {
+                    m_lastFolderDir = cdir;
+                    saveSettings();
+                    m_canvas->ExportCodeCpp(cdir);
+                }
+            }));
         } else if (std::string(name) == "onMenuAbout") {
             m_ui->RegisterAction(name, guard([this](Control) {
                 std::printf("[App] CornerstoneDesigner v0.1 (stage 1 skeleton)\n");
@@ -433,6 +591,7 @@ void App::setupCanvas() {
         m_canvas.reset();
         return;
     }
+    m_canvas->SetShareDir(exeDirPath());   // F7.3：导出宿主工程分发件来源（exe/sdk、DLL、assets）
     // 拖放光标：工具拖放中 → 十字（懒创建缓存）；结束恢复系统缺省
     m_canvas->SetDragCursorFn([this](bool on) {
         if (!m_sdl.setCursor) return;
@@ -658,8 +817,12 @@ void App::openResourceDialog(bool editMode) {
         if (m_dlgResPathEdit.IsValid())
             m_dlgResPathEdit.SetBool(PropertyNames::kReadOnly, true);   // P0-83：真只读（选择/复制/滚动保留）
         auto btnFile = m_ui->CreateButton(u8"选择文件…", 80, 104, 120, 28);
-        btnFile.SetCallback(PropertyNames::kEventClick, [setPath](const Event&) {
+        btnFile.SetCallback(PropertyNames::kEventClick, [this, setPath](const Event&) {
             wchar_t buf[MAX_PATH] = L"";
+            std::wstring wInit;
+            if (!m_lastFileDir.empty() &&
+                std::filesystem::exists(std::filesystem::u8path(m_lastFileDir)))
+                wInit = utf8ToWide(m_lastFileDir);
             OPENFILENAMEW ofn{};
             ofn.lStructSize = sizeof(ofn);
             ofn.hwndOwner = GetActiveWindow();
@@ -667,29 +830,23 @@ void App::openResourceDialog(bool editMode) {
             ofn.lpstrFile = buf;
             ofn.nMaxFile = MAX_PATH;
             ofn.lpstrTitle = L"选择资源文件";
+            if (!wInit.empty()) ofn.lpstrInitialDir = wInit.c_str();
             ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
             if (!GetOpenFileNameW(&ofn)) return;
-            const int len = WideCharToMultiByte(CP_UTF8, 0, buf, -1, nullptr, 0, nullptr, nullptr);
-            std::string out(len > 0 ? (size_t)(len - 1) : 0, '\0');
-            if (len > 0)
-                WideCharToMultiByte(CP_UTF8, 0, buf, -1, out.data(), len, nullptr, nullptr);
-            setPath(out);
+            const std::wstring wsel(buf);
+            const size_t slash = wsel.find_last_of(L"/\\");
+            if (slash != std::wstring::npos) {
+                m_lastFileDir = wideToUtf8(wsel.substr(0, slash).c_str());
+                saveSettings();
+            }
+            setPath(wideToUtf8(buf));
         });
         auto btnDir = m_ui->CreateButton(u8"选择目录…", 210, 104, 120, 28);
-        btnDir.SetCallback(PropertyNames::kEventClick, [setPath](const Event&) {
-            BROWSEINFOW bi{};
-            bi.hwndOwner = GetActiveWindow();
-            bi.lpszTitle = L"选择资源目录";
-            bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-            LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
-            if (!pidl) return;
-            wchar_t wpath[MAX_PATH] = L"";
-            SHGetPathFromIDListW(pidl, wpath);
-            ILFree(pidl);
-            const int len = WideCharToMultiByte(CP_UTF8, 0, wpath, -1, nullptr, 0, nullptr, nullptr);
-            std::string out(len > 0 ? (size_t)(len - 1) : 0, '\0');
-            if (len > 0)
-                WideCharToMultiByte(CP_UTF8, 0, wpath, -1, out.data(), len, nullptr, nullptr);
+        btnDir.SetCallback(PropertyNames::kEventClick, [this, setPath](const Event&) {
+            const std::string out = pickFolderDialog(L"选择资源目录", m_lastFolderDir);
+            if (out.empty()) return;
+            m_lastFolderDir = out;
+            saveSettings();
             setPath(out);
         });
         m_resDlg.AddChild(lbN);
@@ -778,6 +935,31 @@ void App::openPreviewWindow() {
         closePreviewWindow();
         return;
     }
+    // P0-96 诊断：预览实例 Tab 的拖拽事件日志（拖动生命周期可观测——起拖/落下/换序）
+    {
+        const std::string tid = m_canvas->SelfTestIdOfType("tab-control");
+        if (!tid.empty()) {
+            auto t = m_previewUi->FindControl(tid);
+            if (t.IsValid()) {
+                t.SetCallback(PropertyNames::kEventDragStart, [](const Event&) {
+                    std::printf("[preview-drag] drag-start\n");
+                });
+                t.SetCallback(PropertyNames::kEventDrop, [](const Event&) {
+                    std::printf("[preview-drag] drop\n");
+                });
+                t.SetCallback(PropertyNames::kEventTabReordered, [](const Event&) {
+                    std::printf("[preview-drag] tab-reordered\n");
+                });
+                std::printf("[preview-drag] callbacks bound on %s (re=%d dr=%d dp=%d)\n",
+                            tid.c_str(),
+                            t.GetBool(PropertyNames::kReorderable) ? 1 : 0,
+                            t.GetBool(PropertyNames::kDraggable) ? 1 : 0,
+                            t.GetBool(PropertyNames::kDroppable) ? 1 : 0);
+            } else {
+                std::printf("[preview-drag] tab %s NOT FOUND in preview\n", tid.c_str());
+            }
+        }
+    }
     if (auto pb = m_ui->FindControl("tb_preview"); pb.IsValid())
         pb.SetString(PropertyNames::kCaption, u8"刷新预览");
     m_canvas->SetStatusHint(u8"预览窗口已打开（再次点击刷新；关闭窗口退出）");
@@ -861,6 +1043,22 @@ void App::runPreviewChecks() {
         }
         std::printf("[AUTO3] preview bench bg %s\n", bgOk ? "OK" : "FAIL");
     }
+    // P0-96：预览实例 Tab 拖拽旗标（导出携带 + 引擎解析端到端——内置重排三旗标）
+    {
+        const std::string tid = m_canvas->SelfTestIdOfType("tab-control");
+        bool re = false, dr = false, dp = false;
+        if (!tid.empty()) {
+            auto t = m_previewUi->FindControl(tid);
+            if (t.IsValid()) {
+                re = t.GetBool(PropertyNames::kReorderable);
+                dr = t.GetBool(PropertyNames::kDraggable);
+                dp = t.GetBool(PropertyNames::kDroppable);
+            }
+        }
+        std::printf("[AUTO3] preview tab reorder flags re=%d dr=%d dp=%d -> %s\n",
+                    re ? 1 : 0, dr ? 1 : 0, dp ? 1 : 0,
+                    re ? "OK" : "FAIL");   // P0-96 自含：仅 reorderable 即应可拖（dr/dp 仅参考）
+    }
     // 图片/动画内容像素（非透明占比——预览资源加载回归，用户问题 5）
     for (const char* tp : { "image", "animation" }) {
         auto ic = m_previewUi->FindControl(m_canvas->SelfTestIdOfType(tp));
@@ -896,6 +1094,8 @@ void App::runPreviewChecks() {
 }
 
 int App::run(int autoSeconds) {
+    // 构建标识（用户排障：核对运行实例与构建时间——旧进程常致"修复未生效"误判）
+    std::printf("[App] CornerstoneDesigner build %s %s\n", __DATE__, __TIME__);
     std::chrono::steady_clock::time_point deadline;
     bool autoMode = autoSeconds > 0;
     if (autoMode) {
@@ -944,6 +1144,8 @@ int App::run(int autoSeconds) {
             const int activeIdx = mb.IsValid() ? mb.GetInt(PropertyNames::kActiveIndex) : -2;
             std::printf("[AUTO1] menuBar active-index=%d -> %s\n", activeIdx,
                         (activeIdx == -1) ? "MENU-IDLE-OK" : "MENU-IDLE-FAIL");
+            std::printf("[AUTO1] settings lastFileDir='%s' lastFolderDir='%s'\n",
+                        m_lastFileDir.c_str(), m_lastFolderDir.c_str());
         }
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
         syncRootToWindow();

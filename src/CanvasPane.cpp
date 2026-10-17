@@ -585,12 +585,14 @@ void CanvasPane::styleControl(const std::string& toolboxId, Control ctl, Control
         recordModelColors(model, "text", text);
         recordModelColors(model, "text-shadow", shadow);
     } else if (toolboxId == "tTabs") {
-        // TabControl：页签文字/背景/边框四态显式（引擎缺省 hover 文字色偏深——
-        // 在窗体/深色背景上不可读；hover 与 normal 同色）
-        ctl.SetStateColor(PropertyNames::kText, text);
+        // TabControl：页签文字用**亮色四态**——引擎页签底为深色（硬编码，P0-90 前不可配），
+        // 深字在深底上不可读（用户实测"黑底深字"）；背景/边框仍写模型（导出/P0-90 后生效）
+        const UIStateColor tabText{ UIColor{0xEB, 0xEB, 0xEB, 255}, UIColor{0xEB, 0xEB, 0xEB, 255},
+                                    UIColor{0xEB, 0xEB, 0xEB, 255}, UIColor{0x99, 0x99, 0x99, 255} };
+        ctl.SetStateColor(PropertyNames::kText, tabText);
         ctl.SetStateColor(PropertyNames::kBackground, face);
         ctl.SetStateColor(PropertyNames::kBorder, border);
-        recordModelColors(model, "text", text);
+        recordModelColors(model, "text", tabText);
         recordModelColors(model, "background", face);
         recordModelColors(model, "border", border);
     } else if (toolboxId == "tLabel" || toolboxId == "tCheck" ||
@@ -934,11 +936,16 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
 }
 
 void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, bool fromDrag) {
+    std::printf("[Place] placeControl tool=%s at=(%.0f,%.0f) drag=%d\n",
+                toolboxId.c_str(), cx, cy, fromDrag ? 1 : 0);
     if (!m_viewport) return;
     float w = 120, h = 32;
     const char* caption = "";
     const char* prefix = "ctl";
-    if (!controlSpec(toolboxId, w, h, caption, prefix)) return;
+    if (!controlSpec(toolboxId, w, h, caption, prefix)) {
+        std::printf("[Place]   spec-miss tool=%s\n", toolboxId.c_str());
+        return;
+    }
 
     // P1-b 放置目标双通道（07 §4.2，最新者优先）：
     //   ①画布命中——命中容器内容区（命中子控件则上溯最近容器祖先）→ 目标=该容器；
@@ -995,7 +1002,10 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
 
     // 逻辑 rect 直建（bench scale=zoom 负责渲染缩放）
     Control ctl = createViewportControl(toolboxId, x, y, w, h, *model);
-    if (!ctl.IsValid()) return;
+    if (!ctl.IsValid()) {
+        std::printf("[Place]   create-invalid tool=%s\n", toolboxId.c_str());
+        return;
+    }
     styleControl(toolboxId, ctl, *model);   // 编程创建无主题样式：显式浅色面/深字/描边（同步模型）
 
     // P1-b 容器挂载：AddChild 到容器 + 坐标换算为容器局部（钳制内容区，rect 记账同步）；
@@ -1049,16 +1059,54 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
     syncTreeAdd(m_items.back().parentId, m_items.back().model->props.id,
                 std::string(caption) + " " + m_items.back().model->props.id);
 
+    // TabControl：放置即用——默认两页（页 Panel/树节点经 applyTabsText→syncTabs 创建，
+    // 随放置一步撤销；页内放置/页背景编辑从控件树选中页节点开始）。
+    // 注意：applyTabsText 会向 m_items 追加页 Panel——先存被放置控件 id（back() 不再指向它）
+    const std::string placedId = m_items.back().model->props.id;
+    if (toolboxId == "tTabs") {
+        const nlohmann::json tabs = m_items.back().model->props.extended.value("tabs", nlohmann::json::array());
+        if (!tabs.is_array() || tabs.empty())
+            if (ControlModel* tm2 = findModel(placedId)) applyTabsText(*tm2, u8"页 1\n页 2");
+    }
     // 选中新控件（HandleControl setTarget 重新附加，alwaysOnTop 置顶）
     m_selectedId.clear();
-    selectItem(m_items.back().model->props.id);
+    selectItem(placedId);
     commitUndo();   // F2.5：放置为独立撤销步
+}
+
+// 有效可见性：自身 + 祖先链的引擎可见位。非当前 Tab 页由引擎 applyCurrentPage 置
+// visible=false（模型不镜像该内部切换）——隐藏页及其子树不得参与命中（否则反向遍历
+// 命中最后创建的隐藏页 → 放置/选中目标错页）。
+bool CanvasPane::effectivelyVisible(const PlacedControl& pc) {
+    for (const PlacedControl* p = &pc; p != nullptr;) {
+        if (p->ctl.IsValid() && !p->ctl.GetBool(PropertyNames::kVisible)) return false;
+        p = p->parentId.empty() ? nullptr : placedById(p->parentId);
+    }
+    return true;
 }
 
 bool CanvasPane::hitTest(float cx, float cy, std::string& outId) {
     // 轮 1：容器子控件优先（深度语义；helper 全局原点——含父链与 WinFrame 内容偏移）
     for (auto it = m_items.rbegin(); it != m_items.rend(); ++it) {
         if (it->parentId.empty()) continue;
+        if (!effectivelyVisible(*it)) continue;
+        // Tab 页 Panel：几何由引擎管理（applyCurrentPage 设内容区 rect）——模型 rect 为
+        // 设计器记账（新建页=整 Tab 大小，会覆盖页签带 → 点页签被误判为点页 ✗）。
+        // 命中用**引擎 rect**（Tab 局部）+ 父全局原点。
+        if (it->model->props.type == "panel" && it->ctl.IsValid()) {
+            PlacedControl* par = it->parentId.empty() ? nullptr : placedById(it->parentId);
+            if (par && par->model->props.type == "tab-control") {
+                const UIRect pr = it->ctl.GetRect();
+                float pgx = 0, pgy = 0;
+                parentGlobalOriginOf(*it, pgx, pgy);
+                const float gx2 = pgx + pr.x, gy2 = pgy + pr.y;
+                if (cx >= gx2 && cx < gx2 + pr.w && cy >= gy2 && cy < gy2 + pr.h) {
+                    outId = it->model->props.id;
+                    return true;
+                }
+                continue;
+            }
+        }
         float gx = 0, gy = 0;
         globalOriginOf(*it, gx, gy);
         const SRect& lr = it->model->props.rect;
@@ -1070,6 +1118,7 @@ bool CanvasPane::hitTest(float cx, float cy, std::string& outId) {
     // 轮 2：顶层控件
     for (auto it = m_items.rbegin(); it != m_items.rend(); ++it) {
         if (!it->parentId.empty()) continue;
+        if (!effectivelyVisible(*it)) continue;
         const SRect& r = it->model->props.rect;
         if (cx >= r.x && cx < r.x + r.w && cy >= r.y && cy < r.y + r.h) {
             outId = it->model->props.id;
@@ -1106,7 +1155,8 @@ void CanvasPane::setSelection(std::vector<std::string> ids) {
     m_selectedId = m_selIds.empty() ? std::string() : m_selIds.back();
 
     PlacedControl* pc = m_selectedId.empty() ? nullptr : placedById(m_selectedId);
-    if (pc && pc->ctl.IsValid()) ensureSelHandle(pc->ctl);
+    // Tab 页 Panel：几何由 TabControl 管理——不建手柄（锁死在 Tab 内，禁拖动/缩放）
+    if (pc && pc->ctl.IsValid() && !isSelectedTabPage()) ensureSelHandle(pc->ctl);
     else detachSelHandle();
     updateSelOutlines();
     if (m_alignCombo.IsValid())
@@ -1256,7 +1306,7 @@ void CanvasPane::finalizeBand(float cx, float cy) {
     std::vector<std::string> hits;
     for (auto& it : m_items) {
         if (!it.ctl.IsValid()) continue;
-        if (!it.ctl.GetBool(PropertyNames::kVisible)) continue;
+        if (!effectivelyVisible(it)) continue;
         if (!bandRoot.empty() && !isDescendantOf(it.model->props.id, bandRoot)) continue;
         float gx = 0, gy = 0;
         globalOriginOf(it, gx, gy);
@@ -2288,6 +2338,97 @@ void CanvasPane::syncTreeItems(ControlModel& m) {
 
 // 放置/记账用：解析目标容器在模型中的实际父 id（TabControl → 当前页 Panel id；
 // 其余容器=自身）。序列化按 parentId 组树——TabControl 记账必须落到页 Panel。
+// id 是否 Tab 页 Panel（页几何由 TabControl 引擎侧管理——禁手柄/禁拖动/禁反向同步）
+bool CanvasPane::isTabPage(const std::string& id) {
+    PlacedControl* pgp = placedById(id);
+    PlacedControl* par = (pgp && !pgp->parentId.empty()) ? placedById(pgp->parentId) : nullptr;
+    return par && par->model->props.type == "tab-control";
+}
+
+bool CanvasPane::isSelectedTabPage() {
+    return isTabPage(m_selectedId);
+}
+
+// 页序调整（用户需求：拖动页签排序的内核）。引擎仅支持追加——以"池保活"往返实现
+// 任意位置插入：摘除 [lo..end)（TabRemovePage 句柄保活）→ 按新序 TabAddPage+TabSetPage
+// 重挂；模型 arr 同步重排 + 树标签重排号 + 当前页跟随。
+bool CanvasPane::moveTabPage(const std::string& tabsId, int from, int to) {
+    ControlModel* m = findModel(tabsId);
+    PlacedControl* pc = placedById(tabsId);
+    if (!m || !pc || !pc->ctl.IsValid() || !m_viewport) return false;
+    if (!m->props.extended.contains("tabs") || !m->props.extended["tabs"].is_array()) return false;
+    nlohmann::json& arr = m->props.extended["tabs"];
+    const int n = (int)arr.size();
+    if (from < 0 || to < 0 || from >= n || to >= n || from == to) return false;
+    const int curIdx = pc->ctl.GetInt(PropertyNames::kTabCurrentIndex);
+    const std::string curPageId = (curIdx >= 0 && curIdx < n)
+        ? arr[(size_t)curIdx].value("page-id", std::string()) : std::string();
+    // 引擎迁移（P0-91③：内部 erase+insert——页 shared_ptr 原样、不经池）
+    if (!m_viewport->TabMovePage(pc->ctl, from, to)) return false;
+    // 模型 arr 同序重排 + 树标签重排号 + 当前页跟随（按 id 重定位）
+    nlohmann::json moved = arr[(size_t)from];
+    arr.erase(arr.begin() + from);
+    arr.insert(arr.begin() + to, moved);
+    for (int i = 0; i < n; ++i) {
+        const std::string pid = arr[(size_t)i].value("page-id", "");
+        const std::string title = arr[(size_t)i].value("title", "");
+        syncTreeRename(pid, u8"页 " + std::to_string(i + 1) + u8"·" + title);
+        if (!curPageId.empty() && pid == curPageId)
+            pc->ctl.SetInt(PropertyNames::kTabCurrentIndex, i);
+    }
+    commitUndo("struct:" + tabsId);
+    return true;
+}
+
+// P0-91①：页签项命中（TabGetItemRect；Tab 局部逻辑坐标 → 画布坐标）。
+// clampToNearest=true（拖放目标位）：未命中按最近项中心就近钳位（全在右侧 → 0）；
+// false（点击判定）：未命中返回 -1（空白页签——不得钳位误判为项）。
+int CanvasPane::tabItemIndexAt(const std::string& tabId, float cx, float cy, bool clampToNearest) {
+    PlacedControl* pc = placedById(tabId);
+    if (!pc || !pc->ctl.IsValid() || !m_viewport) return -1;
+    const nlohmann::json tabs = pc->model->props.extended.value("tabs", nlohmann::json::array());
+    const int n = tabs.is_array() ? (int)tabs.size() : 0;
+    if (n <= 0) return -1;
+    float tx0 = 0, ty0 = 0;
+    globalOriginOf(*pc, tx0, ty0);
+    int before = -1;
+    for (int i = 0; i < n; ++i) {
+        UIRect r{};
+        if (!m_viewport->TabGetItemRect(pc->ctl, i, r)) continue;
+        const float gx = tx0 + r.x, gy = ty0 + r.y;
+        if (cx >= gx && cx < gx + r.w && cy >= gy && cy < gy + r.h) return i;
+        if (clampToNearest && gx + r.w * 0.5f < cx) before = i;
+    }
+    if (!clampToNearest) return -1;
+    return before >= 0 ? before : 0;
+}
+
+// P0-90：Tab 页签配色写入（tab-* 单色键直通；extended 字符串持久化，与导出/导入同形）
+void CanvasPane::writeTabColorTo(const std::string& id, const std::string& key, const UIColor& c) {
+    ControlModel* m = findModel(id);
+    PlacedControl* pc = placedById(id);
+    if (!m || !pc || !pc->ctl.IsValid()) return;
+    char hex8[12];
+    std::snprintf(hex8, sizeof(hex8), "#%02X%02X%02X%02X", c.r, c.g, c.b, c.a);
+    m->props.extended[key] = hex8;
+    pc->ctl.SetColor(key.c_str(), c);
+    commitUndo("c:" + key);
+}
+
+// 树选中页 Panel（父为 TabControl）→ 同步切换当前页：所见即所编/所放（用户反馈）
+void CanvasPane::syncTabCurrentToPage(const std::string& pageId) {
+    const PlacedControl* pc = placedById(pageId);
+    PlacedControl* par = pc ? placedById(pc->parentId) : nullptr;
+    if (!par || par->model->props.type != "tab-control" || !par->ctl.IsValid()) return;
+    const nlohmann::json tabs = par->model->props.extended.value("tabs", nlohmann::json::array());
+    if (!tabs.is_array()) return;
+    for (size_t i = 0; i < tabs.size(); ++i)
+        if (tabs[i].value("page-id", "") == pageId) {
+            par->ctl.SetInt(PropertyNames::kTabCurrentIndex, (int)i);
+            return;
+        }
+}
+
 std::string CanvasPane::resolvedParentIdOf(const std::string& targetId) {
     const PlacedControl* pc = placedById(targetId);
     if (!pc || pc->model->props.type != "tab-control") return targetId;
@@ -2323,16 +2464,108 @@ void CanvasPane::removePlacedSubtree(const std::string& rootId) {
 
 // 结构化：tab-control tabs 文本 → 模型（一行一页签标题；空行忽略；页 id 按索引保留）
 // + 引擎同步（尾删 + 逐页标题/新增——页 Panel 设计器自管）。
+// tabs 文本行 ↔ 旧页配对：①标题精确匹配（保内容：插入/删除/改序）；
+// ②等行数且未命中 → 按序兜底（就地改标题）；③无匹配 → 新页（无 id）。
+// 未匹配的旧页 = 被删（deletedOut）。原实现仅按序配对：删除中间/首行时页 id 整体错位
+// → 引擎尾删误删其它页、被删页控件残留（用户实测）。
+nlohmann::json CanvasPane::pairTabsWithOld(const nlohmann::json& oldTabs,
+                                           const std::vector<std::string>& lines,
+                                           std::vector<std::string>& deletedOut) {
+    const int oldCount = oldTabs.is_array() ? (int)oldTabs.size() : 0;
+    nlohmann::json arr = nlohmann::json::array();
+    std::vector<bool> used((size_t)oldCount, false);
+    for (size_t i = 0; i < lines.size(); ++i) {
+        nlohmann::json e = { { "title", lines[i] } };
+        std::string pid;
+        if (oldCount > 0) {
+            for (int j = 0; j < oldCount; ++j)   // ①标题匹配
+                if (!used[(size_t)j] && oldTabs[(size_t)j].is_object() &&
+                    oldTabs[(size_t)j].value("title", "") == lines[i]) {
+                    pid = oldTabs[(size_t)j].value("page-id", "");
+                    used[(size_t)j] = true;
+                    break;
+                }
+            if (pid.empty() && (int)lines.size() == oldCount && i < (size_t)oldCount &&
+                oldTabs[i].is_object() && !used[i]) {   // ②等行数按序兜底（就地改标题）
+                pid = oldTabs[i].value("page-id", "");
+                used[i] = true;
+            }
+        }
+        if (!pid.empty()) e["page-id"] = pid;
+        arr.push_back(std::move(e));
+    }
+    for (int j = 0; j < oldCount; ++j)
+        if (!used[(size_t)j])
+            deletedOut.push_back(oldTabs[(size_t)j].value("page-id", std::string()));
+    return arr;
+}
+
+// 删除页确认弹窗（懒建复用）：确定 → 放行一次重入 applyTabsText；取消 → 行文本按模型还原。
+void CanvasPane::showTabDeleteConfirm(const std::string& tabsId, const std::string& pendingText,
+                                      const std::string& msg) {
+    if (!m_ui) return;
+    if (!m_tabDeleteDlg.IsValid()) {
+        m_tabDeleteDlg = m_ui->CreateDialog(u8"确定", u8"取消", 0, 0, 420, 150);
+        if (!m_tabDeleteDlg.IsValid()) return;
+        auto lb = m_ui->CreateLabel(u8"", 16.0f, 16, 20, 388, 70);
+        m_tabDeleteDlg.AddChild(lb);
+        m_tabDeleteLabel = lb;
+        m_tabDeleteDlg.SetCallback(PropertyNames::kEventClose, [this](const Event& e) {
+            const bool ok = (e.GetCloseResult() == 1);
+            const std::string id = m_pendingTabsId;
+            const std::string text = m_pendingTabsText;
+            m_pendingTabsId.clear();
+            m_pendingTabsText.clear();
+            if (ok && !id.empty()) {
+                if (ControlModel* mm = findModel(id)) {
+                    m_tabDeleteConfirmed = true;
+                    applyTabsText(*mm, text);
+                    m_tabDeleteConfirmed = false;
+                }
+            } else {
+                rebuildDynamicRows();   // 取消：行文本还原（以模型为准）
+            }
+        });
+        m_tabDeleteDlg.SetBool(PropertyNames::kVisible, 0);
+    }
+    if (m_tabDeleteLabel.IsValid())
+        m_tabDeleteLabel.SetString(PropertyNames::kCaption, msg);
+    m_pendingTabsId = tabsId;
+    m_pendingTabsText = pendingText;
+    m_tabDeleteDlg.SetBool(PropertyNames::kVisible, 1);
+}
+
 void CanvasPane::applyTabsText(ControlModel& m, const std::string& text) {
     std::fflush(stdout);
     const std::vector<std::string> lines = splitNonEmptyLines(text);
     const nlohmann::json oldTabs = m.props.extended.value("tabs", nlohmann::json::array());
-    nlohmann::json arr = nlohmann::json::array();
-    for (size_t i = 0; i < lines.size(); ++i) {
-        nlohmann::json e = { { "title", lines[i] } };
-        if (oldTabs.is_array() && i < oldTabs.size() && oldTabs[(size_t)i].is_object())
-            e["page-id"] = oldTabs[(size_t)i].value("page-id", "");   // 改标题不清页内容
-        arr.push_back(std::move(e));
+    std::vector<std::string> deleted;
+    nlohmann::json arr = pairTabsWithOld(oldTabs, lines, deleted);
+    // 被删页含控件 → 弹窗确认（取消则行文本还原；确认经 m_tabDeleteConfirmed 放行一次）
+    if (!m_tabDeleteConfirmed) {
+        std::string msg;
+        for (const auto& d : deleted) {
+            if (d.empty()) continue;
+            int kids = 0;
+            for (const auto& it : m_items)
+                if (it.parentId == d) ++kids;
+            if (kids <= 0) continue;
+            std::string title = d;
+            if (oldTabs.is_array())
+                for (const auto& o : oldTabs)
+                    if (o.is_object() && o.value("page-id", "") == d) {
+                        title = o.value("title", d);
+                        break;
+                    }
+            if (msg.empty()) msg = u8"以下页含控件，确认删除？ ";
+            else msg += u8"、";
+            msg += title;
+            msg += u8"（" + std::to_string(kids) + u8" 个控件）";
+        }
+        if (!msg.empty()) {
+            showTabDeleteConfirm(m.props.id, text, msg);
+            return;   // 暂缓应用（确认/取消回调处理）
+        }
     }
     m.props.extended["tabs"] = std::move(arr);
     syncTabs(m, oldTabs);
@@ -2350,41 +2583,91 @@ void CanvasPane::syncTabs(ControlModel& m, const nlohmann::json& oldTabs) {
     const nlohmann::json tabs = m.props.extended.value("tabs", nlohmann::json::array());
     const int oldCount = oldTabs.is_array() ? (int)oldTabs.size() : 0;
     const int newCount = tabs.is_array() ? (int)tabs.size() : 0;
-    for (int i = oldCount - 1; i >= newCount; --i) {
+    auto keptInNew = [&](const std::string& pid) {
+        if (pid.empty() || !tabs.is_array()) return false;
+        for (const auto& t : tabs)
+            if (t.is_object() && t.value("page-id", "") == pid) return true;
+        return false;
+    };
+    // 删除：旧页 page-id 未出现在新 arr → 按旧索引**降序** TabRemovePage + 子树移除
+    // （按 id 判定支持删除任意行；降序保持低索引稳定——原实现仅尾删，删中间/首行误删尾页）
+    for (int i = oldCount - 1; i >= 0; --i) {
         const std::string pageId = oldTabs[(size_t)i].value("page-id", "");
+        if (keptInNew(pageId)) continue;
         m_viewport->TabRemovePage(tabCtl, i);
         if (!pageId.empty()) removePlacedSubtree(pageId);
     }
-    int engineCount = std::min(oldCount, newCount);
+    // 缺句柄的页：创建页 Panel（加载路径页已由 walk 预建 → 跳过；引擎挂载统一在下方）
     for (int i = 0; i < newCount; ++i) {
         const std::string title = tabs[(size_t)i].value("title", "");
         std::string pageId = tabs[(size_t)i].value("page-id", "");
         PlacedControl* pagePc = pageId.empty() ? nullptr : placedById(pageId);
-        if (!pagePc || !pagePc->ctl.IsValid()) {
-            // 新增页：创建页 Panel（父=TabControl；引擎 applyCurrentPage 负责其 rect）
-            auto pageModel = std::make_unique<ControlModel>();
-            pageModel->props.type = "panel";
-            pageModel->props.id = "tabpage_" + std::to_string(++m_seq);
-            pageModel->props.extended = nlohmann::json::object();   // 恒对象（value() 安全）
-            const SRect r = tabRect;
-            pageModel->props.rect = { 0, 0, r.w, r.h };
-            Control pageCtl = createViewportControl("tPanel", 0, 0, r.w, r.h, *pageModel);
-            if (!pageCtl.IsValid()) continue;
-            pageId = pageModel->props.id;
-            m_items.push_back({ std::move(pageModel), pageCtl, m.props.id });
-            m_viewport->SetControlId(pageCtl, pageId);
-            // 挂接由 TabSetPage 完成（引擎 P0-69 §3.4：挂载前自动摘除 bench 旧父——
-            // 勿再 AddChild，否则重复挂载 assert）
-            syncTreeAdd(m.props.id, pageId, u8"页 " + std::to_string(i + 1) + u8"·" + title);
-            m.props.extended["tabs"][(size_t)i]["page-id"] = pageId;
-            pagePc = &m_items.back();
-        } else {
-            // 已有页：标题变化同步树节点标签
-            syncTreeRename(pageId, u8"页 " + std::to_string(i + 1) + u8"·" + title);
-        }
-        if (i >= engineCount) m_viewport->TabAddPage(tabCtl, title);
-        m_viewport->TabSetPage(tabCtl, i, pagePc->ctl);
-        m_viewport->TabSetTitle(tabCtl, i, title);
+        if (pagePc && pagePc->ctl.IsValid()) continue;
+        auto pageModel = std::make_unique<ControlModel>();
+        pageModel->props.type = "panel";
+        pageModel->props.id = "tabpage_" + std::to_string(++m_seq);
+        pageModel->props.extended = nlohmann::json::object();   // 恒对象（value() 安全）
+        const SRect r = tabRect;
+        pageModel->props.rect = { 0, 0, r.w, r.h };
+        Control pageCtl = createViewportControl("tPanel", 0, 0, r.w, r.h, *pageModel);
+        if (!pageCtl.IsValid()) continue;
+        pageId = pageModel->props.id;
+        m_items.push_back({ std::move(pageModel), pageCtl, m.props.id });
+        m_viewport->SetControlId(pageCtl, pageId);
+        syncTreeAdd(m.props.id, pageId, u8"页 " + std::to_string(i + 1) + u8"·" + title);
+        m.props.extended["tabs"][(size_t)i]["page-id"] = pageId;
+    }
+    // 引擎挂载（引擎仅支持追加，序 = 保留旧页旧序 + 其余按 arr 序追加）：
+    // ① 保留旧页：按旧序 TabSetPage/Title；② 旧 arr 中不存在的页（新页/加载预建页）：
+    // TabAddPage 追加 + TabSetPage/Title（**加载路径必须走此分支**——否则页成孤儿 → 崩溃）
+    auto inOldTabs = [&](const std::string& pid) {
+        if (pid.empty() || !oldTabs.is_array()) return false;
+        for (const auto& o : oldTabs)
+            if (o.is_object() && o.value("page-id", "") == pid) return true;
+        return false;
+    };
+    auto titleOfPageId = [&](const std::string& pid) -> std::string {
+        if (tabs.is_array())
+            for (const auto& t : tabs)
+                if (t.is_object() && t.value("page-id", "") == pid) return t.value("title", "");
+        return std::string();
+    };
+    int enginePos = 0;
+    for (int j = 0; j < oldCount; ++j) {
+        const std::string pid = oldTabs[(size_t)j].value("page-id", "");
+        if (!keptInNew(pid)) continue;
+        PlacedControl* pagePc = placedById(pid);
+        if (!pagePc || !pagePc->ctl.IsValid()) continue;
+        const std::string title = titleOfPageId(pid);
+        m_viewport->TabSetPage(tabCtl, enginePos, pagePc->ctl);
+        m_viewport->TabSetTitle(tabCtl, enginePos, title);
+        syncTreeRename(pid, u8"页 " + std::to_string(enginePos + 1) + u8"·" + title);
+        ++enginePos;
+    }
+    // 注意：上方创建循环会把新 page-id 回写模型——此处须重读（本地 tabs 为旧副本）
+    const nlohmann::json tabsNow = m.props.extended.value("tabs", nlohmann::json::array());
+    for (int i = 0; i < newCount; ++i) {
+        const std::string pid = tabsNow.is_array() && i < (int)tabsNow.size()
+            ? tabsNow[(size_t)i].value("page-id", "") : std::string();
+        if (pid.empty() || inOldTabs(pid)) continue;
+        PlacedControl* pagePc = placedById(pid);
+        if (!pagePc || !pagePc->ctl.IsValid()) continue;
+        const std::string title = tabsNow[(size_t)i].value("title", "");
+        m_viewport->TabAddPage(tabCtl, title);
+        m_viewport->TabSetPage(tabCtl, enginePos, pagePc->ctl);
+        m_viewport->TabSetTitle(tabCtl, enginePos, title);
+        syncTreeRename(pid, u8"页 " + std::to_string(enginePos + 1) + u8"·" + title);
+        ++enginePos;
+    }
+    // 页模型 rect 同步（引擎 applyCurrentPage 设内容区 rect——模型记账须一致：
+    // 否则新建页模型=整 Tab 大小，hitTest 覆盖页签带 → 点页签被误判为点页）
+    for (int i = 0; i < newCount; ++i) {
+        const std::string pid = tabsNow.is_array() && i < (int)tabsNow.size()
+            ? tabsNow[(size_t)i].value("page-id", "") : std::string();
+        PlacedControl* pg = pid.empty() ? nullptr : placedById(pid);
+        if (!pg || !pg->ctl.IsValid()) continue;
+        const UIRect pr = pg->ctl.GetRect();
+        pg->model->props.rect = SRect{ pr.x, pr.y, pr.w, pr.h };
     }
 }
 
@@ -4218,17 +4501,31 @@ void CanvasPane::rebuildDynamicRows() {
                 for (const auto& id : m_selIds) {   // P2 多选：批量写全部选中
                     PlacedControl* pc2 = placedById(id);
                     if (!pc2 || !pc2->ctl.IsValid()) continue;
-                    pc2->ctl.SetBool(prop.c_str(), v2);
+                    if (prop == PropertyNames::kReorderable) {
+                        // 设计态：旗标只进模型（导出/预览生效）；live 控件保持关闭——
+                        // 否则引擎内置拖拽在设计画布内激活，与宿主页签拖动互斗（双 ghost）✗
+                        pc2->ctl.SetBool(PropertyNames::kReorderable, 0);
+                        pc2->ctl.SetBool(PropertyNames::kDraggable, 0);
+                        pc2->ctl.SetBool(PropertyNames::kDroppable, 0);
+                    } else {
+                        pc2->ctl.SetBool(prop.c_str(), v2);
+                    }
                     pc2->model->props.extended[prop] = v2;   // 模型同步
                 }
                 commitUndo("b:" + prop);   // F2.5：勾选行
             });
-            // 勾选状态回填（引擎 getter 补齐后 text-shadow-enable 等可读回）
-            cb.SetBool(PropertyNames::kChecked,
-                       m_schemaTarget.GetBool(prop.c_str()));
-            m_rowRefreshers.push_back([this, cb, prop]() mutable {
-                cb.SetBool(PropertyNames::kChecked,
-                           m_schemaTarget.GetBool(prop.c_str()));
+            // 勾选状态回填（引擎 getter 补齐后 text-shadow-enable 等可读回）；
+            // reorderable 读模型（设计态 live 恒关闭，读 live 会"勾选即弹回"）✓
+            auto checkedOf = [this, prop]() -> bool {
+                if (prop == PropertyNames::kReorderable) {
+                    if (ControlModel* m = findModel(m_schemaTarget.GetId()))
+                        return m->props.extended.value(PropertyNames::kReorderable, false);
+                }
+                return m_schemaTarget.GetBool(prop.c_str());
+            };
+            cb.SetBool(PropertyNames::kChecked, checkedOf());
+            m_rowRefreshers.push_back([this, cb, prop, checkedOf]() mutable {
+                cb.SetBool(PropertyNames::kChecked, checkedOf());
             });
             m_dynamicRows.push_back(cb);
             m_dynamicRowY.push_back(y);
@@ -4236,6 +4533,57 @@ void CanvasPane::rebuildDynamicRows() {
         }
         ++rows;
         genKeys += " " + key;
+    }
+
+    // P0-90：Tab 页签配色行（单色键；引擎 tab-* 直通——extended 持久化 + 引擎读回刷新）
+    // 归入"页签配色"分组（可折叠，与其他分组一致）；"内容区底色"不生成——内容区被
+    // 当前页 Panel 完全覆盖（applyCurrentPage 页 rect=内容区），视觉无效（用户实测）
+    if (m_schemaType == "tab-control" && m_selIds.size() == 1) {
+        makeGroupHeader(u8"页签配色");
+        if (!m_collapsedGroups.count(u8"页签配色")) {
+        static const struct { const char* key; const char* label; } kTabColors[] = {
+            { PropertyNames::kTabBackground,         u8"页签背景（常态）" },
+            { PropertyNames::kTabHoverBackground,    u8"页签背景（悬停）" },
+            { PropertyNames::kTabSelectedBackground, u8"页签背景（选中）" },
+            { PropertyNames::kTabIndicatorColor,     u8"选中指示条" },
+        };
+        for (const auto& tc : kTabColors) {
+            makeLabel(tc.label);
+            PlacedControl* pcT = placedById(m_selectedId);
+            char hex[12] = "#00000000";
+            if (pcT && pcT->ctl.IsValid()) {
+                const UIColor cc = pcT->ctl.GetColor(tc.key);
+                std::snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X", cc.r, cc.g, cc.b, cc.a);
+            }
+            Control cp = takePoolRow(std::string("tabcolor:") + tc.key, [&] {
+                return m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, hex);
+            });
+            cp.SetRect(kPropInsetX, y, kColorRowW, ctlH);
+            cp.SetString(PropertyNames::kColor, hex);
+            cp.SetString(PropertyNames::kTextContent, hex);
+            const std::string keyCopy = tc.key;
+            m_rowRefreshers.push_back([this, cp, keyCopy]() mutable {
+                PlacedControl* pcR = placedById(m_selectedId);
+                if (!pcR || !pcR->ctl.IsValid()) return;
+                const UIColor cc = pcR->ctl.GetColor(keyCopy.c_str());
+                char h2[12];
+                std::snprintf(h2, sizeof(h2), "#%02X%02X%02X%02X", cc.r, cc.g, cc.b, cc.a);
+                cp.SetString(PropertyNames::kColor, h2);
+                cp.SetString(PropertyNames::kTextContent, h2);
+            });
+            cp.SetCallback(PropertyNames::kEventColorChanged, [this, keyCopy](const Event& e) {
+                if (m_propSync) return;
+                writeTabColorTo(m_selectedId, keyCopy, e.GetChangedColor());
+            });
+            m_fixedWidthRows.insert(m_dynamicRows.size());
+            m_dynamicRows.push_back(cp);
+            m_dynamicRowY.push_back(y);
+            y += ctlH + rowGap;
+            ++rows;
+            genKeys += " ";
+            genKeys += keyCopy;
+        }
+        }
     }
 
     // （Button 资源 5 行已删——引擎 P0-19 schema 补齐 normal/hover/pressed/
@@ -4471,6 +4819,33 @@ void CanvasPane::tickInput() {
         return;
     }
 
+    // 页签排序拖动（P0-91③）：释放时按目标位 TabMovePage 迁移；拖动中状态栏提示
+    if (m_tabDragActive) {
+        if (!down) {
+            if (m_tabDragTo >= 0 && m_tabDragTo != m_tabDragFrom)
+                moveTabPage(m_tabDragId, m_tabDragFrom, m_tabDragTo);
+            m_tabDragActive = false;
+            m_tabDragId.clear();
+            m_tabDragFrom = m_tabDragTo = -1;
+            if (m_tabDragGhost.IsValid()) {   // 拖动结束：销毁小图标
+                m_tabDragGhost.Destroy();
+                m_tabDragGhost = Control();
+            }
+        } else {
+            const int to = tabItemIndexAt(m_tabDragId, cx, cy, /*clampToNearest=*/true);
+            if (to >= 0 && to != m_tabDragTo) {
+                m_tabDragTo = to;
+                setStatusHint(u8"页序调整：释放后移动到第 " + std::to_string(to + 1) + u8" 位");
+            }
+            if (m_tabDragGhost.IsValid()) {   // 小图标跟随光标
+                m_tabDragGhost.SetBool(PropertyNames::kVisible, 1);
+                m_tabDragGhost.SetRect(cx + 12.0f, cy + 12.0f, 32.0f, 32.0f);
+            }
+        }
+        m_mouseWasDown = down;
+        return;
+    }
+
     // Delete 归属：鼠标最后按下位置在属性面板内 → 面板编辑中（画布 Delete 忽略）。
     // 面板为 middleArea 子级（h-flow）——全局 rect = middleArea 原点 + 局部。
     if (downEdge) {
@@ -4521,13 +4896,15 @@ void CanvasPane::tickInput() {
     // 工具拖放（拖放模式）：工具箱项按下（kEventSelect）→ 拖到画布松开 → 放置于松开处；
     // 在工具箱内松开（普通单击）→ 不放置、仅清除候选
     if (!m_pendingPlaceTool.empty() && !down) {
+        std::printf("[Place] pending-drop tool=%s inVp=%d at=(%.0f,%.0f)\n",
+                    m_pendingPlaceTool.c_str(), inVp ? 1 : 0, cx, cy);
         if (inVp) placeControl(m_pendingPlaceTool, cx, cy, true);   // 拖放：左上角=落点
         m_pendingPlaceTool.clear();
     }
 
     // 引擎 HandleControl 拖拽感知：rect 差异（filter 吸附后引擎 setRect）→
     // 同步模型/属性面板（吸附已由 filter 实时承担，此处纯同步）
-    if (m_selectedId.empty() == false && m_dragId.empty()) {
+    if (m_selectedId.empty() == false && m_dragId.empty() && !isSelectedTabPage()) {
         if (ControlModel* m = findModel(m_selectedId)) {
             if (PlacedControl* pc = placedById(m->props.id); pc && pc->ctl.IsValid()) {
                 const UIRect vr = pc->ctl.GetRect();
@@ -4688,14 +5065,63 @@ void CanvasPane::tickInput() {
             m_mouseWasDown = down;
             return;
         }
+        // Tab 页签项点击优先于手柄让区：页签带与 Tab 手柄 resize 上缘区重叠——曾被引擎
+        // 截获为 resize，致"点页签选不中页/拖不动排序"（第二次点稍低才命中，用户实测两次）
+        if (downEdge && inVp) {
+            std::string hitItem;
+            if (hitTest(cx, cy, hitItem)) {
+                PlacedControl* hp = placedById(hitItem);
+                if (hp && hp->model->props.type == "tab-control" && hp->ctl.IsValid()) {
+                    const int itemIdx = tabItemIndexAt(hitItem, cx, cy, /*clampToNearest=*/false);
+                    if (itemIdx >= 0) {
+                        const nlohmann::json tabsJ = hp->model->props.extended.value(
+                            "tabs", nlohmann::json::array());
+                        const std::string pid = (tabsJ.is_array() && itemIdx < (int)tabsJ.size())
+                            ? tabsJ[(size_t)itemIdx].value("page-id", "") : "";
+                            if (!pid.empty()) {
+                                setPlaceTarget(pid);
+                                selectItem(pid);   // 选中该页（锁定）
+                                m_tabDragActive = true;   // 排序拖动候选（释放时按目标位迁移）
+                                m_tabDragId = hitItem;
+                                m_tabDragFrom = itemIdx;
+                                m_tabDragTo = itemIdx;
+                                // 拖动光标旁小图标（复用工具箱 ghost 风格：置顶 + 半透明）
+                                if (!m_tabDragGhost.IsValid()) {
+                                    const std::string tIcon = toolboxIconOf("tTabs");
+                                    if (!tIcon.empty()) {
+                                        m_tabDragGhost = m_viewport->CreateImage(tIcon, 0, 0, 32.0f, 32.0f);
+                                        if (m_tabDragGhost.IsValid()) {
+                                            m_tabDragGhost.SetBool(PropertyNames::kAlwaysOnTop, 1);
+                                            m_tabDragGhost.SetInt(PropertyNames::kAlpha, 200);
+                                        }
+                                    }
+                                }
+                                if (m_tabDragGhost.IsValid()) {
+                                    m_tabDragGhost.SetBool(PropertyNames::kVisible, 1);
+                                    m_tabDragGhost.SetRect(cx + 12.0f, cy + 12.0f, 32.0f, 32.0f);
+                                }
+                                std::printf("[tab-click] item=%d -> page=%s (canvas+tree synced)\n",
+                                            itemIdx, pid.c_str());
+                                m_mouseWasDown = down;
+                                return;
+                            }
+                        m_mouseWasDown = down;
+                        return;
+                    }
+                }
+            }
+        }
         // 手柄精确让区：HandleHitTest 命中 → HandleControl 接管拖拽；未命中
-        // （本体/空白）走设计器逻辑——本体边缘（非手柄处）恢复移动能力
+        // （本体/空白）走设计器逻辑——本体边缘（非手柄处）恢复移动能力。
         if (m_selectedId.empty() == false && m_selHandle.IsValid()) {
             int ht = 0;
             // 坐标域：m_handleAreas 基于 target getDrawRect（父链递归到视口根，
             // 视口根 rect=窗口全局位置）→ 全局域，传 SDL 窗口坐标原样
             const bool hh = m_viewport->HandleHitTest(m_selHandle, wx, wy, ht);
             if (hh) {
+                if (PlacedControl* hsel = placedById(m_selectedId);
+                    hsel && hsel->model->props.type == "tab-control")
+                    std::printf("[tab-click] handle-hit ht=%d on selected tab (event consumed by handle)\n", ht);
                 // 多选 + 主选本体移动区（HandleType::Move=1）→ 组拖动（引擎路径增量）
                 if (m_selIds.size() > 1 && ht == 1) beginGroupDrag(m_selectedId);
                 m_mouseWasDown = down;
@@ -4704,6 +5130,57 @@ void CanvasPane::tickInput() {
         }
         std::string hit;
         if (hitTest(cx, cy, hit)) {
+            // TabControl 点击语义（用户定稿）：
+            //   内容区（当前页 rect 内）→ 直接选中该页 Panel（单击即选，不经延迟框选）；
+            //   页签项（点击引发引擎切换——本帧 currentIndex 变化）→ 选中新当前页；
+            //   其余（空白页签/同项重按）→ 选中整个 Tab 控件本体。
+            // 页 Panel 不建手柄（setSelection 侧）且此处早退 → 无法被拖出 Tab 区。
+            if (PlacedControl* hpcTab = placedById(hit);
+                hpcTab && hpcTab->model->props.type == "tab-control" && hpcTab->ctl.IsValid()) {
+                // 精确判定（P0-91① TabGetItemRect——替代 hovered-tab 读回：其依赖最近一次
+                // MouseMove，快速移动+点击取到陈旧值，"点项/空白"误判）：
+                //   ≥0=点中页签项 → 选中该项的页；-1 且落在当前页 rect（内容区）→ 选中
+                //   当前页；否则=空白页签 → 整个 Tab
+                const int itemIdx = tabItemIndexAt(hit, cx, cy, /*clampToNearest=*/false);
+                const nlohmann::json tabsJ =
+                    hpcTab->model->props.extended.value("tabs", nlohmann::json::array());
+                std::string pageId;
+                if (itemIdx >= 0 && tabsJ.is_array() && itemIdx < (int)tabsJ.size())
+                    pageId = tabsJ[(size_t)itemIdx].value("page-id", "");
+                if (pageId.empty()) {
+                    const std::string curPage = resolvedParentIdOf(hit);
+                    if (curPage != hit)
+                        if (PlacedControl* pg = placedById(curPage); pg && pg->ctl.IsValid()) {
+                            float tx0 = 0, ty0 = 0;
+                            globalOriginOf(*hpcTab, tx0, ty0);
+                            const UIRect pr = pg->ctl.GetRect();   // 页 rect（Tab 局部=引擎内容区）
+                            if (cx >= tx0 + pr.x && cx < tx0 + pr.x + pr.w &&
+                                cy >= ty0 + pr.y && cy < ty0 + pr.y + pr.h)
+                                pageId = curPage;
+                        }
+                }
+                if (!pageId.empty()) {
+                    setPlaceTarget(pageId);
+                    selectItem(pageId);   // 直接选中页 Panel（锁定——不拖动）
+                    if (itemIdx >= 0) {   // 页签项：进入排序拖动候选（释放时按目标位迁移）
+                        m_tabDragActive = true;
+                        m_tabDragId = hit;
+                        m_tabDragFrom = itemIdx;
+                        m_tabDragTo = itemIdx;
+                    }
+                    m_mouseWasDown = down;
+                    return;
+                }
+                // 空白页签：选中整个 Tab——不早退，落入标准路径（可拖动移动 Tab）
+                setPlaceTarget(hit);
+            }
+            // Tab 页 Panel（点内容空白区）：单击即选、禁拖动（几何由 Tab 管理，锁定在 Tab 内）
+            if (isTabPage(hit)) {
+                setPlaceTarget(hit);
+                selectItem(hit);
+                m_mouseWasDown = down;
+                return;
+            }
             const bool inSel = std::find(m_selIds.begin(), m_selIds.end(), hit) != m_selIds.end();
             // 容器内容区（未选中）：延迟判定——拖动=框选其子控件，单击=选中容器本体
             // （选中后拖动=移动容器——HandleControl 本体路径；WinFrame 标题栏不在此列）
@@ -4903,6 +5380,7 @@ void CanvasPane::SetCanvasTree(Control tree) {
         }
         if (id.empty() || !findModel(id)) return;   // 空选/未知节点忽略
         selectItem(id);
+        syncTabCurrentToPage(id);   // 页节点 → 所属 TabControl 切到该页（所见即所编/所放）
         // P1-b 通道②：树选中容器 → 设为当前放置目标；选中非容器 → 回画布根
         const ControlModel* m = findModel(id);
         setPlaceTarget(m && isContainerType(m->props.type) ? id : std::string());
@@ -5226,6 +5704,17 @@ void CanvasPane::applyModelToEngine(PlacedControl& pc) {
     if (m.props.type == "tree-view" && ex.contains("items")) syncTreeItems(m);
     if (m.props.type == "menu-bar" && ex.contains("menus"))
         syncMenus(m, nlohmann::json::array());   // 新建控件无旧菜单
+    // P0-90：Tab 页签配色回放（tab-* 单色键；extended 字符串持久化）
+    if (m.props.type == "tab-control") {
+        static const char* kTabColorKeys[] = { PropertyNames::kTabBackground,
+            PropertyNames::kTabHoverBackground, PropertyNames::kTabSelectedBackground,
+            PropertyNames::kTabIndicatorColor, PropertyNames::kTabContentBackground };
+        for (const char* k : kTabColorKeys) {
+            auto it = ex.find(k);
+            if (it != ex.end() && it->is_string())
+                ctl.SetColor(k, hexToColor(it->get<std::string>()));
+        }
+    }
     if (m.props.type == "tab-control" && ex.contains("tabs"))
         syncTabs(m, nlohmann::json::array());    // 新建控件无旧页（页 Panel 由 walk 预建时幂等挂接）
     // 容器布局（锚定生效前提——先于锚定）
@@ -5301,6 +5790,13 @@ void CanvasPane::applyModelToEngine(PlacedControl& pc) {
             writeStringPropTo(m.props.id, k, v.get<std::string>());
         }
     }
+    // P0-94 设计态：引擎内置拖拽旗标强制关闭（须置于通用 extended 应用**之后**——
+    // 否则被覆盖不生效；宿主拖动接管编辑交互，运行时行为经预览/导出生效）。
+    // 三个旗标一并关闭：reorderable（内置换序）+ draggable（起拖门控）+ droppable（自目标
+    // 解析）——任一开启即让引擎拖拽在设计画布内激活，与宿主拖动互斗（双 ghost/换序失效）✗
+    ctl.SetBool(PropertyNames::kReorderable, 0);
+    ctl.SetBool(PropertyNames::kDraggable, 0);
+    ctl.SetBool(PropertyNames::kDroppable, 0);
     // 事件实演：模型 events → 引擎回调（设计期打点；导出后由宿主 RegisterAction 接管）
     // 注意：不得用空回调"解绑"——绑定层会把空 std::function 包成有效 thunk，
     // 事件触发即 std::bad_function_call（VC 运行库异常）；加载控件为新建无需解绑。
@@ -5485,9 +5981,11 @@ bool CanvasPane::buildFromLayoutJson(const nlohmann::json& layout, bool useViewp
         }
         m_items.push_back({ std::move(model), ctl, pid });
         if (m_viewport) m_viewport->SetControlId(ctl, id);
+        // 本控件条目下标（页子树 walk 会追加——一律用下标，勿用 back() ✗）
+        const size_t selfIdx = m_items.size() - 1;
         // TabControl 特例：tabs[i].page → 页 Panel（parentId=TabControl；引擎挂接由
         // applyModelToEngine → syncTabs 统一完成）
-        const size_t tabIdx = m_items.size() - 1;   // 递归会追加——用下标防悬垂
+        const size_t tabIdx = selfIdx;
         if (m_items[tabIdx].model->props.type == "tab-control") {
             const nlohmann::json tabs =
                 m_items[tabIdx].model->props.extended.value("tabs", nlohmann::json::array());
@@ -5502,13 +6000,18 @@ bool CanvasPane::buildFromLayoutJson(const nlohmann::json& layout, bool useViewp
                     if (pageModel->props.id.empty())
                         pageModel->props.id = "tabpage_" + std::to_string(++m_seq);
                     const std::string pageId = pageModel->props.id;
-                    tabsModel.push_back({ { "title", t.value("title", "") }, { "page-id", pageId } });
+                    const std::string pageTitle = t.value("title", "");
+                    tabsModel.push_back({ { "title", pageTitle }, { "page-id", pageId } });
+                    const int pageNo = (int)tabsModel.size();
                     walk(std::move(pageModel), id);   // 创建页 Panel + 后代
+                    // 页节点标签统一为"页 N·标题"（walk 通用标签对页不友好——与 syncTabs 一致）
+                    syncTreeRename(pageId, u8"页 " + std::to_string(pageNo) + u8"·" + pageTitle);
                 }
             m_items[tabIdx].model->props.extended["tabs"] = std::move(tabsModel);
         }
-        applyModelToEngine(m_items.back());
-        const std::string cap = m_items.back().model->props.extended.value("caption", "");
+        applyModelToEngine(m_items[selfIdx]);   // 本控件（页子树 walk 后 back() 已非本项——曾致
+                                                // Tab 属性/配色/引擎页挂载全部丢失）
+        const std::string cap = m_items[selfIdx].model->props.extended.value("caption", "");
         syncTreeAdd(pid, id, cap + " " + id);
         ++count;
         for (auto& k : kids) walk(std::move(k), id);
@@ -5581,6 +6084,521 @@ bool CanvasPane::OpenProject(const std::string& path) {
     return true;
 }
 
+// F4.4/F7.2：代码导出文本生成器（ExportLayout 事件侧车与 ExportCode 共用）
+std::string CanvasPane::buildEventsHeaderText() const {
+    std::string out = "// events.h - Auto-generated by CornerstoneDesigner\n"
+                      "#pragma once\n"
+                      "#include \"UICornerstoneAPI.h\"\n"
+                      "#ifdef __cplusplus\nextern \"C\" {\n#endif\n";
+    std::vector<std::string> seen;
+    for (const auto& b : collectEventBindings())
+        if (std::find(seen.begin(), seen.end(), b.handler) == seen.end()) {
+            seen.push_back(b.handler);
+            out += "void " + b.handler + "(UIControlHandle ctl, void* user);\n";
+        }
+    out += "#ifdef __cplusplus\n}\n#endif\n";
+    return out;
+}
+
+std::string CanvasPane::buildEventsSourceText() const {
+    std::string out = "// events.c - Auto-generated by CornerstoneDesigner\n"
+                      "#include \"events.h\"\n\n";
+    std::vector<std::string> seen;
+    for (const auto& b : collectEventBindings())
+        if (std::find(seen.begin(), seen.end(), b.handler) == seen.end()) {
+            seen.push_back(b.handler);
+            out += "void " + b.handler + "(UIControlHandle ctl, void* user) {\n"
+                   "    (void)ctl;\n"
+                   "    (void)user;\n"
+                   "    // TODO: 实现 " + b.handler + "\n"
+                   "}\n\n";
+        }
+    return out;
+}
+
+std::string CanvasPane::buildEventListText() const {
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& b : collectEventBindings())
+        arr.push_back({ { "control", b.controlId }, { "event", b.jsonEvent }, { "handler", b.handler } });
+    return arr.dump(2);
+}
+
+std::string CanvasPane::cEscape(const std::string& s) {
+    std::string out;
+    for (char c : s) {
+        if (c == '\\' || c == '"') { out += '\\'; out += c; }
+        else if (c == '\n') out += "\\n";
+        else out += c;
+    }
+    return out;
+}
+
+// F7.3：宿主 main.c——LoadLibrary 显式解析 C ABI（无需导入库）→ CreateInstanceFromPlugin
+// （自动加载 UIBackend_<backend>.dll）→ LoadLayoutFromFile → RegisterAction（events.c 实现）
+// → 帧循环；--frames N 跑 N 帧自动退出（冒烟/CI）。
+std::string CanvasPane::buildMainCText() const {
+    std::string regs;
+    std::vector<std::string> seen;
+    for (const auto& b : collectEventBindings())
+        if (std::find(seen.begin(), seen.end(), b.handler) == seen.end()) {
+            seen.push_back(b.handler);
+            regs += "    fnRegisterAction(inst, \"" + b.handler + "\", " + b.handler + ", NULL);\n";
+        }
+    if (regs.empty()) regs = "    /* （无事件绑定） */\n";
+    const std::string title = cEscape(m_benchTitle.empty()
+        ? std::string("Cornerstone Exported App") : m_benchTitle);
+    char wbuf[16], hbuf[16];
+    std::snprintf(wbuf, sizeof(wbuf), "%d", (int)m_designW);
+    std::snprintf(hbuf, sizeof(hbuf), "%d", (int)m_designH);
+    std::string out = R"MAIN(// main.c — Auto-generated by CornerstoneDesigner
+// 最小宿主：显式加载 UICornerstone.dll（C ABI，无需导入库）→ 创建实例
+// （CreateInstanceFromPlugin 自动加载 UIBackend_sdl3.dll 后端插件）→ 加载 layout.json
+// → 注册事件回调（events.c 实现）→ 帧循环。
+//
+// 构建：cmake -S . -B build && cmake --build build --config Release
+// 运行：build\Release\app.exe              （关闭窗口退出）
+//       build\Release\app.exe --frames 120 （跑 120 帧后自动退出——冒烟/CI）
+#include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "include/UICornerstoneAPI.h"
+#include "events.h"
+
+/* ---- C ABI 函数指针（GetProcAddress 显式解析）---- */
+static UIInstance (__cdecl *fnCreateInstanceFromPlugin)(const char*, const UIInstanceConfig*);
+static void       (__cdecl *fnDestroyInstance)(UIInstance);
+static int        (__cdecl *fnProcessEvents)(UIInstance);
+static void       (__cdecl *fnUpdate)(UIInstance, double);
+static void       (__cdecl *fnClear)(UIInstance);
+static void       (__cdecl *fnRender)(UIInstance);
+static void       (__cdecl *fnPresent)(UIInstance);
+static int        (__cdecl *fnIsQuitRequested)(UIInstance);
+static int        (__cdecl *fnLoadLayout)(UIInstance, const char*);
+static void       (__cdecl *fnRegisterAction)(UIInstance, const char*, UIActionCallback, void*);
+
+#define RESOLVE(var, name)                                                        \
+    do {                                                                          \
+        *(void**)(&(var)) = (void*)GetProcAddress(core, "UICornerstone_" name);   \
+        if (!var) {                                                               \
+            fprintf(stderr, u8"缺少 C ABI 导出：UICornerstone_" name "\n");       \
+            FreeLibrary(core);                                                    \
+            return 2;                                                             \
+        }                                                                         \
+    } while (0)
+
+/* 读取布局文件（相对本程序工作目录）→ LoadLayout 字符串接口。
+   注：C ABI 的 LoadLayoutFromFile 走资源提供者（相对 resourceRoot），
+   宿主自行读取后经 LoadLayout 提交可避免资源根耦合。 */
+static int load_layout_file(UIInstance inst, const char* path) {
+    FILE* f = fopen(path, "rb");
+    if (!f) return 0;
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (n <= 0) { fclose(f); return 0; }
+    char* buf = (char*)malloc((size_t)n + 1);
+    if (!buf) { fclose(f); return 0; }
+    size_t rd = fread(buf, 1, (size_t)n, f);
+    fclose(f);
+    buf[rd] = 0;   /* NUL 终止（等价 '\0'） */
+    int ok = fnLoadLayout(inst, buf);
+    free(buf);
+    return ok;
+}
+
+int main(int argc, char** argv) {
+    SetConsoleOutputCP(65001);   /* 控制台 UTF-8（中文提示） */
+    /* 工作目录 = 本程序所在目录（layout.json / assets 相对 exe 解析，双击/任意 cwd 均可用） */
+    {
+        char exePath[MAX_PATH] = "";
+        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+        char* slash = strrchr(exePath, 92);   /* 92 = 反斜杠（避免转义歧义） */
+        if (slash) *slash = 0;
+        SetCurrentDirectoryA(exePath);
+    }
+    int maxFrames = 0;
+    for (int i = 1; i < argc; ++i)
+        if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) maxFrames = atoi(argv[++i]);
+
+    HMODULE core = LoadLibraryA("UICornerstone.dll");
+    if (!core) { fprintf(stderr, u8"无法加载 UICornerstone.dll（需与本程序同目录）\n"); return 1; }
+    RESOLVE(fnCreateInstanceFromPlugin, "CreateInstanceFromPlugin");
+    RESOLVE(fnDestroyInstance, "DestroyInstance");
+    RESOLVE(fnProcessEvents, "ProcessEvents");
+    RESOLVE(fnUpdate, "Update");
+    RESOLVE(fnClear, "Clear");
+    RESOLVE(fnRender, "Render");
+    RESOLVE(fnPresent, "Present");
+    RESOLVE(fnIsQuitRequested, "IsQuitRequested");
+    RESOLVE(fnLoadLayout, "LoadLayout");
+    RESOLVE(fnRegisterAction, "RegisterAction");
+
+    UIInstanceConfig cfg = UI_INSTANCE_CONFIG_DEFAULT;
+    cfg.windowTitle  = u8"@T@";
+    cfg.windowWidth  = @W@;
+    cfg.windowHeight = @H@;
+    cfg.windowFlags  = UICORN_WINDOW_FLAG_RESIZABLE;
+    cfg.resourceRoot = "assets";
+
+    UIInstance inst = fnCreateInstanceFromPlugin("sdl3", &cfg);
+    if (!inst) { fprintf(stderr, u8"创建引擎实例失败（详见引擎日志）\n"); FreeLibrary(core); return 1; }
+
+    /* 事件回调注册（须先于布局解析：解析器在 LoadLayout 时按名查表绑定 onClick） */
+@REGS@
+    if (!load_layout_file(inst, "layout.json")) {
+        fprintf(stderr, u8"加载 layout.json 失败（详见引擎日志）\n");
+        fnDestroyInstance(inst);
+        FreeLibrary(core);
+        return 1;
+    }
+    int frame = 0;
+    while (!fnIsQuitRequested(inst) && (maxFrames <= 0 || frame < maxFrames)) {
+        fnProcessEvents(inst);
+        fnUpdate(inst, 1.0 / 60.0);
+        fnClear(inst);
+        fnRender(inst);
+        fnPresent(inst);
+        ++frame;
+    }
+
+    fnDestroyInstance(inst);
+    FreeLibrary(core);
+    return 0;
+}
+)MAIN";
+    // 占位替换：@T@=窗口标题；@WH@=宽, 高；@REGS@=事件注册行
+    auto replaceAll = [](std::string& text, const std::string& from, const std::string& to) {
+        for (size_t p = text.find(from); p != std::string::npos; p = text.find(from, p + to.size()))
+            text.replace(p, from.size(), to);
+    };
+    replaceAll(out, "@T@", title);
+    replaceAll(out, "@W@", wbuf);
+    replaceAll(out, "@H@", hbuf);
+    replaceAll(out, "@REGS@", regs);
+    return out;
+}
+
+// F7.3：生成工程 CMakeLists.txt（C11；POST_BUILD 把 DLL/layout/assets 拷到 exe 旁）
+std::string CanvasPane::buildHostCMakeText() const {
+    return R"CMK(# Auto-generated by CornerstoneDesigner —— 导出应用构建脚本
+cmake_minimum_required(VERSION 3.20)
+project(exported_app LANGUAGES C)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+add_executable(app main.c events.c)
+target_include_directories(app PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
+# Release = GUI 子系统（无控制台窗口）；Debug 保留控制台（日志/printf 排障）。
+# /ENTRY:mainCRTStartup：GUI 子系统下仍以 main() 为入口（MSVC）。
+set_target_properties(app PROPERTIES WIN32_EXECUTABLE "$<CONFIG:Release>")
+target_link_options(app PRIVATE "$<$<CONFIG:Release>:/ENTRY:mainCRTStartup>")
+
+# 运行依赖拷到 exe 旁（引擎按 exe 工作目录解析 DLL / layout.json / assets）
+if(WIN32)
+    file(GLOB _EXPORT_DLLS "${CMAKE_CURRENT_SOURCE_DIR}/*.dll")
+    if(_EXPORT_DLLS)
+        add_custom_command(TARGET app POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_EXPORT_DLLS} "$<TARGET_FILE_DIR:app>"
+        )
+    endif()
+    add_custom_command(TARGET app POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/layout.json" "$<TARGET_FILE_DIR:app>"
+    )
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+        add_custom_command(TARGET app POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:app>/assets"
+        )
+    endif()
+endif()
+)CMK";
+}
+
+// F7.3/F7.4：生成工程 README（C 裸 C ABI / C++ Binding）
+std::string CanvasPane::buildHostReadmeText(bool cpp) const {
+    if (cpp)
+        return R"RD(# 导出应用（CornerstoneDesigner 生成 —— C++ Binding 工程）
+
+## 构建（一键脚本，推荐）
+- 双击 `build_debug.bat` → 产物 `build\Debug\app.exe`（带控制台，日志/printf 可见）
+- 双击 `build_release.bat` → 产物 `build\Release\app.exe`（GUI 子系统，**无控制台窗口**）
+
+或手动：
+```
+cmake -S . -B build
+cmake --build build --config Release
+```
+需要 MSVC（或可编译 C++17 / C11 的工具链）。排障请用 Debug 版（Release 无控制台输出）。
+
+## 运行
+```
+build\Release\app.exe                 # 关闭窗口退出
+build\Release\app.exe --frames 120    # 跑 120 帧后自动退出（冒烟/CI）
+```
+
+## 结构
+- `main.cpp` — 宿主（C++ Binding：Create → LoadLayout → RegisterAction → 帧循环）
+- `events.h` / `events.c` — 事件回调声明与骨架（在 events.c 中实现业务逻辑）
+- `layout.json` — 引擎兼容布局（含控件扩展属性与 events 绑定）
+- `event_list.json` — 事件清单（机器可读）
+- `binding/` — UICornerstone C++ Binding 包（add_subdirectory 集成，纯动态加载，无需导入库）
+- `include/` — 引擎头（UICornerstoneAPI.h / PropertyNames.h）
+- `*.dll` — 运行时（UICornerstone.dll + UIBackend_sdl3.dll + SDL3 系）
+- `assets/` — 字体等资源（文本渲染依赖；可按需裁剪）
+
+## 说明
+- 构建后 DLL/layout.json/assets 自动拷贝到 exe 同目录（工作目录按 exe 解析）；
+- 布局内 `provider:<name>` 资源引用需在本目录提供对应资源（resourceProviders 块随 layout.json 保留）；
+- 运行失败时引擎日志输出到控制台。
+)RD";
+    return R"RD(# 导出应用（CornerstoneDesigner 生成）
+
+## 构建（一键脚本，推荐）
+- 双击 `build_debug.bat` → 产物 `build\Debug\app.exe`（带控制台，日志/printf 可见）
+- 双击 `build_release.bat` → 产物 `build\Release\app.exe`（GUI 子系统，**无控制台窗口**）
+
+或手动：
+```
+cmake -S . -B build
+cmake --build build --config Release
+```
+需要 MSVC（或可编译 C11 的工具链）。排障请用 Debug 版（Release 无控制台输出）。
+
+## 运行
+```
+build\Release\app.exe                 # 关闭窗口退出
+build\Release\app.exe --frames 120    # 跑 120 帧后自动退出（冒烟/CI）
+```
+
+## 结构
+- `main.c` — 宿主（LoadLibrary 显式 C ABI：创建实例→加载布局→注册动作→帧循环）
+- `events.h` / `events.c` — 事件回调声明与骨架（在 events.c 中实现业务逻辑）
+- `layout.json` — 引擎兼容布局（含控件扩展属性与 events 绑定）
+- `event_list.json` — 事件清单（机器可读）
+- `include/UICornerstoneAPI.h` — 引擎 C ABI 头
+- `*.dll` — 运行时（UICornerstone.dll + UIBackend_sdl3.dll + SDL3 系）
+- `assets/` — 字体等资源（文本渲染依赖；可按需裁剪）
+
+## 说明
+- 构建后 DLL/layout.json/assets 自动拷贝到 exe 同目录（工作目录按 exe 解析）；
+- 布局内 `provider:<name>` 资源引用需在本目录提供对应资源（resourceProviders 块随 layout.json 保留）；
+- 运行失败时引擎日志输出到控制台。
+)RD";
+}
+
+// F7.3/F7.4：生成工程一键构建脚本（build_debug.bat / build_release.bat）。
+// CRLF + 纯 ASCII：cmd 以 OEM 代码页读取批处理，非 ASCII 内容可能破坏解析。
+std::string CanvasPane::buildBuildScriptText(bool release) const {
+    const char* cfg = release ? "Release" : "Debug";
+    const char* exe = release ? "build\\Release\\app.exe" : "build\\Debug\\app.exe";
+    std::string s;
+    s += "@echo off\r\n";
+    s += "rem ============================================================\r\n";
+    s += "rem  CornerstoneDesigner - exported project build script (";
+    s += cfg;
+    s += ")\r\n";
+    s += "rem  Double-click: configure + build; output: ";
+    s += exe;
+    s += "\r\n";
+    s += "rem  Requires CMake + Visual Studio (MSVC) toolchain.\r\n";
+    s += "rem ============================================================\r\n";
+    s += "setlocal\r\n";
+    s += "cd /d \"%~dp0\"\r\n";
+    s += "\r\n";
+    s += "cmake -S . -B build\r\n";
+    s += "if errorlevel 1 goto :fail\r\n";
+    s += "cmake --build build --config ";
+    s += cfg;
+    s += "\r\n";
+    s += "if errorlevel 1 goto :fail\r\n";
+    s += "\r\n";
+    s += "echo.\r\n";
+    s += "echo [OK] ";
+    s += exe;
+    s += "\r\n";
+    s += "pause\r\n";
+    s += "exit /b 0\r\n";
+    s += "\r\n";
+    s += ":fail\r\n";
+    s += "echo.\r\n";
+    s += "echo [FAILED] see messages above.\r\n";
+    s += "pause\r\n";
+    s += "exit /b 1\r\n";
+    return s;
+}
+
+// F7.4：宿主 main.cpp——C++ Binding（Create → 读 layout.json 经 LoadLayout → RegisterAction
+// 包装 events.c 回调 → 帧循环）；--frames N 冒烟。
+std::string CanvasPane::buildMainCppText() const {
+    std::string regs;
+    std::vector<std::string> seen;
+    for (const auto& b : collectEventBindings())
+        if (std::find(seen.begin(), seen.end(), b.handler) == seen.end()) {
+            seen.push_back(b.handler);
+            regs += "    ui->RegisterAction(\"" + b.handler + "\", [](Control c) {\n"
+                    "        " + b.handler + "(c.Handle(), nullptr);\n"
+                    "    });\n";
+        }
+    if (regs.empty()) regs = "    /* （无事件绑定） */\n";
+    const std::string title = cEscape(m_benchTitle.empty()
+        ? std::string("Cornerstone Exported App") : m_benchTitle);
+    char wbuf[16], hbuf[16];
+    std::snprintf(wbuf, sizeof(wbuf), "%d", (int)m_designW);
+    std::snprintf(hbuf, sizeof(hbuf), "%d", (int)m_designH);
+    std::string out = R"MAINCPP(// main.cpp — Auto-generated by CornerstoneDesigner（C++ Binding 工程）
+// 宿主：C++ Binding（纯动态加载——核心 DLL + 后端插件 DLL 运行时解析，无需导入库）
+// → Create → 读取 layout.json 经 LoadLayout 提交 → RegisterAction 注册 events.c 回调
+// → 帧循环。
+//
+// 构建：cmake -S . -B build && cmake --build build --config Release
+// 运行：build\Release\app.exe              （关闭窗口退出）
+//       build\Release\app.exe --frames 120 （跑 120 帧后自动退出——冒烟/CI）
+#include "UICornerstone.h"
+#include "Control.h"
+#include "events.h"
+
+#include <windows.h>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <thread>
+
+static std::string read_text_file(const char* path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return std::string();
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+
+int main(int argc, char** argv) {
+    SetConsoleOutputCP(65001);   /* 控制台 UTF-8（中文提示） */
+    /* 工作目录 = 本程序所在目录（layout.json / assets 相对 exe 解析） */
+    {
+        char exePath[MAX_PATH] = "";
+        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+        char* slash = strrchr(exePath, 92);   /* 92 = 反斜杠 */
+        if (slash) *slash = 0;
+        SetCurrentDirectoryA(exePath);
+    }
+    int maxFrames = 0;
+    for (int i = 1; i < argc; ++i)
+        if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) maxFrames = atoi(argv[++i]);
+
+    auto ui = UICornerstone::UICornerstone::Create(
+        UICornerstone::UICornerstone::Config{}
+            .WithBackend("sdl3")
+            .WithResourceRoot("assets")
+            .WithWindow(u8"@T@", @W@, @H@)
+            .WithWindowFlags(UIWindowFlags::Resizable));
+    if (!ui) { std::fprintf(stderr, u8"创建引擎实例失败\n"); return 1; }
+
+    /* 事件回调注册（须先于 LoadLayout：解析器按名查表绑定 onClick） */
+@REGS@
+    const std::string layout = read_text_file("layout.json");
+    if (layout.empty() || !ui->LoadLayout(layout)) {
+        std::fprintf(stderr, u8"加载 layout.json 失败\n");
+        return 1;
+    }
+    using Clock = std::chrono::steady_clock;
+    auto last = Clock::now();
+    int frame = 0;
+    while (!ui->IsQuitRequested() && (maxFrames <= 0 || frame < maxFrames)) {
+        ui->ProcessEvents();
+
+        auto now = Clock::now();
+        double dt = std::chrono::duration<double>(now - last).count();
+        last = now;
+        if (dt > 0.1) dt = 0.1;
+
+        ui->Update(dt);
+        ui->Clear();
+        ui->Render();
+        ui->Present();
+        ++frame;
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    }
+    return 0;   /* ui 析构自动销毁实例 */
+}
+)MAINCPP";
+    // 占位替换：@T@=窗口标题；@W@/@H@=窗口宽高；@REGS@=事件注册行
+    auto replaceAll = [](std::string& text, const std::string& from, const std::string& to) {
+        for (size_t p = text.find(from); p != std::string::npos; p = text.find(from, p + to.size()))
+            text.replace(p, from.size(), to);
+    };
+    replaceAll(out, "@T@", title);
+    replaceAll(out, "@W@", wbuf);
+    replaceAll(out, "@H@", hbuf);
+    replaceAll(out, "@REGS@", regs);
+    return out;
+}
+
+// F7.4：生成工程 CMakeLists.txt（C++ Binding；参照 binding/CMakeLists.example.txt）
+std::string CanvasPane::buildHostCppCMakeText() const {
+    return R"CMK(# Auto-generated by CornerstoneDesigner —— 导出 C++（Binding）工程构建脚本
+cmake_minimum_required(VERSION 3.16)
+project(exported_cpp_app LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+# 发布包无核心构建树：置空跳过 binding 自带样例的构建
+set(UICORNERSTONE_CORE_OUTPUT "" CACHE PATH "核心库产物目录（导出工程置空）")
+
+# 引入 binding 包（纯动态加载静态包装库）
+add_subdirectory(binding UICornerstoneBinding)
+
+add_executable(app main.cpp events.c)
+target_include_directories(app PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(app PRIVATE UICornerstoneBinding)
+
+# Release = GUI 子系统（无控制台窗口）；Debug 保留控制台（日志/printf 排障）。
+# /ENTRY:mainCRTStartup：GUI 子系统下仍以 main() 为入口（MSVC）。
+set_target_properties(app PROPERTIES WIN32_EXECUTABLE "$<CONFIG:Release>")
+target_link_options(app PRIVATE "$<$<CONFIG:Release>:/ENTRY:mainCRTStartup>")
+
+# 运行依赖拷到 exe 旁（引擎按 exe 工作目录解析 DLL / layout.json / assets）
+if(WIN32)
+    file(GLOB _EXPORT_DLLS "${CMAKE_CURRENT_SOURCE_DIR}/*.dll")
+    if(_EXPORT_DLLS)
+        add_custom_command(TARGET app POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_EXPORT_DLLS} "$<TARGET_FILE_DIR:app>"
+        )
+    endif()
+    add_custom_command(TARGET app POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/layout.json" "$<TARGET_FILE_DIR:app>"
+    )
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+        add_custom_command(TARGET app POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:app>/assets"
+        )
+    endif()
+endif()
+)CMK";
+}
+
+bool CanvasPane::validateEventBindings(std::string& badName) const {
+    std::vector<std::string> seen;
+    for (const auto& b : collectEventBindings()) {
+        if (!isValidIdentifier(b.handler)) { badName = b.handler; return false; }
+        if (std::find(seen.begin(), seen.end(), b.handler) != seen.end()) { badName = b.handler; return false; }
+        seen.push_back(b.handler);
+    }
+    return true;
+}
+
 // 导出引擎兼容布局 JSON（F7.1：LayoutParser 可解析；N4 验收面）
 bool CanvasPane::ExportLayout(const std::string& path) {
     const nlohmann::json j = serializeLayoutJson();
@@ -5600,38 +6618,110 @@ bool CanvasPane::ExportLayout(const std::string& path) {
         const auto sep = base.find_last_of("/\\");
         if (dot != std::string::npos && (sep == std::string::npos || dot > sep))
             base = base.substr(0, dot);
-        {
+        {   // 文本生成器与 ExportCode 共用（F4.4/F7.2）；带 UTF-8 BOM（MSVC 友好）
             std::ofstream h(utf8Path(base + "_events.h"), std::ios::binary);
-            if (h) {
-                h << "// events.h - Auto-generated by CornerstoneDesigner\n"
-                     "#pragma once\n"
-                     "#include \"UICornerstoneAPI.h\"\n"
-                     "#ifdef __cplusplus\nextern \"C\" {\n#endif\n";
-                std::vector<std::string> seen;
-                for (const auto& b : binds)
-                    if (std::find(seen.begin(), seen.end(), b.handler) == seen.end()) {
-                        seen.push_back(b.handler);
-                        h << "void " << b.handler << "(UIControlHandle ctl, void* user);\n";
-                    }
-                h << "#ifdef __cplusplus\n}\n#endif\n";
-            }
+            if (h) h << "\xEF\xBB\xBF" << buildEventsHeaderText();
         }
         {
             std::ofstream l(utf8Path(base + "_event_list.json"), std::ios::binary);
-            if (l) {
-                nlohmann::json arr = nlohmann::json::array();
-                for (const auto& b : binds)
-                    arr.push_back({ { "control", b.controlId },
-                                    { "event", b.jsonEvent },
-                                    { "handler", b.handler } });
-                l << arr.dump(2);
-            }
+            if (l) l << buildEventListText();
         }
         setStatusHint(u8"已导出：" + path + u8"（含事件列表）");
         std::printf("[CanvasPane] layout exported: %s (events=%zu)\n", path.c_str(), binds.size());
     } else {
         setStatusHint(u8"导出失败：写入错误");
     }
+    return ok;
+}
+
+// F4.4/F7.2 代码骨架导出：目录内四件套（layout.json + events.h + events.c + event_list.json）
+bool CanvasPane::ExportCode(const std::string& dir) {
+    return exportProject(dir, false);   // 可编译 C 项目（裸 C ABI 宿主）
+}
+
+bool CanvasPane::ExportCodeCpp(const std::string& dir) {
+    return exportProject(dir, true);    // 可编译 C++ 项目（C++ Binding 宿主）
+}
+
+// F7.3/F7.4：完整可编译宿主工程导出（cpp=false：main.c 裸 C ABI；cpp=true：main.cpp + binding 包）
+bool CanvasPane::exportProject(const std::string& dir, bool cpp) {
+    std::string bad;
+    if (!validateEventBindings(bad)) {
+        setStatusHint(u8"导出失败：handler 非法或重名（" + bad + u8"）");
+        return false;
+    }
+    std::error_code ec;
+    const auto u8dir = utf8Path(dir);
+    std::filesystem::create_directories(u8dir, ec);
+    if (ec) {
+        setStatusHint(u8"导出失败：无法创建目录 " + dir);
+        return false;
+    }
+    static const std::string kBom = "\xEF\xBB\xBF";   // UTF-8 BOM（MSVC 正确识别中文注释）
+    auto writeFile = [&](const char* name, const std::string& text) -> bool {
+        std::ofstream f(u8dir / utf8Path(name), std::ios::binary);
+        if (!f) return false;
+        f << text;
+        return (bool)f;
+    };
+    // 源码类文件带 BOM；JSON/CMake/README 不带（解析器/工具链按无 BOM UTF-8 读取）
+    const bool ok = writeFile("layout.json", serializeLayoutJson().dump(2)) &&
+                    writeFile("events.h", kBom + buildEventsHeaderText()) &&
+                    writeFile("events.c", kBom + buildEventsSourceText()) &&
+                    writeFile("event_list.json", buildEventListText()) &&
+                    (cpp ? writeFile("main.cpp", kBom + buildMainCppText())
+                         : writeFile("main.c", kBom + buildMainCText())) &&
+                    writeFile("CMakeLists.txt", cpp ? buildHostCppCMakeText() : buildHostCMakeText()) &&
+                    writeFile("README.md", buildHostReadmeText(cpp)) &&
+                    writeFile("build_debug.bat", buildBuildScriptText(false)) &&
+                    writeFile("build_release.bat", buildBuildScriptText(true));
+    // 宿主工程分发件——引擎头（exe/sdk/include）+ 运行时 DLL + assets（字体）；
+    // C++ 版另拷 binding 包（add_subdirectory 集成）
+    std::vector<std::string> missing;
+    if (!m_shareDir.empty()) {
+        std::error_code ec2;
+        const auto share = utf8Path(m_shareDir);
+        const auto incDir = u8dir / "include";
+        std::filesystem::create_directories(incDir, ec2);
+        static const char* kHeaders[] = { "UICornerstoneAPI.h", "PropertyNames.h" };
+        for (const char* h : kHeaders) {
+            std::error_code ecH;
+            std::filesystem::copy_file(share / "sdk" / "include" / h, incDir / h,
+                std::filesystem::copy_options::overwrite_existing, ecH);
+            if (ecH) missing.push_back(std::string("sdk/include/") + h);
+        }
+        if (cpp) {
+            std::error_code ecB;
+            std::filesystem::copy(share / "sdk" / "binding", u8dir / "binding",
+                std::filesystem::copy_options::recursive |
+                std::filesystem::copy_options::overwrite_existing, ecB);
+            if (ecB) missing.push_back("sdk/binding/");
+        }
+        static const char* kDlls[] = { "UICornerstone.dll", "UIBackend_sdl3.dll",
+                                       "SDL3.dll", "SDL3_ttf.dll", "SDL3_image.dll" };
+        for (const char* d : kDlls) {
+            std::error_code ec3;
+            std::filesystem::copy_file(share / d, u8dir / d,
+                std::filesystem::copy_options::overwrite_existing, ec3);
+            if (ec3) missing.push_back(d);
+        }
+        std::error_code ec4;
+        std::filesystem::copy(share / "assets", u8dir / "assets",
+            std::filesystem::copy_options::recursive |
+            std::filesystem::copy_options::overwrite_existing, ec4);
+        if (ec4) missing.push_back("assets/");
+    }
+    const std::string kind = cpp ? u8"C++（Binding）" : u8"C";
+    if (ok && missing.empty())
+        setStatusHint(u8"已导出" + kind + u8"项目：" + dir +
+                      u8"（可直接编译：CMake 构建脚本 + 运行时 DLL/assets 已随附）");
+    else if (ok)
+        setStatusHint(u8"已导出" + kind + u8"项目（部分分发件缺失：" +
+                      std::to_string(missing.size()) + u8" 项）");
+    else
+        setStatusHint(u8"导出失败：写入错误");
+    std::printf("[CanvasPane] %s project exported: %s (ok=%d missing=%zu)\n",
+                cpp ? "cpp" : "c", dir.c_str(), ok ? 1 : 0, missing.size());
     return ok;
 }
 
@@ -5756,6 +6846,372 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
     } catch (const std::exception& e) {
         std::fflush(stdout);
     }
+    // 回归（用户反馈）：指定页放置 + 页 Panel 背景色（模型 + 引擎回读）
+    {
+        if (!tabsId.empty()) {
+            ControlModel* tm = findModel(tabsId);
+            const nlohmann::json tabs = tm ? tm->props.extended.value("tabs", nlohmann::json::array())
+                                           : nlohmann::json::array();
+            if (tabs.is_array() && tabs.size() >= 2) {
+                const std::string page2 = tabs[1].value("page-id", "");
+                // 1) 指定第 2 页为放置目标（模拟控件树选中页节点）→ 放置应落入该页
+                selectItem(page2);
+                setPlaceTarget(page2);
+                placeControl("tLabel", 0, 0, false);
+                std::string placedInP2 = m_selectedId;
+                check(!page2.empty() && !placedInP2.empty() &&
+                      placedById(placedInP2) && placedById(placedInP2)->parentId == page2,
+                      "tab: place into selected page (page 2)");
+                // 2) 页 Panel 背景色：模型 + 引擎句柄回读
+                writeColorSlotTo(page2, "background", "background", UIColor{0x11, 0x22, 0x33, 0xFF});
+                ControlModel* pm = findModel(page2);
+                PlacedControl* pp = placedById(page2);
+                const std::string hex = pm ? pm->props.extended.value("colors", nlohmann::json::object())
+                    .value("background", nlohmann::json::object()).value("normal", std::string())
+                    : std::string();
+                UIColor eng{0, 0, 0, 0};
+                if (pp && pp->ctl.IsValid()) eng = pp->ctl.GetColor("background");
+                check(hex == "#112233FF" && eng.r == 0x11 && eng.g == 0x22 && eng.b == 0x33,
+                      "tab: page panel background color (model + engine)");
+                // 3) 放置即用：新 TabControl 默认两页（放置后选中项即该 TabControl）
+                placeControl("tTabs", 900, 500, false);
+                const std::string t2 = m_selectedId;
+                const nlohmann::json tabs2 = findModel(t2)
+                    ? findModel(t2)->props.extended.value("tabs", nlohmann::json::array())
+                    : nlohmann::json::array();
+                check(tabs2.is_array() && tabs2.size() == 2, "tab: default pages on place");
+                deleteSelected();   // 清理（连带页 Panel 子树）
+                // 页签文字亮色（引擎页签底深色硬编码——深字不可读，用户实测）
+                {
+                    ControlModel* tcm = findModel(tabsId);
+                    const std::string tn = tcm
+                        ? tcm->props.extended.value("colors", nlohmann::json::object())
+                              .value("text", nlohmann::json::object())
+                              .value("normal", std::string())
+                        : std::string();
+                    check(tn == "#EBEBEBFF", "tab: light text color for readability");
+                }
+                // 4) 树选页 → 所属 TabControl 当前页同步切换（所见即所编/所放）
+                selectItem(page2);
+                syncTabCurrentToPage(page2);
+                PlacedControl* tp2 = placedById(tabsId);
+                check(tp2 && tp2->ctl.IsValid() &&
+                      tp2->ctl.GetInt(PropertyNames::kTabCurrentIndex) == 1,
+                      "tab: tree-select page switches current index");
+                // 5) 用户流复现：树选页 1 → 落点在该 Tab 矩形内 → 应落页 1（非引擎当前页/末页）
+                {
+                    const std::string page1 = tabs[0].value("page-id", "");
+                    const SRect tr = findModel(tabsId)->props.rect;
+                    selectItem(page1);
+                    syncTabCurrentToPage(page1);
+                    placeControl("tLabel", tr.x + tr.w * 0.5f, tr.y + tr.h * 0.5f, false);
+                    const std::string newId = m_selectedId;   // placeControl 选中新控件
+                    PlacedControl* np = placedById(newId);
+                    const std::string landedParent = np ? np->parentId : "";
+                    std::printf("[tab-test] page1=%s current=%d new=%s parent=%s\n",
+                                page1.c_str(),
+                                tp2 && tp2->ctl.IsValid()
+                                    ? tp2->ctl.GetInt(PropertyNames::kTabCurrentIndex) : -99,
+                                newId.c_str(), landedParent.c_str());
+                    check(!page1.empty() && np && np->parentId == page1,
+                          "tab: drop over tab lands in tree-selected page");
+                    // 清理测试放置（保持既有夹具计数：页 1 恰 1 个 label）
+                    if (placedById(newId)) {
+                        selectItem(newId);
+                        deleteSelected();
+                    }
+                }
+                if (!placedInP2.empty() && placedById(placedInP2)) {
+                    selectItem(placedInP2);
+                    deleteSelected();
+                }
+                // 6) 删除含控件页（确认放行）：被删页与其控件真正移除，其余页保 id
+                {
+                    const std::string pFirst = tabs[0].value("page-id", "");
+                    const std::string pSecond = tabs[1].value("page-id", "");
+                    selectItem(pSecond);
+                    setPlaceTarget(pSecond);
+                    placeControl("tLabel", 0, 0, false);
+                    const std::string extra = m_selectedId;
+                    check(placedById(extra) && placedById(extra)->parentId == pSecond,
+                          "tab: control placed into page 2 for delete test");
+                    m_tabDeleteConfirmed = true;   // 放行确认门（弹窗交互另行验证）
+                    applyTabsText(*findModel(tabsId), u8"首页");   // 删"设置"（含控件）
+                    m_tabDeleteConfirmed = false;
+                    const nlohmann::json t5 = findModel(tabsId)->props.extended.value(
+                        "tabs", nlohmann::json::array());
+                    check(t5.is_array() && t5.size() == 1 &&
+                          t5[0].value("page-id", "") == pFirst &&
+                          !placedById(pSecond) && !placedById(extra),
+                          "tab: delete page removes it + its controls (title-matched)");
+                    applyTabsText(*findModel(tabsId), u8"首页\n设置");   // 还原两页夹具
+                }
+                // 7) 确认门：含控件页删除未确认时暂缓（弹窗路径；取消=状态不变）
+                {
+                    const nlohmann::json t6 = findModel(tabsId)->props.extended.value(
+                        "tabs", nlohmann::json::array());
+                    const std::string pFirst2 = t6[0].value("page-id", "");
+                    m_tabDeleteConfirmed = false;
+                    applyTabsText(*findModel(tabsId), u8"设置");   // 删含控件的"首页"
+                    const nlohmann::json t7 = findModel(tabsId)->props.extended.value(
+                        "tabs", nlohmann::json::array());
+                    check(t7.is_array() && t7.size() == 2 && !m_pendingTabsText.empty() &&
+                          t7[0].value("page-id", "") == pFirst2,
+                          "tab: delete with controls deferred to confirm dialog");
+                    std::printf("[tab-test] defer: size=%d pending=%d first=%s\n",
+                                t7.is_array() ? (int)t7.size() : -1,
+                                m_pendingTabsText.empty() ? 0 : 1, pFirst2.c_str());
+                    if (m_tabDeleteDlg.IsValid()) m_tabDeleteDlg.SetBool(PropertyNames::kVisible, 0);
+                    m_pendingTabsId.clear();       // 模拟取消（状态不变）
+                    m_pendingTabsText.clear();
+                    rebuildDynamicRows();
+                }
+                // 8) 页序调整（P0-91③ TabMovePage）：模型序 + 引擎序同步
+                {
+                    const nlohmann::json t8 = findModel(tabsId)->props.extended.value(
+                        "tabs", nlohmann::json::array());
+                    const std::string pa = t8[0].value("page-id", "");
+                    const std::string pb = t8[1].value("page-id", "");
+                    check(moveTabPage(tabsId, 0, 1), "tab: moveTabPage ok (engine TabMovePage)");
+                    const nlohmann::json t9 = findModel(tabsId)->props.extended.value(
+                        "tabs", nlohmann::json::array());
+                    const bool modelOk = t9.is_array() && t9.size() == 2 &&
+                        t9[0].value("page-id", "") == pb && t9[1].value("page-id", "") == pa;
+                    selectItem(pa);
+                    syncTabCurrentToPage(pa);
+                    PlacedControl* tp4 = placedById(tabsId);
+                    const bool engOk = tp4 && tp4->ctl.IsValid() &&
+                        tp4->ctl.GetInt(PropertyNames::kTabCurrentIndex) == 1;
+                    check(modelOk && engOk, "tab: page reorder syncs model + engine order");
+                    moveTabPage(tabsId, 1, 0);   // 还原（首页在前）
+                }
+                // 9) 池往返回归（P0-91④ 引擎修复）：Remove→Add→SetPage 合法序不再崩溃
+                {
+                    PlacedControl* tp5 = placedById(tabsId);
+                    const nlohmann::json t10 = findModel(tabsId)->props.extended.value(
+                        "tabs", nlohmann::json::array());
+                    const std::string pB = t10.is_array() && t10.size() > 1
+                        ? t10[1].value("page-id", "") : "";
+                    PlacedControl* pgB = pB.empty() ? nullptr : placedById(pB);
+                    bool ok = tp5 && tp5->ctl.IsValid() && pgB && pgB->ctl.IsValid();
+                    if (ok) {
+                        m_viewport->TabRemovePage(tp5->ctl, 1);
+                        m_viewport->TabAddPage(tp5->ctl, u8"设置");
+                        m_viewport->TabSetPage(tp5->ctl, 1, pgB->ctl);
+                        ok = pgB->ctl.IsValid();
+                    }
+                    check(ok, "tab: pool roundtrip (remove+add+setpage) safe");
+                }
+                // 10) 页签配色（P0-90）：写入 + 模型/引擎读回
+                {
+                    writeTabColorTo(tabsId, PropertyNames::kTabBackground,
+                                    UIColor{0x11, 0x22, 0x33, 0xFF});
+                    ControlModel* tm10 = findModel(tabsId);
+                    PlacedControl* tp10 = placedById(tabsId);
+                    const std::string hx = tm10 ? tm10->props.extended.value(
+                        PropertyNames::kTabBackground, std::string()) : "";
+                    UIColor engc{0, 0, 0, 0};
+                    if (tp10 && tp10->ctl.IsValid())
+                        engc = tp10->ctl.GetColor(PropertyNames::kTabBackground);
+                    check(hx == "#112233FF" && engc.r == 0x11 && engc.g == 0x22 && engc.b == 0x33,
+                          "tab: strip color write (model + engine)");
+                    // 保留特征色用于 save/open/导出 往返断言（P0-92）
+                    writeTabColorTo(tabsId, PropertyNames::kTabBackground,
+                                    UIColor{0x44, 0x55, 0x66, 0xFF});
+                    // P0-94：模型置可重排（复刻用户勾选"可重排"——预览/导出应携带）
+                    findModel(tabsId)->props.extended[PropertyNames::kReorderable] = true;
+                }
+                // 11a) P0-94 拖拽属性探针（引擎通道；Phase 1 只读验证 + 设计态约束）
+                {
+                    PlacedControl* tp12 = placedById(tabsId);
+                    if (tp12 && tp12->ctl.IsValid()) {
+                        tp12->ctl.SetBool(PropertyNames::kDraggable, 1);
+                        const bool d1 = tp12->ctl.GetBool(PropertyNames::kDraggable);
+                        tp12->ctl.SetFloat(PropertyNames::kDragThreshold, 6.0f);
+                        const float th = tp12->ctl.GetFloat(PropertyNames::kDragThreshold);
+                        const bool act = tp12->ctl.GetBool(PropertyNames::kDragActive);
+                        tp12->ctl.SetBool(PropertyNames::kDraggable, 0);
+                        check(d1 && th >= 5.9f && th <= 6.1f && !act,
+                              "drag: properties roundtrip (draggable/threshold/active)");
+                    }
+                }
+                // 11) UI 流模拟（注入鼠标源 + tickInput 驱动）：点击项/空白/拖动排序
+                {
+                    PlacedControl* tabPc = placedById(tabsId);
+                    if (tabPc && tabPc->ctl.IsValid()) {
+                        auto savedMouse = m_mouseSource;
+                        struct FakeMouse { bool down = false; float wx = 0, wy = 0; };
+                        FakeMouse fm;
+                        m_mouseSource = [&fm](float& x, float& y) { x = fm.wx; y = fm.wy; return fm.down; };
+                        auto toScreen = [this](float cx2, float cy2) {
+                            float sx = 0, sy = 0;
+                            CanvasToScreen(cx2, cy2, sx, sy);
+                            return std::pair<float, float>{ sx, sy };
+                        };
+                        float tx0 = 0, ty0 = 0;
+                        globalOriginOf(*tabPc, tx0, ty0);
+                        UIRect r0{}, r1{};
+                        check(m_viewport->TabGetItemRect(tabPc->ctl, 0, r0) &&
+                              m_viewport->TabGetItemRect(tabPc->ctl, 1, r1),
+                              "ui-sim: TabGetItemRect readable");
+                        // 页签带命中回归：item0 中心 hitTest 应解析为 Tab（页模型 rect 曾
+                        // 覆盖页签带 → 命中页而非 Tab，Tab 点击逻辑被绕过）
+                        {
+                            std::string hitChk;
+                            const bool hitOk = hitTest(tx0 + r0.x + r0.w * 0.5f,
+                                                       ty0 + r0.y + r0.h * 0.5f, hitChk);
+                            std::printf("[ui-sim] strip-hit: %s (want %s)\n",
+                                        hitChk.c_str(), tabsId.c_str());
+                            check(hitOk && hitChk == tabsId,
+                                  "ui-sim: strip hit resolves to tab (not page)");
+                        }
+                        // ① 点击页签项 0 → 选中页 0
+                        {
+                            const auto s = toScreen(tx0 + r0.x + r0.w * 0.5f,
+                                                    ty0 + r0.y + r0.h * 0.5f);
+                            fm.wx = s.first; fm.wy = s.second; fm.down = false; tickInput();
+                            fm.down = true; tickInput();
+                            const nlohmann::json tj = findModel(tabsId)->props.extended.value(
+                                "tabs", nlohmann::json::array());
+                            const std::string want = tj.is_array() && !tj.empty()
+                                ? tj[0].value("page-id", "") : "";
+                            check(!want.empty() && m_selectedId == want,
+                                  "ui-sim: click tab item selects its page");
+                            fm.down = false; tickInput();
+                        }
+                        // ② 点击空白页签（末项右侧 +10）→ 选中整个 Tab
+                        {
+                            const auto s = toScreen(tx0 + r1.x + r1.w + 10.0f,
+                                                    ty0 + r0.y + r0.h * 0.5f);
+                            fm.wx = s.first; fm.wy = s.second; fm.down = false; tickInput();
+                            fm.down = true; tickInput();
+                            check(m_selectedId == tabsId,
+                                  "ui-sim: click blank strip selects tab");
+                            fm.down = false; tickInput();
+                        }
+                        // ③ 拖动页签项 0 → 项 1（排序）：按下 → 移动到项 1 → 释放
+                        {
+                            const auto s0 = toScreen(tx0 + r0.x + r0.w * 0.5f,
+                                                     ty0 + r0.y + r0.h * 0.5f);
+                            const auto s1 = toScreen(tx0 + r1.x + r1.w * 0.5f,
+                                                     ty0 + r1.y + r1.h * 0.5f);
+                            const nlohmann::json before = findModel(tabsId)->props.extended.value(
+                                "tabs", nlohmann::json::array());
+                            const std::string p0 = before[0].value("page-id", "");
+                            const std::string p1 = before[1].value("page-id", "");
+                            fm.wx = s0.first; fm.wy = s0.second; fm.down = false; tickInput();
+                            fm.down = true; tickInput();
+                            check(m_tabDragGhost.IsValid(),
+                                  "ui-sim: drag ghost created on press (visible feedback)");
+                            fm.wx = s1.first; fm.wy = s1.second; tickInput();
+                            fm.down = false; tickInput();
+                            check(!m_tabDragGhost.IsValid(),
+                                  "ui-sim: drag ghost destroyed on release");
+                            const nlohmann::json after = findModel(tabsId)->props.extended.value(
+                                "tabs", nlohmann::json::array());
+                            check(after.is_array() && after.size() == 2 &&
+                                  after[0].value("page-id", "") == p1 &&
+                                  after[1].value("page-id", "") == p0,
+                                  "ui-sim: drag tab item reorders pages");
+                        }
+                        // ④ 用户流复现：放置全新 Tab → 点击其页签项 0 → 画布选中该页且
+                        //    控件树同步（selected-id 读回——用户实测"两次才同步"）
+                        {
+                            placeControl("tTabs", 950, 520, false);
+                            const std::string t2 = m_selectedId;   // placeControl 选中该 Tab
+                            PlacedControl* tp2b = placedById(t2);
+                            check(tp2b && tp2b->ctl.IsValid(), "ui-sim: fresh tab placed");
+                            if (tp2b && tp2b->ctl.IsValid()) {
+                                float fx = 0, fy = 0;
+                                globalOriginOf(*tp2b, fx, fy);
+                                UIRect fr{};
+                                m_viewport->TabGetItemRect(tp2b->ctl, 0, fr);
+                                {
+                                    std::string hprobe;
+                                    const bool hok = hitTest(fx + fr.x + fr.w * 0.5f,
+                                                             fy + fr.y + fr.h * 0.5f, hprobe);
+                                    std::printf("[ui-sim] fresh-tab strip hit: %s (want %s)\n",
+                                                hprobe.c_str(), t2.c_str());
+                                    (void)hok;
+                                }
+                                const auto fs = toScreen(fx + fr.x + fr.w * 0.5f,
+                                                         fy + fr.y + fr.h * 0.5f);
+                                fm.wx = fs.first; fm.wy = fs.second; fm.down = false; tickInput();
+                                fm.down = true; tickInput();
+                                const nlohmann::json tj2 = findModel(t2)->props.extended.value(
+                                    "tabs", nlohmann::json::array());
+                                const std::string want2 = tj2.is_array() && !tj2.empty()
+                                    ? tj2[0].value("page-id", "") : "";
+                                fm.down = false; tickInput();
+                                const std::string treeSel =
+                                    m_ui->TreeViewGetSelectedId(m_canvasTree);
+                                std::printf("[ui-sim] fresh-click: sel=%s want=%s tree=%s\n",
+                                            m_selectedId.c_str(), want2.c_str(), treeSel.c_str());
+                                check(!want2.empty() && m_selectedId == want2,
+                                      "ui-sim: fresh tab click selects its page");
+                                check(treeSel == want2,
+                                      "ui-sim: fresh tab click syncs tree selection");
+                            }
+                            selectItem(t2);
+                            deleteSelected();   // 清理
+                        }
+                        // ⑤ 手柄让区重叠复现：先选中 Tab（激活手柄）→ 点页签项上缘
+                        //   （2px，落在 resize 区）→ 仍应选中该项的页
+                        {
+                            PlacedControl* tabPc3 = placedById(tabsId);
+                            if (tabPc3 && tabPc3->ctl.IsValid()) {
+                                selectItem(tabsId);
+                                float gx3 = 0, gy3 = 0;
+                                globalOriginOf(*tabPc3, gx3, gy3);
+                                UIRect rr{};
+                                m_viewport->TabGetItemRect(tabPc3->ctl, 0, rr);
+                                const auto s3 = toScreen(gx3 + rr.x + rr.w * 0.5f,
+                                                         gy3 + rr.y + 2.0f);   // 上缘 2px
+                                fm.wx = s3.first; fm.wy = s3.second; fm.down = false; tickInput();
+                                fm.down = true; tickInput();
+                                const nlohmann::json tj3 = findModel(tabsId)->props.extended.value(
+                                    "tabs", nlohmann::json::array());
+                                const std::string w3 = tj3.is_array() && !tj3.empty()
+                                    ? tj3[0].value("page-id", "") : "";
+                                fm.down = false; tickInput();
+                                check(!w3.empty() && m_selectedId == w3,
+                                      "ui-sim: item top-edge click (handle zone) selects page");
+                            }
+                        }
+                        // ⑥ 工具拖放（画布侧）：候选 + 画布内释放 → 放置（用户报障回归）
+                        {
+                            const size_t nBefore = m_items.size();
+                            m_pendingPlaceTool = "tBtn";
+                            const auto ds = toScreen(100.0f, 600.0f);   // 画布空白区（避开页签项）
+                            fm.wx = ds.first; fm.wy = ds.second; fm.down = true; tickInput();
+                            fm.down = false; tickInput();   // 画布内释放 → placeControl
+                            const bool ok6 = m_items.size() == nBefore + 1 &&
+                                             m_pendingPlaceTool.empty();
+                            std::printf("[ui-sim] toolbox drop: placed=%d\n", ok6 ? 1 : 0);
+                            check(ok6, "ui-sim: toolbox pending tool drops to canvas");
+                            if (m_items.size() == nBefore + 1) {
+                                selectItem(m_items.back().model->props.id);
+                                deleteSelected();
+                            }
+                        }
+                        m_mouseSource = savedMouse;
+                        // 还原顺序（拖动测试若已换位——按"首页"标题复位）
+                        {
+                            const nlohmann::json after = findModel(tabsId)->props.extended.value(
+                                "tabs", nlohmann::json::array());
+                            int idxHome = -1;
+                            if (after.is_array())
+                                for (int i2 = 0; i2 < (int)after.size(); ++i2)
+                                    if (after[(size_t)i2].value("title", "") == u8"首页")
+                                        idxHome = i2;
+                            if (idxHome == 1) moveTabPage(tabsId, 1, 0);
+                        }
+                    }
+                }
+                m_placeTargetId.clear();
+            }
+        }
+    }
     const int n0 = (int)m_items.size();   // 全部构建完成后（含页 Panel/页内控件）
     const int childCount0 = (int)std::count_if(m_items.begin(), m_items.end(),
         [](const PlacedControl& p) { return !p.parentId.empty(); });
@@ -5831,6 +7287,21 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
     check(m_items.empty(), "NewProject clears canvas");
     check(OpenProject(csd), "OpenProject");
     std::fflush(stdout);
+    // P0-92：tab 配色 save/open 往返（schema 白名单透传 + 解析/回放全链）
+    {
+        bool tcOk = false;
+        for (auto& it2 : m_items)
+            if (it2.model->props.type == "tab-control") {
+                const std::string v = it2.model->props.extended.value(
+                    PropertyNames::kTabBackground, std::string());
+                UIColor engc{0, 0, 0, 0};
+                if (it2.ctl.IsValid())
+                    engc = it2.ctl.GetColor(PropertyNames::kTabBackground);
+                if (v == "#445566FF" && engc.r == 0x44 && engc.g == 0x55 && engc.b == 0x66)
+                    tcOk = true;
+            }
+        check(tcOk, "open: tab strip color roundtrip (model + engine)");
+    }
     check((int)m_items.size() == n0, "open: control count preserved");
     const int childCount1 = (int)std::count_if(m_items.begin(), m_items.end(),
         [](const PlacedControl& p) { return !p.parentId.empty(); });
@@ -5914,9 +7385,52 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
         check(inPage == 1, "open: control inside tab page preserved");
     }
     check(ExportLayout(js), "ExportLayout");
+    // P0-92：布局导出携带 tab 配色键（schema 白名单透传——导出应用经引擎解析生效）
+    {
+        std::ifstream jf(utf8Path(js), std::ios::binary);
+        const std::string jt((std::istreambuf_iterator<char>(jf)),
+                             std::istreambuf_iterator<char>());
+        check(jt.find("\"tab-background\"") != std::string::npos,
+              "export: tab color key carried");
+        check(jt.find("\"reorderable\": true") != std::string::npos,
+              "export: reorderable carried (preview/runtime drag)");
+        // P0-96 已闭环（引擎自含）：不再自动补 draggable/droppable（过渡耦合已回收）
+        check(jt.find("\"droppable\": true") == std::string::npos &&
+              jt.find("\"draggable\": true") == std::string::npos,
+              "export: no draggable/droppable auto-add (P0-96 self-contained)");
+    }
+    // P0-94 设计态约束联测：向导出布局注入 reorderable=true → 导入后
+    // 模型保留该键、引擎侧被强制关闭（宿主拖动接管编辑交互）
+    {
+        std::ifstream jf2(utf8Path(js), std::ios::binary);
+        std::string jt2((std::istreambuf_iterator<char>(jf2)),
+                        std::istreambuf_iterator<char>());
+        jf2.close();
+        const auto p2 = jt2.find("\"type\": \"tab-control\"");
+        if (p2 != std::string::npos) {
+            jt2.insert(p2, "\"reorderable\": true, ");
+            std::ofstream jw(utf8Path(js), std::ios::binary);
+            jw << jt2;
+        }
+    }
     NewProject();
     check(ImportLayout(js), "ImportLayout");
     check((int)m_items.size() == n0, "import: control count preserved");
+    // P0-94 设计态约束（续）：模型保留 reorderable、引擎侧强制关闭
+    {
+        bool modelKept = false, engineOff = false, foundTab = false;
+        for (auto& it2 : m_items)
+            if (it2.model->props.type == "tab-control") {
+                foundTab = true;
+                modelKept = it2.model->props.extended.value(PropertyNames::kReorderable, false);
+                if (it2.ctl.IsValid())
+                    engineOff = !it2.ctl.GetBool(PropertyNames::kReorderable) &&
+                                !it2.ctl.GetBool(PropertyNames::kDraggable) &&
+                                !it2.ctl.GetBool(PropertyNames::kDroppable);
+            }
+        check(foundTab && modelKept, "import: reorderable kept in model");
+        check(engineOff, "import: drag flags forced off in engine (design canvas)");
+    }
     bool listOk = false;
     for (auto& it : m_items)
         if (it.model->props.type == "list-view" && it.model->props.extended.contains("rows"))
@@ -6034,6 +7548,73 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
                   "export: event_list.json entry");
         }
     }
+    // F4.4/F7.2 代码骨架导出：目录内四件套
+    {
+        const std::string codeDir = dir + "/自测_代码";
+        check(ExportCode(codeDir), "code: export ok");
+        auto readText = [&](const std::string& p2) {
+            std::ifstream f(utf8Path(p2), std::ios::binary);
+            return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        };
+        check(readText(codeDir + "/layout.json").find("\"controls\"") != std::string::npos,
+              "code: layout.json written");
+        check(readText(codeDir + "/events.h").find(
+                  "void onBtn1_Click(UIControlHandle ctl, void* user);") != std::string::npos,
+              "code: events.h declaration");
+        {
+            const std::string ec = readText(codeDir + "/events.c");
+            check(ec.find("#include \"events.h\"") != std::string::npos &&
+                  ec.find("void onBtn1_Click(UIControlHandle ctl, void* user) {") != std::string::npos,
+                  "code: events.c skeleton");
+        }
+        check(readText(codeDir + "/event_list.json").find("onBtn1_Click") != std::string::npos,
+              "code: event_list.json written");
+        // F7.3 宿主工程（可直接编译）
+        {
+            const std::string mc = readText(codeDir + "/main.c");
+            check(mc.find("#include \"events.h\"") != std::string::npos &&
+                  mc.find("fnRegisterAction(inst, \"onBtn1_Click\", onBtn1_Click, NULL);") != std::string::npos,
+                  "code: main.c host + handler registration");
+        }
+        check(readText(codeDir + "/CMakeLists.txt").find("add_executable") != std::string::npos,
+              "code: CMakeLists.txt written");
+        check(readText(codeDir + "/build_debug.bat").find("--config Debug") != std::string::npos &&
+              readText(codeDir + "/build_release.bat").find("--config Release") != std::string::npos,
+              "code: build scripts (debug/release)");
+        check(readText(codeDir + "/CMakeLists.txt").find(
+                  "WIN32_EXECUTABLE \"$<CONFIG:Release>\"") != std::string::npos,
+              "code: release no-console (WIN32_EXECUTABLE)");
+        check(readText(codeDir + "/include/UICornerstoneAPI.h").find(
+                  "UICornerstone_CreateInstanceFromPlugin") != std::string::npos,
+              "code: C ABI header copied");
+        {
+            std::error_code ecH;
+            check(std::filesystem::exists(utf8Path(codeDir + "/UICornerstone.dll"), ecH) &&
+                  std::filesystem::exists(utf8Path(codeDir + "/UIBackend_sdl3.dll"), ecH),
+                  "code: runtime DLLs copied");
+            check(std::filesystem::exists(utf8Path(codeDir + "/assets/fonts"), ecH),
+                  "code: assets copied");
+        }
+        // F7.4 C++（C++ Binding）工程导出
+        {
+            const std::string cppDir = dir + "/自测_代码_cpp";
+            check(ExportCodeCpp(cppDir), "codec++: export ok");
+            const std::string mcp = readText(cppDir + "/main.cpp");
+            check(mcp.find("#include \"UICornerstone.h\"") != std::string::npos &&
+                  mcp.find("ui->RegisterAction(\"onBtn1_Click\", [](Control c) {") != std::string::npos,
+                  "codec++: main.cpp binding host + registration");
+            check(readText(cppDir + "/CMakeLists.txt").find("add_subdirectory(binding") != std::string::npos,
+                  "codec++: CMakeLists binding subdir");
+            std::error_code ecB;
+            check(std::filesystem::exists(utf8Path(cppDir + "/binding/CMakeLists.txt"), ecB) &&
+                  std::filesystem::exists(utf8Path(cppDir + "/binding/src/UICornerstone.cpp"), ecB),
+                  "codec++: binding package copied");
+            check(std::filesystem::exists(utf8Path(cppDir + "/include/PropertyNames.h"), ecB),
+                  "codec++: PropertyNames.h copied");
+            check(std::filesystem::exists(utf8Path(cppDir + "/build_release.bat"), ecB),
+                  "codec++: build script present");
+        }
+    }
     // F2.5 撤销/重做：放置 / 属性（颜色）/ 删除 三步往返
     {
         const size_t n0 = m_items.size();
@@ -6128,12 +7709,17 @@ void CanvasPane::SelfTestPlaceSample() {
     placeControl("tImage", 700, 150, false);
     placeControl("tAni", 700, 350, false);
     placeControl("tMenu", 200, 60, false);
+    placeControl("tTabs", 900, 500, false);   // P0-96 预览拖拽旗标联测（模型置可重排）
     // 预览冒烟数据（用户场景回归）：StatusBar **仅设 hover**（部分对象语义——引擎
     // 曾把未给出的 normal 重置为黑，构造缺省 VSCode 蓝丢失；P0-74④ 修复后应保持蓝）
     for (auto& it : m_items) {
         if (it.model->props.type == "status-bar")
             writeColorSlotTo(it.model->props.id, "background.hover", "background", UIColor{0, 255, 0, 255});
     }
+    // P0-96：Tab 模型置可重排（序列化自动补 draggable/droppable——预览端到端联测）
+    for (auto& it : m_items)
+        if (it.model->props.type == "tab-control")
+            it.model->props.extended[PropertyNames::kReorderable] = true;
     // 菜单栏 pressed 色（用户问题 2：预览态生效回归）
     for (auto& it : m_items)
         if (it.model->props.type == "menu-bar")
@@ -6690,7 +8276,14 @@ void CanvasPane::syncTreeSelection() {
     if (!m_canvasTree.IsValid() || !m_ui) return;
     m_treeSync = true;
     if (m_selectedId.empty()) m_ui->TreeViewClearSelection(m_canvasTree);
-    else m_ui->TreeViewSelectNode(m_canvasTree, m_selectedId);
+    else {
+        // 展开祖先链：父节点收起时选中节点不可见（用户实测"点两次才在控件树中选中"）
+        for (PlacedControl* p = placedById(m_selectedId); p && !p->parentId.empty();) {
+            m_ui->TreeViewExpandNode(m_canvasTree, p->parentId);
+            p = placedById(p->parentId);
+        }
+        m_ui->TreeViewSelectNode(m_canvasTree, m_selectedId);
+    }
     m_treeSync = false;
 }
 
@@ -6732,6 +8325,7 @@ void CanvasPane::SetToolboxTree(Control tree) {
     if (!m_toolboxTree.IsValid()) return;
     m_toolboxTree.SetCallback(PropertyNames::kEventSelect, [this](const Event& e) {
         const std::string id = e.GetNodeId();
+        std::printf("[Toolbox] select node=%s\n", id.c_str());
         if (id.empty()) return;
         const auto now = std::chrono::steady_clock::now();
         if (id == m_lastToolId) {
@@ -6740,6 +8334,8 @@ void CanvasPane::SetToolboxTree(Control tree) {
             m_lastToolId.clear();
             if (ms < 500) {
                 // 双击：画布中央放置（逻辑坐标）；清放置待定（双击流程第一击已设 pending）
+                std::printf("[Place] dblclick tool=%s center=(%.0f,%.0f)\n",
+                            id.c_str(), m_vpW / (2 * m_zoom), m_vpH / (2 * m_zoom));
                 placeControl(id, m_vpW / (2 * m_zoom), m_vpH / (2 * m_zoom));
                 m_pendingPlaceTool.clear();
                 return;

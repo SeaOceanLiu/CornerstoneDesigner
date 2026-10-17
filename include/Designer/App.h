@@ -33,6 +33,8 @@ private:
     void registerActions();
     bool loadSkeleton();
     void syncRootToWindow();            // 检测窗口尺寸变化 → root SetRect 触发布局重排
+    void loadSettings();                // 启动：读 designer_settings.json（对话框记忆目录）
+    void saveSettings() const;          // 变更即写（对话框选择后）
     void setupCanvas();                 // canvasArea → CanvasPane（子视口 + 网格覆盖层）
     void bindToolbar();                 // 画布工具栏控件 → CanvasPane 交互接线
     void refreshMenuStates();           // 菜单可用态（撤销/重做；引擎按 item id 注册后生效）
@@ -53,6 +55,9 @@ private:
         void* (*setWindowSize)(void*, int, int) = nullptr;
         int   (*getWindowSize)(void*, int*, int*) = nullptr;
         unsigned (*getMouseState)(float*, float*) = nullptr;   // SDL_GetMouseState
+        void*    (*getMouseFocus)() = nullptr;                 // SDL_GetMouseFocus
+        void*    (*getKeyboardFocus)() = nullptr;              // SDL_GetKeyboardFocus
+        void*    mainWindow = nullptr;                         // 主窗口 SDL_Window*（焦点守卫；须来自 windowHandle()）
         const unsigned char* (*getKeyboardState)(int*) = nullptr;  // SDL_GetKeyboardState
         void* (*createSystemCursor)(int) = nullptr;   // SDL_CreateSystemCursor
         void* (*setCursor)(void*) = nullptr;          // SDL_SetCursor（nullptr=恢复缺省）
@@ -88,6 +93,8 @@ private:
     bool m_previewCheckPending = false;       // auto=3：待执行预览校验（泵内 Present 前）
     bool m_menuUndoEnabled = true;            // 菜单"撤销"当前可用态（仅变化时写引擎）
     bool m_menuRedoEnabled = true;            // 菜单"重做"当前可用态
+    std::string m_lastFileDir;                // 文件对话框记忆目录（UTF-8；settings 持久化）
+    std::string m_lastFolderDir;              // 目录对话框记忆目录（UTF-8）
     void openResourceDialog(bool editMode);   // 插入（editMode=false）/修改（true，选中行回填）
     std::string m_lastError;
     int m_lastWinW = 0, m_lastWinH = 0;    // 上次已同步的窗口尺寸
