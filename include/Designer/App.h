@@ -27,6 +27,7 @@ public:
 
     bool init();
     int  run(int autoSeconds = 0);   // autoSeconds>0 时无人值守渲染指定秒数后干净退出
+    void setOpenPathArg(const std::string& p) { m_openPathArg = p; }   // 命令行路径参数（启动即打开；长路径不经对话框）
     void shutdown();
 
 private:
@@ -54,6 +55,7 @@ private:
         void* (*getWindows)(int*) = nullptr;
         void* (*setWindowSize)(void*, int, int) = nullptr;
         int   (*getWindowSize)(void*, int*, int*) = nullptr;
+        void  (*setWindowTitle)(void*, const char*) = nullptr;   // SDL_SetWindowTitle（F5.4 窗口标题）
         unsigned (*getMouseState)(float*, float*) = nullptr;   // SDL_GetMouseState
         void*    (*getMouseFocus)() = nullptr;                 // SDL_GetMouseFocus
         void*    (*getKeyboardFocus)() = nullptr;              // SDL_GetKeyboardFocus
@@ -95,8 +97,19 @@ private:
     bool m_menuRedoEnabled = true;            // 菜单"重做"当前可用态
     std::string m_lastFileDir;                // 文件对话框记忆目录（UTF-8；settings 持久化）
     std::string m_lastFolderDir;              // 目录对话框记忆目录（UTF-8）
+    // F5.4 最近文件（≤10；settings 持久化）+ 窗口标题（项目名 + 未保存 *）
+    std::vector<std::string> m_recentFiles;   // 最近项目路径（UTF-8；[0]=最近）
+    Control m_recentPanel;                    // 自持"最近文件"子菜单面板（P0-98 动态：Remove/Add 复用，零泄漏）
+    std::vector<Control> m_recentItems;       // 当前动态项（刷新时逐个移除重建）
+    std::string m_pendingDropPath;            // OS 拖入待打开路径（P0-100：泵内仅轻量记录，泵后处理）
+    bool m_dirty = false;                     // 未保存标记（编辑提交/撤销/重做置位；保存/打开/新建清零）
+    void refreshRecentMenu();                 // 动态重建"最近文件"子菜单（无预留空槽——仅实际项）
+    void recordRecentFile(const std::string& path, bool persist);   // 去重提升 + 上限；persist=false 免写盘（自测）
+    void openRecentFile(size_t idx);          // 最近项打开（失效路径清理 + 状态栏提示）
+    void updateWindowTitle();                 // 窗口标题：项目名 + 未保存 *
     void openResourceDialog(bool editMode);   // 插入（editMode=false）/修改（true，选中行回填）
     std::string m_lastError;
+    std::string m_openPathArg;             // 命令行待打开项目路径（启动时打开）
     int m_lastWinW = 0, m_lastWinH = 0;    // 上次已同步的窗口尺寸
 };
 

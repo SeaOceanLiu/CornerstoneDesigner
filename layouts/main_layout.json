@@ -88,15 +88,9 @@
                                     }
                                 },
                                 {
+                                    "id": "recentMenu",
                                     "caption": "最近文件",
-                                    "items": [
-                                        {
-                                            "caption": "（占位：运行时填充）",
-                                            "events": {
-                                                "onClick": "onMenuRecent"
-                                            }
-                                        }
-                                    ]
+                                    "items": []
                                 },
                                 {
                                     "type": "separator"

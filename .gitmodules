@@ -1,0 +1,3 @@
+[submodule "subModules/UICornerstone"]
+	path = subModules/UICornerstone
+	url = git@github.com:SeaOceanLiu/UICornerstone-release.git

@@ -5464,8 +5464,23 @@ void CanvasPane::setStatusHint(const std::string& text) {
 
 // UTF-8 路径 → filesystem::path（MSVC 文件流窄字符按 ANSI 解释——中文/非 ASCII
 // 路径会打开失败或生成乱码文件名；u8path 走宽字符路径）
+// 超长路径（>250 字符）加 \\?\ 前缀规避 Windows MAX_PATH=260 限制——不依赖系统
+// LongPathsEnabled 注册表项；前缀要求绝对且已规范化路径（relative → CWD 展开）
 static std::filesystem::path utf8Path(const std::string& s) {
-    return std::filesystem::u8path(s);
+    std::filesystem::path p = std::filesystem::u8path(s);
+#ifdef _WIN32
+    if (p.wstring().size() > 250) {
+        std::wstring ws = std::filesystem::absolute(p).lexically_normal().wstring();
+        if (ws.rfind(L"\\\\?\\", 0) != 0) {
+            if (ws.rfind(L"\\\\", 0) == 0)
+                ws = L"\\\\?\\UNC\\" + ws.substr(2);
+            else
+                ws = L"\\\\?\\" + ws;
+        }
+        return std::filesystem::path(ws);
+    }
+#endif
+    return p;
 }
 
 // 引擎控件类型串 → 工具箱 id（controlTypeOf 反查；加载/打开路径用）
@@ -5832,6 +5847,7 @@ double undoNowSeconds() {
 
 void CanvasPane::commitUndo(const std::string& coalesceKey) {
     if (m_undoSuspended) return;
+    if (m_dirtyFn) m_dirtyFn();   // 窗口标题"未保存 *"（编辑提交；撤销/重做内部不再经此）
     const std::string snap = serializeLayoutJson().dump();
     const double now = undoNowSeconds();
     if (m_undoStack.empty()) {
@@ -5878,6 +5894,7 @@ bool CanvasPane::Undo() {
     m_undoKey.clear();
     m_undoTime = 0.0;
     setStatusHint(u8"已撤销");
+    if (m_dirtyFn) m_dirtyFn();   // 撤销同样偏离已保存态
     return true;
 }
 
@@ -5888,6 +5905,7 @@ bool CanvasPane::Redo() {
     m_undoKey.clear();
     m_undoTime = 0.0;
     setStatusHint(u8"已重做");
+    if (m_dirtyFn) m_dirtyFn();
     return true;
 }
 
@@ -7692,6 +7710,25 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
             check(after3 != nullptr &&
                   after3->props.extended.value("items", nlohmann::json::array()) == oldItems,
                   "undo: tree items restored");
+        }
+    }
+    // 长路径（>260 字符）保存/打开往返（Windows MAX_PATH 规避——utf8Path 的 \\?\ 前缀）
+    {
+        std::string longDir = dir + "/";
+        for (int i = 0; i < 9; ++i) longDir += "selftest-long-20260716T084504/";
+        const std::string longPath = longDir + "long project.csd";
+        std::printf("[SELFTEST-IO] long path len=%zu\n", longPath.size());
+        if (longPath.size() > 260) {
+            std::error_code ec;
+            std::filesystem::create_directories(utf8Path(longDir), ec);
+            const size_t nBefore = m_items.size();
+            bool saveOk = SaveProject(longPath);
+            NewProject();
+            bool openOk = OpenProject(longPath);
+            check(saveOk && openOk && m_items.size() == nBefore,
+                  "long-path: save/open roundtrip (>260 chars)");
+        } else {
+            check(false, "long-path: fixture path length < 261 (unexpected)");
         }
     }
     NewProject();

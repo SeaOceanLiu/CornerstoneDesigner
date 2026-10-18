@@ -166,6 +166,9 @@ public:
     // 缩放变化通知（App 接线：同步缩放档下拉）——所有缩放路径（含滚轮）统一触发
     using ZoomChangedFn = std::function<void()>;
     void SetZoomChangedFn(ZoomChangedFn fn) { m_zoomChangedFn = std::move(fn); }
+    // 文档脏标记通知（App 接线：窗口标题"未保存 *"）——编辑提交/撤销/重做时触发
+    using DirtyChangedFn = std::function<void()>;
+    void SetDirtyChangedFn(DirtyChangedFn fn) { m_dirtyFn = std::move(fn); }
 
     // 设计画布尺寸（基准窗体，缺省 1280×800）：bench 固定为设计尺寸（不随视口/缩放漂移），
     // 纸面=设计尺寸区域；根级锚定（P0-61）/导出以此为基准。
@@ -490,6 +493,7 @@ private:
     bool  m_middleWasDown = false;
     float m_panStartSX = 0, m_panStartSY = 0, m_panStartX = 0, m_panStartY = 0;
     ZoomChangedFn m_zoomChangedFn;
+    DirtyChangedFn m_dirtyFn;
 
     float m_seenX = 0, m_seenY = 0, m_seenW = 0, m_seenH = 0;   // 观测缓存
 

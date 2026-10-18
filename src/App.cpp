@@ -90,6 +90,7 @@ bool App::SdlApi::load() {
     getWindows   = reinterpret_cast<void*(*)(int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindows"));
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(GetProcAddress((HMODULE)dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(GetProcAddress((HMODULE)dll, "SDL_GetWindowSize"));
+    setWindowTitle = reinterpret_cast<void(*)(void*, const char*)>(GetProcAddress((HMODULE)dll, "SDL_SetWindowTitle"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(GetProcAddress((HMODULE)dll, "SDL_GetMouseState"));
     getMouseFocus = reinterpret_cast<void*(*)()>(GetProcAddress((HMODULE)dll, "SDL_GetMouseFocus"));
     getKeyboardFocus = reinterpret_cast<void*(*)()>(GetProcAddress((HMODULE)dll, "SDL_GetKeyboardFocus"));
@@ -101,6 +102,7 @@ bool App::SdlApi::load() {
     getWindows   = reinterpret_cast<void*(*)(int*)>(dlsym(dll, "SDL_GetWindows"));
     setWindowSize = reinterpret_cast<void*(*)(void*, int, int)>(dlsym(dll, "SDL_SetWindowSize"));
     getWindowSize = reinterpret_cast<int(*)(void*, int*, int*)>(dlsym(dll, "SDL_GetWindowSize"));
+    setWindowTitle = reinterpret_cast<void(*)(void*, const char*)>(dlsym(dll, "SDL_SetWindowTitle"));
     getMouseState = reinterpret_cast<unsigned(*)(float*, float*)>(dlsym(dll, "SDL_GetMouseState"));
     getMouseFocus = reinterpret_cast<void*(*)()>(dlsym(dll, "SDL_GetMouseFocus"));
     getKeyboardFocus = reinterpret_cast<void*(*)()>(dlsym(dll, "SDL_GetKeyboardFocus"));
@@ -305,6 +307,11 @@ bool App::init() {
     if (!m_sdl.loaded) {
         std::printf("[App] SDL3.dll 未解析（窗口 resize 同步降级）\n");
     }
+    // P0-100：OS 文件拖入（资源管理器 → 窗口）——泵内仅轻量记录（接入约定：重活延后）
+    m_ui->SetDropFileCallback([this](const std::string& path, float, float, int) {
+        std::printf("[Drop] recv: %s\n", path.c_str());   // 排障：区分"事件未达"与"应用侧失败"
+        if (m_pendingDropPath.empty()) m_pendingDropPath = path;   // 多文件取首个
+    });
     // 焦点守卫主窗 = 设计器自身 SDL 枚举的首窗（SDL_Window*）。
     // 注：引擎 binding 的 GetNativeWindowHandle() 返回的不是 SDL_Window*（与 SDL_GetMouseFocus
     // 的指针空间不一致），曾致守卫恒阻塞——设计器 SDL 全部输入失效（工具拖放/页签拖动死、假框选消失）。
@@ -318,6 +325,9 @@ bool App::init() {
         m_canvas->SetMiddleSource([this](float& x, float& y) { return m_sdl.pollMiddle(x, y); });
         m_canvas->SetSpaceSource([this] { return m_sdl.pollSpace(); });
         m_canvas->SetZoomChangedFn([this] { syncZoomCombo(); });   // 缩放变化（含滚轮）同步档位
+        m_canvas->SetDirtyChangedFn([this] {                       // F5.4：编辑→窗口标题 *
+            if (!m_dirty) { m_dirty = true; updateWindowTitle(); }
+        });
         m_canvas->SetCanvasTree(m_ui->FindControl("tvTree"));
         m_canvas->SetStatusTarget(m_ui->FindControl("statusBar"));   // P1-b 放置目标提示
         m_canvas->SetPropertyPanel(m_ui->FindControl("propertyPanel"));   // Delete 归属判定
@@ -365,7 +375,73 @@ bool App::init() {
             m_sdl.getWindowSize(win, &m_lastWinW, &m_lastWinH);
         }
     }
+    // F5.4：最近文件菜单回填 + 窗口标题（项目名 + 未保存 *）
+    refreshRecentMenu();
+    updateWindowTitle();
     return true;
+}
+
+// 文件系统路径（UTF-8 → path；超长路径 \\?\ 前缀规避 Windows MAX_PATH——与 CanvasPane::utf8Path 同口径）
+static std::filesystem::path appFsPath(const std::string& s) {
+    std::filesystem::path p = std::filesystem::u8path(s);
+#ifdef _WIN32
+    if (p.wstring().size() > 250) {
+        std::wstring ws = std::filesystem::absolute(p).lexically_normal().wstring();
+        if (ws.rfind(L"\\\\?\\", 0) != 0) {
+            if (ws.rfind(L"\\\\", 0) == 0)
+                ws = L"\\\\?\\UNC\\" + ws.substr(2);
+            else
+                ws = L"\\\\?\\" + ws;
+        }
+        return std::filesystem::path(ws);
+    }
+#endif
+    return p;
+}
+
+// F5.4：菜单标题路径压缩——超长路径保留"…\尾部目录段\文件名"（显示宽度预算内；CJK 按 2 计）。
+// 点击仍打开完整路径（caption 仅显示用；完整路径持久化于 designer_settings.json）。
+static std::string compactPathForMenu(const std::string& p) {
+    constexpr size_t kBudget = 128;  // 显示宽度预算（P0-99 钳制落地后放宽：翻转/收边不出屏）
+    auto textWidth = [](const std::string& s) {
+        size_t w = 0;
+        for (size_t i = 0; i < s.size();) {
+            const unsigned char c = (unsigned char)s[i];
+            if (c < 0x80) { w += 1; i += 1; }
+            else if ((c >> 5) == 0x6) { w += 2; i += 2; }
+            else if ((c >> 4) == 0xE) { w += 2; i += 3; }
+            else { w += 2; i += 4; }
+        }
+        return w;
+    };
+    if (textWidth(p) <= kBudget) return p;
+    const size_t budget = kBudget - 2;   // 预留"…"（宽度 2）
+    size_t start = p.size();
+    size_t acc = 0;
+    while (start > 0) {
+        const size_t sep = p.rfind('\\', start - 1);
+        const size_t segStart = (sep == std::string::npos) ? 0 : sep;
+        const size_t segW = textWidth(p.substr(segStart, start - segStart));
+        if (acc + segW > budget) break;
+        acc += segW;
+        start = segStart;
+        if (sep == std::string::npos) break;
+    }
+    if (start == 0) return p;            // 整路径恰好放下（理论不达）
+    if (start == p.size()) {             // 文件名本身超预算 → 按宽度硬截尾
+        size_t i = p.size();
+        size_t acc2 = 0;
+        while (i > 0) {
+            size_t j = i - 1;
+            while (j > 0 && ((unsigned char)p[j] & 0xC0) == 0x80) --j;
+            const size_t cw = textWidth(p.substr(j, i - j));
+            if (acc2 + cw > budget) break;
+            acc2 += cw;
+            i = j;
+        }
+        return "\xE2\x80\xA6" + p.substr(i);   // "…" + 尾段
+    }
+    return "\xE2\x80\xA6" + p.substr(start);
 }
 
 bool App::loadSkeleton() {
@@ -425,14 +501,95 @@ void App::loadSettings() {
     if (!j.is_object()) return;
     m_lastFileDir = j.value("lastFileDir", std::string());
     m_lastFolderDir = j.value("lastFolderDir", std::string());
+    m_recentFiles.clear();
+    for (const auto& p : j.value("recentFiles", std::vector<std::string>{})) {
+        if (m_recentFiles.size() >= 10) break;
+        if (!p.empty()) m_recentFiles.push_back(p);
+    }
+    // 启动清理：已删除/不可达路径不保留（用户报障：资源管理器删除后仍留在列表）
+    // 注：exists 走 appFsPath（\\?\ 前缀）——超长路径（>260）不再被误判为失效 ✗
+    m_recentFiles.erase(
+        std::remove_if(m_recentFiles.begin(), m_recentFiles.end(),
+                       [](const std::string& p) {
+                           return !std::filesystem::exists(appFsPath(p));
+                       }),
+        m_recentFiles.end());
 }
 
 void App::saveSettings() const {
     nlohmann::json j;
     j["lastFileDir"] = m_lastFileDir;
     j["lastFolderDir"] = m_lastFolderDir;
+    j["recentFiles"] = m_recentFiles;   // F5.4 最近文件（≤10）
     std::ofstream f(std::filesystem::u8path(exeRelative(kSettingsFileName)), std::ios::binary);
     if (f) f << j.dump(2);
+}
+
+// F5.4：最近文件记录（去重提升到顶 + 上限 10；persist=false 供自测免写盘）
+void App::recordRecentFile(const std::string& path, bool persist) {
+    if (path.empty()) return;
+    m_recentFiles.erase(std::remove(m_recentFiles.begin(), m_recentFiles.end(), path),
+                        m_recentFiles.end());
+    m_recentFiles.insert(m_recentFiles.begin(), path);
+    if (m_recentFiles.size() > 10) m_recentFiles.resize(10);
+    refreshRecentMenu();
+    if (persist) saveSettings();
+}
+
+// F5.4：动态重建"最近文件"子菜单（P0-98 已闭环——SetCallback("click") 对动态项生效 ✓）。
+// 自持面板复用：RemoveItem 旧项 → AddItem 新项（零面板泄漏）；仅实际项、无预留空槽；
+// 标题=压缩路径；点击=索引回调（即时打开）。
+void App::refreshRecentMenu() {
+    if (!m_ui) return;
+    auto item = m_ui->FindControl("recentMenu");
+    if (!item.IsValid()) return;
+    item.SetBool(PropertyNames::kEnabled, !m_recentFiles.empty());   // 空列表：整项置灰
+    if (!m_recentPanel.IsValid()) {          // 首次：创建自持面板并挂上（替代布局空面板）
+        m_recentPanel = m_ui->CreateMenuPanel();
+        if (!m_recentPanel.IsValid()) return;
+        m_ui->MenuItemSetSubMenu(item, m_recentPanel);
+    }
+    for (auto& c : m_recentItems)            // 移除旧项（面板复用——零泄漏）
+        m_ui->MenuPanelRemoveItem(m_recentPanel, c);
+    m_recentItems.clear();
+    for (size_t i = 0; i < m_recentFiles.size() && i < 10; ++i) {
+        Control mi = m_ui->CreateMenuItem(compactPathForMenu(m_recentFiles[i]), 0);
+        if (!mi.IsValid()) continue;
+        m_ui->MenuPanelAddItem(m_recentPanel, mi);
+        mi.SetCallback(PropertyNames::kEventClick, [this, i](const Event&) {
+            if (m_canvas) m_canvas->SuppressCanvasClickThisFrame();
+            openRecentFile(i);
+        });
+        m_recentItems.push_back(mi);
+    }
+    std::printf("[Recent] menu rebuilt: %zu item(s)\n", m_recentItems.size());
+}
+
+// F5.4：最近文件打开（失效路径清理 + 状态栏提示；成功后提升到顶）
+void App::openRecentFile(size_t idx) {
+    if (!m_canvas || idx >= m_recentFiles.size()) return;
+    const std::string p = m_recentFiles[idx];
+    if (!std::filesystem::exists(appFsPath(p))) {
+        m_recentFiles.erase(m_recentFiles.begin() + static_cast<std::ptrdiff_t>(idx));
+        refreshRecentMenu();
+        saveSettings();
+        m_canvas->SetStatusHint("文件不存在，已从最近列表移除");
+        return;
+    }
+    if (m_canvas->OpenProject(p)) {
+        recordRecentFile(p, true);
+        m_dirty = false;
+        updateWindowTitle();
+    }
+}
+
+// 窗口标题（项目名 + 未保存 *；阶段四 P1 遗留项）
+void App::updateWindowTitle() {
+    std::string name = "未命名";
+    if (m_canvas && !m_canvas->ProjectPath().empty())
+        name = std::filesystem::u8path(m_canvas->ProjectPath()).filename().u8string();
+    const std::string t = name + (m_dirty ? " *" : "") + " — CornerstoneDesigner";
+    if (m_sdl.setWindowTitle && m_sdl.mainWindow) m_sdl.setWindowTitle(m_sdl.mainWindow, t.c_str());
 }
 
 void App::registerActions() {
@@ -448,10 +605,16 @@ void App::registerActions() {
             fn(ctl);
         };
     };
+    // F5.4：最近文件项动作（骨架生成 onMenuRecentN——动作回调 ctl 上下文不可用，按索引直取）
+    for (int i = 0; i < 10; ++i) {
+        const size_t idx = static_cast<size_t>(i);
+        m_ui->RegisterAction("onMenuRecent" + std::to_string(i),
+                             guard([this, idx](Control) { openRecentFile(idx); }));
+    }
     const char* actions[] = {
         "onMenuNew", "onMenuOpen", "onMenuSave", "onMenuSaveAs",
         "onMenuImportJson", "onMenuExportJson", "onMenuExportCode", "onMenuExportCpp",
-        "onMenuRecent", "onMenuExit",
+        "onMenuExit",
         "onMenuUndo", "onMenuRedo", "onMenuCopy", "onMenuPaste", "onMenuDelete",
         "onMenuFront", "onMenuBack", "onMenuMoveUp", "onMenuMoveDown",
         "onMenuZoom25", "onMenuZoom50", "onMenuZoom75", "onMenuZoom100",
@@ -463,17 +626,17 @@ void App::registerActions() {
     // 记忆目录：打开/保存共用 m_lastFileDir（初始定位 + 选择后回写 settings）
     auto fileDialog = [this](bool save, const wchar_t* filter, const wchar_t* defExt,
                              const wchar_t* title) -> std::string {
-        wchar_t buf[MAX_PATH] = L"";
+        wchar_t buf[4096] = L"";   // 大缓冲：注册表启用长路径后对话框可返回超 MAX_PATH 路径
         std::wstring wInit;
         if (!m_lastFileDir.empty() &&
-            std::filesystem::exists(std::filesystem::u8path(m_lastFileDir)))
+            std::filesystem::exists(appFsPath(m_lastFileDir)))
             wInit = utf8ToWide(m_lastFileDir);
         OPENFILENAMEW ofn{};
         ofn.lStructSize = sizeof(ofn);
         ofn.hwndOwner = GetActiveWindow();
         ofn.lpstrFilter = filter;
         ofn.lpstrFile = buf;
-        ofn.nMaxFile = MAX_PATH;
+        ofn.nMaxFile = 4096;
         ofn.lpstrDefExt = defExt;
         ofn.lpstrTitle = title;
         if (!wInit.empty()) ofn.lpstrInitialDir = wInit.c_str();
@@ -498,13 +661,20 @@ void App::registerActions() {
             m_ui->RegisterAction(name, guard([this](Control) { m_exitRequested = true; }));
         } else if (std::string(name) == "onMenuNew") {
             m_ui->RegisterAction(name, guard([this](Control) {
-                if (m_canvas) m_canvas->NewProject();
+                if (!m_canvas) return;
+                m_canvas->NewProject();
+                m_dirty = false;   // 新建 = 干净文档（F5.4 标题联动）
+                updateWindowTitle();
             }));
         } else if (std::string(name) == "onMenuOpen") {
             m_ui->RegisterAction(name, guard([this, fileDialog](Control) {
                 if (!m_canvas) return;
                 const std::string p = fileDialog(false, kCsdFilter, L"csd", L"打开项目");
-                if (!p.empty()) m_canvas->OpenProject(p);
+                if (!p.empty() && m_canvas->OpenProject(p)) {
+                    recordRecentFile(p, true);   // F5.4
+                    m_dirty = false;
+                    updateWindowTitle();
+                }
             }));
         } else if (std::string(name) == "onMenuSave") {
             m_ui->RegisterAction(name, guard([this, fileDialog](Control) {
@@ -512,13 +682,21 @@ void App::registerActions() {
                 std::string p = m_canvas->ProjectPath();
                 if (p.empty())
                     p = fileDialog(true, kCsdFilter, L"csd", L"保存项目");
-                if (!p.empty()) m_canvas->SaveProject(p);
+                if (!p.empty() && m_canvas->SaveProject(p)) {
+                    recordRecentFile(p, true);   // F5.4
+                    m_dirty = false;
+                    updateWindowTitle();
+                }
             }));
         } else if (std::string(name) == "onMenuSaveAs") {
             m_ui->RegisterAction(name, guard([this, fileDialog](Control) {
                 if (!m_canvas) return;
                 const std::string p = fileDialog(true, kCsdFilter, L"csd", L"另存为");
-                if (!p.empty()) m_canvas->SaveProject(p);
+                if (!p.empty() && m_canvas->SaveProject(p)) {
+                    recordRecentFile(p, true);   // F5.4
+                    m_dirty = false;
+                    updateWindowTitle();
+                }
             }));
         } else if (std::string(name) == "onMenuImportJson") {
             m_ui->RegisterAction(name, guard([this, fileDialog](Control) {
@@ -818,17 +996,17 @@ void App::openResourceDialog(bool editMode) {
             m_dlgResPathEdit.SetBool(PropertyNames::kReadOnly, true);   // P0-83：真只读（选择/复制/滚动保留）
         auto btnFile = m_ui->CreateButton(u8"选择文件…", 80, 104, 120, 28);
         btnFile.SetCallback(PropertyNames::kEventClick, [this, setPath](const Event&) {
-            wchar_t buf[MAX_PATH] = L"";
+            wchar_t buf[4096] = L"";
             std::wstring wInit;
             if (!m_lastFileDir.empty() &&
-                std::filesystem::exists(std::filesystem::u8path(m_lastFileDir)))
+                std::filesystem::exists(appFsPath(m_lastFileDir)))
                 wInit = utf8ToWide(m_lastFileDir);
             OPENFILENAMEW ofn{};
             ofn.lStructSize = sizeof(ofn);
             ofn.hwndOwner = GetActiveWindow();
             ofn.lpstrFilter = L"所有文件 (*.*)\0*.*\0";
             ofn.lpstrFile = buf;
-            ofn.nMaxFile = MAX_PATH;
+            ofn.nMaxFile = 4096;
             ofn.lpstrTitle = L"选择资源文件";
             if (!wInit.empty()) ofn.lpstrInitialDir = wInit.c_str();
             ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
@@ -1096,6 +1274,16 @@ void App::runPreviewChecks() {
 int App::run(int autoSeconds) {
     // 构建标识（用户排障：核对运行实例与构建时间——旧进程常致"修复未生效"误判）
     std::printf("[App] CornerstoneDesigner build %s %s\n", __DATE__, __TIME__);
+    // 命令行路径参数：启动即打开（超长路径不经文件对话框——不依赖系统长路径注册表）
+    if (!m_openPathArg.empty() && m_canvas) {
+        const bool ok = m_canvas->OpenProject(m_openPathArg);
+        std::printf("[App] open argv path: %s -> %s\n", m_openPathArg.c_str(), ok ? "OK" : "FAIL");
+        if (ok) {
+            recordRecentFile(m_openPathArg, true);
+            m_dirty = false;
+            updateWindowTitle();
+        }
+    }
     std::chrono::steady_clock::time_point deadline;
     bool autoMode = autoSeconds > 0;
     if (autoMode) {
@@ -1111,6 +1299,30 @@ int App::run(int autoSeconds) {
 
     while (!m_ui->IsQuitRequested() && !m_exitRequested) {
         m_ui->ProcessEvents();
+        // P0-100：OS 拖入处理（泵后——避免泵内重入；.csd 打开 / .json 导入 / 其余忽略）
+        if (!m_pendingDropPath.empty() && m_canvas) {
+            const std::string dp = m_pendingDropPath;
+            m_pendingDropPath.clear();
+            std::string ext;
+            const size_t dot = dp.find_last_of('.');
+            if (dot != std::string::npos) {
+                ext = dp.substr(dot);
+                for (auto& ch : ext)
+                    if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
+            }
+            if (ext == ".csd") {
+                const bool ok = m_canvas->OpenProject(dp);
+                std::printf("[Drop] open %s -> %s\n", dp.c_str(), ok ? "OK" : "FAIL");
+                if (ok) {
+                    recordRecentFile(dp, true);
+                    m_dirty = false;
+                    updateWindowTitle();
+                }
+            } else if (ext == ".json") {
+                std::printf("[Drop] import %s\n", dp.c_str());
+                m_canvas->ImportLayout(dp);
+            }
+        }
         if (m_sdl.pollF5Key()) togglePreview();   // 预览模式切换（菜单快捷键 F5）
         {   // F2.5 撤销/重做快捷键（Ctrl+Z / Ctrl+Y；每帧轮询保持边沿状态）
             const bool undoEdge = m_sdl.pollUndoKey();
@@ -1146,6 +1358,73 @@ int App::run(int autoSeconds) {
                         (activeIdx == -1) ? "MENU-IDLE-OK" : "MENU-IDLE-FAIL");
             std::printf("[AUTO1] settings lastFileDir='%s' lastFolderDir='%s'\n",
                         m_lastFileDir.c_str(), m_lastFolderDir.c_str());
+            // F5.4：最近文件内存逻辑（去重提升/上限 10/动态菜单装载/空列表置灰——persist=false 免写盘）
+            {
+                const std::vector<std::string> saved = m_recentFiles;
+                recordRecentFile("Temp/st_recent_a.csd", false);
+                recordRecentFile("Temp/st_recent_b.csd", false);
+                recordRecentFile("Temp/st_recent_a.csd", false);   // 提升到顶
+                const bool orderOk = !m_recentFiles.empty() &&
+                                     m_recentFiles[0] == "Temp/st_recent_a.csd";
+                for (int i = 0; i < 12; ++i)
+                    recordRecentFile("Temp/st_recent_" + std::to_string(i) + ".csd", false);
+                const bool capOk = m_recentFiles.size() == 10;
+                auto rm = m_ui->FindControl("recentMenu");
+                // P0-98 动态端到端：自持面板项数与列表一致（Remove/Add 复用重建 ✓）
+                const bool menuOk = rm.IsValid() && rm.GetBool(PropertyNames::kEnabled) &&
+                                    m_recentItems.size() == m_recentFiles.size();
+                std::printf("[AUTO1] recent order=%d cap=%d menu=%d dyn=%zu -> %s\n",
+                            orderOk ? 1 : 0, (int)m_recentFiles.size(), menuOk ? 1 : 0,
+                            m_recentItems.size(),
+                            (orderOk && capOk && menuOk) ? "RECENT-OK" : "RECENT-FAIL");
+                m_recentFiles.clear();
+                refreshRecentMenu();
+                const bool emptyOk = rm.IsValid() && !rm.GetBool(PropertyNames::kEnabled) &&
+                                     m_recentItems.empty();
+                std::printf("[AUTO1] recent empty-disable=%d -> %s\n",
+                            emptyOk ? 1 : 0, emptyOk ? "RECENT-EMPTY-OK" : "RECENT-EMPTY-FAIL");
+                // 标题压缩（用户提问：超长路径出屏）——预算内原样；超长保留"…\尾段\文件名"
+                {
+                    const std::string shortP = "C:\\proj\\a.csd";
+                    const std::string longP =
+                        "C:\\very\\long\\directory\\structure\\deep\\nested\\sub\\folder\\"
+                        "another\\level\\project_files\\documents\\final\\selftest_recent_"
+                        "extremely_long_file_name_for_menu_width_test.csd";
+                    const std::string cs = compactPathForMenu(shortP);
+                    const std::string cl = compactPathForMenu(longP);
+                    const bool compactOk = cs == shortP &&
+                        cl.rfind("\xE2\x80\xA6", 0) == 0 &&
+                        cl.size() < longP.size() &&
+                        cl.find("width_test.csd") != std::string::npos;
+                    std::printf("[AUTO1] recent compact=%d (%.20s...) -> %s\n",
+                                compactOk ? 1 : 0, cl.c_str(),
+                                compactOk ? "COMPACT-OK" : "COMPACT-FAIL");
+                }
+                m_recentFiles = saved;   // 还原（不持久化）
+                refreshRecentMenu();
+                // P0-100/P0-101：拖入链路端到端——保存探针项目 + 合成拖放推送（注册回调 → thunk →
+                // 泵后消费；帧 40 校验）。指针式载荷：push 时引擎深拷贝，源字符串调用后即可失效 ✓
+                if (m_canvas) {
+                    m_canvas->SaveProject("Temp/drop_probe.csd");
+                    const std::string dp = "Temp/drop_probe.csd";
+                    UIEventDropFile df{};
+                    df.path = dp.c_str();
+                    df.x = df.y = 0.0f;
+                    df.isText = 0;
+                    UIEvent ue{};
+                    ue.type = UI_EVENT_DROP_FILE;
+                    std::memcpy(ue.data, &df, sizeof(df));
+                    m_ui->PushEvent(ue);
+                }
+            }
+        }
+        if (autoMode && autoSeconds == 1 && frame == 40 && m_canvas) {
+            // P0-100：拖入处理链路（泵后延迟消费）——待打开路径已被消费且项目已切换
+            const bool dropOk = m_pendingDropPath.empty() &&
+                                m_canvas->ProjectPath() == "Temp/drop_probe.csd";
+            std::printf("[AUTO1] drop pipeline project='%s' -> %s\n",
+                        m_canvas->ProjectPath().c_str(),
+                        dropOk ? "DROP-OK" : "DROP-FAIL");
         }
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
         syncRootToWindow();

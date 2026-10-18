@@ -438,5 +438,6 @@ Temp/
 # Designer project autosave backups
 *.csd.autosave
 
-# Submodule vendored dependency (local release package)
-subModules/
+# Submodule vendored dependency (release package；UICornerstone 为 git 子模块——须解除忽略)
+subModules/*
+!subModules/UICornerstone

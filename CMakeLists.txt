@@ -21,6 +21,8 @@ add_executable(CornerstoneDesigner
     src/App.cpp
     src/ControlModel.cpp
     src/CanvasPane.cpp
+    app.manifest            # longPathAware（系统启用 LongPathsEnabled 时文件对话框等全链支持长路径；
+                            # 未启用时 .csd/最近文件等 I/O 仍经 \\?\ 前缀规避 MAX_PATH）
 )
 
 target_include_directories(CornerstoneDesigner PRIVATE
