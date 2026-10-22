@@ -18,6 +18,7 @@
 #include <functional>
 #include <memory>
 #include <set>
+#include <unordered_map>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -98,6 +99,11 @@ public:
                         float& outOriginX, float& outOriginY);
     std::string benchTreeNodeLabel() const;   // 控件树画布根节点标签（Bench 控件 id）
     void selectTreeRow(const std::string& id);   // P0-107：右键行同步选中（模型+树）
+    void applyStatePreview();         // P0-114：应用当前选中控件的记忆态 + 回显组合框 ✓
+    void clearAllStatePreviews();     // P0-114：全部恢复真实态（预览模式/重建 ✗）
+    int StatePreviewModeOf(const std::string& id) const;
+    std::unordered_map<std::string, int> m_statePreviewById;   // P0-114：每控件记忆（0/缺省=跟随 ✗）
+    std::function<void(int)> m_statePreviewUiFn;               // P0-114：回显组合框（选中变化 ✗）
     void ensureBenchId();                     // P0-112：bench id 预置/自愈（唯一 ✗）
     void syncTreeAdd(const std::string& parentId, const std::string& id,
                      const std::string& label);   // 层级挂接（parentId 空=顶层）
@@ -146,6 +152,8 @@ public:
     // P1 预览模式（设计↔预览切换）：清选择/去网格线/关设计器交互（控件交互由引擎
     // 子视口事件驱动）；退出恢复网格与放置目标提示。
     void SetPreviewMode(bool on);
+    void SetStatePreview(int mode);   // P0-114：设计态状态预览（0=跟随 1=常态 2=悬停 3=按下 4=禁用 ✗）
+    void SetStatePreviewUiCallback(std::function<void(int)> fn) { m_statePreviewUiFn = std::move(fn); }
     bool IsPreviewMode() const { return m_previewMode; }
 
     // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。

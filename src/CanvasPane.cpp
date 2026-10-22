@@ -297,6 +297,9 @@ std::string sanitizePropValue(const std::string& prop, std::string s) {
 
 namespace Designer {
 
+// P0-114：状态预览键（0=跟随/1=常态/2=悬停/3=按下/4=禁用 ✗）
+static const char* kStatePreviewKeys[] = { "normal", "normal", "hover", "pressed", "disabled" };
+
 // 控件文本字号（px）：统一 font-size 键（引擎已废弃 caption-size，并全控件
 // 归一 Int 分发域——Label/Button 均 setIntProperty/getIntProperty）；
 // 读失败（0）回落 16（引擎缺省字号）。
@@ -377,6 +380,16 @@ void CanvasPane::ProcessViewportEvents() {
 }
 void CanvasPane::UpdateViewport(float deltaSeconds) {
     if (m_viewport) m_viewport->Update((double)deltaSeconds);
+    // P0-114：状态预览必须在引擎 Update **之后**、Render 之前强制——引擎 Update 会按鼠标位置
+    // 回写 hover/normal（放 TickInput 会被覆盖 → 鼠标移动时闪动 ✗）。遍历各控件记忆态，
+    // 值不同才写，避免无谓重绘。
+    for (auto& [id, mode] : m_statePreviewById) {
+        if (mode <= 0 || mode >= 5) continue;
+        PlacedControl* p = placedById(id);
+        if (!p || !p->ctl.IsValid()) continue;
+        if (p->ctl.GetEnum(PropertyNames::kState) != kStatePreviewKeys[mode])
+            p->ctl.SetEnum(PropertyNames::kState, kStatePreviewKeys[mode]);
+    }
     // 控件 id 行：空闲到期提交（编辑完成再改名——防逐键 churn）
     if (m_idRenamePending && std::chrono::steady_clock::now() >= m_idRenameDeadline)
         commitPendingIdRename();
@@ -1174,6 +1187,56 @@ void CanvasPane::selectItem(const std::string& id) {
                             : std::vector<std::string>{ id });
 }
 
+// P0-114：设计态状态预览——选中控件强制渲染 normal/hover/pressed/disabled（引擎 state 枚举 ✗）。
+// 仅引擎瞬态：不入模型/撤销/导出；设计画布无交互，四态色否则无法预览 ✓。
+void CanvasPane::clearAllStatePreviews() {
+    for (auto& [id, mode] : m_statePreviewById) {
+        (void)mode;
+        if (PlacedControl* pc = placedById(id))
+            if (pc->ctl.IsValid())
+                pc->ctl.SetEnum(PropertyNames::kState,
+                                pc->ctl.GetBool(PropertyNames::kEnabled) ? "normal" : "disabled");
+    }
+    m_statePreviewById.clear();
+}
+
+int CanvasPane::StatePreviewModeOf(const std::string& id) const {
+    auto it = m_statePreviewById.find(id);
+    return it == m_statePreviewById.end() ? 0 : it->second;
+}
+
+// 选中变化：只应用"该控件自己"的记忆态；其它控件的预览保持不变（用户需求 ✗）。
+void CanvasPane::applyStatePreview() {
+    if (!m_selectedId.empty()) {
+        if (PlacedControl* pc = placedById(m_selectedId)) {
+            const int mode = StatePreviewModeOf(m_selectedId);
+            if (mode > 0 && mode < 5 && pc->ctl.IsValid())
+                pc->ctl.SetEnum(PropertyNames::kState, kStatePreviewKeys[mode]);
+        }
+    }
+    if (m_statePreviewUiFn)
+        m_statePreviewUiFn(m_selectedId.empty() ? 0 : StatePreviewModeOf(m_selectedId));
+}
+
+void CanvasPane::SetStatePreview(int mode) {
+    if (mode < 0 || mode > 4) mode = 0;
+    if (m_selectedId.empty()) {         // 无选中：组合框回显跟随（不设置 ✗）
+        if (m_statePreviewUiFn) m_statePreviewUiFn(0);
+        return;
+    }
+    PlacedControl* pc = placedById(m_selectedId);
+    if (!pc || !pc->ctl.IsValid()) return;
+    if (mode == 0) {
+        m_statePreviewById.erase(m_selectedId);
+        pc->ctl.SetEnum(PropertyNames::kState,
+                        pc->ctl.GetBool(PropertyNames::kEnabled) ? "normal" : "disabled");
+    } else {
+        m_statePreviewById[m_selectedId] = mode;
+        pc->ctl.SetEnum(PropertyNames::kState, kStatePreviewKeys[mode]);
+    }
+    if (m_statePreviewUiFn) m_statePreviewUiFn(mode);
+}
+
 // P2 多选：选择集统一入口（去重/过滤失效 id；末位=主选）——手柄/外框/面板/树/对齐启用同步。
 void CanvasPane::setSelection(std::vector<std::string> ids) {
     commitPendingIdRename();   // 切换选中前先提交未完成的 id 编辑
@@ -1200,6 +1263,7 @@ void CanvasPane::setSelection(std::vector<std::string> ids) {
     syncTreeSelection();
     rebuildDynamicRows();
     refreshEventPanel();
+    applyStatePreview();   // P0-114：选中变化 → 恢复到新选中（跟随=不强制 ✗）
     if (m_clickHandler) m_clickHandler(m_selectedId, 0, 0);
 }
 
@@ -1216,6 +1280,7 @@ void CanvasPane::selectBench() {
     syncTreeSelection();
     rebuildDynamicRows();
     refreshEventPanel();
+    applyStatePreview();   // P0-114：清选中 → 恢复旧目标 ✓
     if (m_clickHandler) m_clickHandler(std::string(), 0, 0);
 }
 
@@ -6282,6 +6347,7 @@ void CanvasPane::clearCanvas() {
         syncTreeRemove(pc.model->props.id);
     }
     m_items.clear();
+    m_statePreviewById.clear();   // P0-114：控件已随清空销毁 ✓
     m_dragId.clear();
     m_dragParentId.clear();
     m_dragCtl = Control();
@@ -8342,6 +8408,49 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
         check(Undo(), "ids: undo after placement ok");
         check(m_items.size() == before, "ids: undo restores item count");
     }
+    // P0-114：设计态状态预览（引擎 state 枚举瞬时强制 ✗）
+    {
+        PlacedControl* pc = nullptr;
+        for (auto& it : m_items)
+            if (it.ctl.IsValid()) { pc = &it; break; }
+        if (pc) {
+            pc->ctl.SetEnum(PropertyNames::kState, "hover");
+            check(pc->ctl.GetEnum(PropertyNames::kState) == "hover", "state: preview hover");
+            pc->ctl.SetEnum(PropertyNames::kState, "pressed");
+            check(pc->ctl.GetEnum(PropertyNames::kState) == "pressed", "state: preview pressed");
+            pc->ctl.SetEnum(PropertyNames::kState, "disabled");
+            check(pc->ctl.GetEnum(PropertyNames::kState) == "disabled", "state: preview disabled");
+            pc->ctl.SetEnum(PropertyNames::kState, "normal");
+            check(pc->ctl.GetEnum(PropertyNames::kState) == "normal", "state: preview restore");
+        } else {
+            check(false, "state: fixture missing");
+        }
+    }
+    // P0-114：每控件记忆（切换选中不恢复其它控件 ✗）
+    {
+        PlacedControl* two[2] = { nullptr, nullptr };
+        int n = 0;
+        for (auto& it : m_items)
+            if (it.ctl.IsValid() && n < 2) two[n++] = &it;
+        if (n == 2) {
+            selectItem(two[0]->model->props.id);
+            SetStatePreview(2);   // hover
+            selectItem(two[1]->model->props.id);
+            SetStatePreview(3);   // pressed
+            check(two[0]->ctl.GetEnum(PropertyNames::kState) == "hover" &&
+                  two[1]->ctl.GetEnum(PropertyNames::kState) == "pressed",
+                  "state: per-control preview kept");
+            selectItem(two[0]->model->props.id);
+            SetStatePreview(0);   // 仅恢复当前控件
+            check(two[0]->ctl.GetEnum(PropertyNames::kState) == "normal" &&
+                  two[1]->ctl.GetEnum(PropertyNames::kState) == "pressed",
+                  "state: follow restores only current");
+            selectItem(two[1]->model->props.id);
+            SetStatePreview(0);
+        } else {
+            check(false, "state: two fixtures missing");
+        }
+    }
     // P0-106：颜色状态缺省回退（引擎已实施 ✗）——新建探针（无显式态）先设自定义 normal
     {
         Control probe = m_viewport ? m_viewport->CreateButton("p106probe", -1000, -1000, 80, 24)
@@ -8563,6 +8672,7 @@ void CanvasPane::SetPreviewMode(bool on) {
     if (m_previewMode == on) return;
     m_previewMode = on;
     if (on) {
+        clearAllStatePreviews();              // P0-114：预览态用控件真实状态 ✗
         selectItem("");                       // 清选择（手柄/次级外框隐藏）
         if (m_alignV.IsValid()) m_alignV.SetBool(PropertyNames::kVisible, 0);
         if (m_alignH.IsValid()) m_alignH.SetBool(PropertyNames::kVisible, 0);
@@ -8984,9 +9094,9 @@ void CanvasPane::deleteSelected() {
         if (PlacedControl* pc = placedById(*rit)) {
             if (pc->ctl.IsValid()) pc->ctl.Destroy();
         }
-        for (auto it = m_items.begin(); it != m_items.end(); ++it) {
+        for (auto it = m_items.begin(); it != m_items.end(); ++it)
             if (it->model->props.id == *rit) { m_items.erase(it); break; }
-        }
+        m_statePreviewById.erase(*rit);
         syncTreeRemove(*rit);
     }
     if (m_dragId == m_selectedId || !m_dragParentId.empty()) {   // 拖动状态清理

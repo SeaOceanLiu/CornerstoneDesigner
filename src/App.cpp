@@ -868,6 +868,26 @@ void App::bindToolbar() {
         });
     }
 
+    // P0-114：状态预览（每控件记忆：选中控件显示自己的预览态 ✗）
+    auto stCtl = m_ui->FindControl("cb_state");
+    if (stCtl.IsValid()) {
+        stCtl.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event&) {
+            if (m_syncingStateCombo) return;            // 程序化回显不当作设置 ✗
+            m_canvas->SuppressCanvasClickThisFrame();   // 弹层项点击不误触画布
+            auto sc = m_ui->FindControl("cb_state");
+            m_canvas->SetStatePreview(sc.GetInt(PropertyNames::kSelectedIndex));
+        });
+        // 选中变化 → 组合框回显该控件自己的预览态（跟随=0 ✗）
+        m_canvas->SetStatePreviewUiCallback([this](int mode) {
+            auto sc = m_ui->FindControl("cb_state");
+            if (!sc.IsValid()) return;
+            if (sc.GetInt(PropertyNames::kSelectedIndex) == mode) return;
+            m_syncingStateCombo = true;
+            sc.SetInt(PropertyNames::kSelectedIndex, mode);
+            m_syncingStateCombo = false;
+        });
+    }
+
     auto snapCtl = m_ui->FindControl("tb_snap");
     if (snapCtl.IsValid()) {
         snapCtl.SetBool(PropertyNames::kTriState, false);   // 两态开关

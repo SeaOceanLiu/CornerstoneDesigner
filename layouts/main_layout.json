@@ -956,6 +956,28 @@
                                         },
                                         {
                                             "type": "combo-box",
+                                            "id": "cb_state",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 96,
+                                                "h": 32
+                                            },
+                                            "font": {
+                                                "name": "HarmonyOS_Sans_SC_Regular",
+                                                "size": 16
+                                            },
+                                            "selected-index": 0,
+                                            "items": [
+                                                { "label": "跟随", "value": "follow" },
+                                                { "label": "常态", "value": "normal" },
+                                                { "label": "悬停", "value": "hover" },
+                                                { "label": "按下", "value": "pressed" },
+                                                { "label": "禁用", "value": "disabled" }
+                                            ]
+                                        },
+                                        {
+                                            "type": "combo-box",
                                             "id": "tb_align",
                                             "rect": {
                                                 "x": 0,

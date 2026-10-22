@@ -90,6 +90,7 @@ private:
     int m_reportPendingDelay = 0;
     bool m_reportPreviewOpened = false;   // 报告导出临时打开预览（截后关闭恢复原状态）
     int m_frameCaptureLeft = 0;           // P0-104 诊断：打开工程后逐帧区域哈希采样剩余帧数
+    bool m_syncingStateCombo = false;      // P0-114：程序化回显状态组合框（抑制用户事件 ✗）
     std::unique_ptr<CanvasPane> m_canvas;                // 中央画布（子视口 + 网格覆盖层）
     bool m_exitRequested = false;
     bool m_zoomComboSync = false;          // 缩放档下拉程序化同步中（抑制回调）
