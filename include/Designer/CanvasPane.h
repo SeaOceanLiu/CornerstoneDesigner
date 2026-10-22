@@ -82,7 +82,23 @@ public:
 
     // 右侧控件树（tvTree）：画布控件增删/选中双向同步。
     void SetCanvasTree(Control tree);
+    // P0-105：控件树拖拽父子（引擎内置换序 → reordered 回调回写模型/画布）
+    void onTreeReordered(const Event& e);           // 仅记录参数（泵内不重入 ✗）
+    void applyTreeReorder(const std::string& srcId, int hintKind,
+                          const std::string& hintTarget);   // 下一帧处理
+    bool m_treeReorderPending = false;
+    std::string m_treeReorderSrc, m_treeReorderHintTarget;
+    int m_treeReorderHintKind = 0;
+    // P0-105：控件树右键动作
+    void treeDelete();
+    void treeMoveInParent(int delta);
+    void treeMoveToRoot();
+    void syncZOrder(const std::string& parentId);   // 引擎 z 序 = 树序（树底=最前 ✓，与新建/载入一致 ✗）
+    bool engineParentOf(const std::string& modelParentId, Control& outParent,
+                        float& outOriginX, float& outOriginY);
     std::string benchTreeNodeLabel() const;   // 控件树画布根节点标签（Bench 控件 id）
+    void selectTreeRow(const std::string& id);   // P0-107：右键行同步选中（模型+树）
+    void ensureBenchId();                     // P0-112：bench id 预置/自愈（唯一 ✗）
     void syncTreeAdd(const std::string& parentId, const std::string& id,
                      const std::string& label);   // 层级挂接（parentId 空=顶层）
     void syncTreeRemove(const std::string& id);
@@ -226,6 +242,8 @@ public:
     bool moveTabPage(const std::string& tabsId, int from, int to);   // 页序调整（拖动排序内核）
     bool ExportCode(const std::string& dir);        // F4.4/F7.2/F7.3：可编译 C 宿主工程导出
     bool ExportCodeCpp(const std::string& dir);     // F7.4：可编译 C++（C++ Binding）宿主工程导出
+    bool ExportReport(const std::string& dir, int shotW = 0, int shotH = 0);   // F7.3：项目报告（report.md + screenshot.png；shotW/H>0 表示截图已由调用方（预览实例）写入）
+    bool WriteScreenshotPng(const std::string& path, const uint8_t* px, int w, int h);   // 轻量 PNG 写出（报告截图共用编码器）
     void SetShareDir(const std::string& dir) { m_shareDir = dir; }   // 设计器 exe 目录（sdk 头/DLL/assets 分发源）
     bool ImportLayout(const std::string& path);     // 读引擎布局 JSON → 重建画布
     void NewProject();                              // 清空画布（新建）

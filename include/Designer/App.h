@@ -37,6 +37,8 @@ private:
     void loadSettings();                // 启动：读 designer_settings.json（对话框记忆目录）
     void saveSettings() const;          // 变更即写（对话框选择后）
     void setupCanvas();                 // canvasArea → CanvasPane（子视口 + 网格覆盖层）
+    void setupTreeContextMenu();        // P0-105：控件树右键菜单（删除/上移/下移/移到根 ✗）
+    Control m_treeMenu;                 // P0-105：控件树上下文菜单（持久复用 ✗）
     void bindToolbar();                 // 画布工具栏控件 → CanvasPane 交互接线
     void refreshMenuStates();           // 菜单可用态（撤销/重做；引擎按 item id 注册后生效）
     void togglePreview();               // 预览：独立窗体（引擎多实例）打开/刷新（工具栏/菜单 F5）
@@ -70,6 +72,7 @@ private:
         void unload();
         void* windowHandle();       // 主窗口（mainWin；未捕获回退 SDL_GetWindows[0]）
         bool pollMouse(float& x, float& y);   // 返回左键是否按下；填充窗口坐标
+        bool pollRight(float& x, float& y);   // 右键按下沿（P0-105：控件树上下文菜单 ✗）
         bool pollDeleteKey();                 // Delete 键按下沿（每帧调一次）
         bool pollF5Key();                     // F5 键按下沿（预览切换；每帧调一次）
         bool pollUndoKey();                   // Ctrl+Z 按下沿（撤销；每帧调一次）
@@ -82,6 +85,11 @@ private:
 
     std::unique_ptr<UICornerstone::UICornerstone> m_ui;  // 主实例（设计器自身 UI）
     std::unique_ptr<UICornerstone::UICornerstone> m_previewUi;  // 预览独立窗体（引擎多实例）
+    // F7.3：报告导出待办（截图走预览实例——打开预览并延后两帧渲染后捕获；泵内 Present 前 readback）
+    std::string m_reportPendingDir;
+    int m_reportPendingDelay = 0;
+    bool m_reportPreviewOpened = false;   // 报告导出临时打开预览（截后关闭恢复原状态）
+    int m_frameCaptureLeft = 0;           // P0-104 诊断：打开工程后逐帧区域哈希采样剩余帧数
     std::unique_ptr<CanvasPane> m_canvas;                // 中央画布（子视口 + 网格覆盖层）
     bool m_exitRequested = false;
     bool m_zoomComboSync = false;          // 缩放档下拉程序化同步中（抑制回调）

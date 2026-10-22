@@ -29,6 +29,10 @@
 #include <chrono>
 #include <vector>
 #include <filesystem>
+#include <sstream>
+#include <ctime>
+#include <set>
+#include <map>
 
 namespace {
 
@@ -96,6 +100,31 @@ std::vector<unsigned char> zlibWrapStored(const std::vector<unsigned char>& raw)
     out.push_back((unsigned char)((a >> 8) & 0xFF));
     out.push_back((unsigned char)(a & 0xFF));
     return out;
+}
+
+// 通用 RGBA → PNG（F7.3 项目报告截图复用网格瓦片同款编码器；pixels=top-down RGBA8888）
+std::vector<unsigned char> buildRgbaPng(int w, int h, const unsigned char* pixels) {
+    std::vector<unsigned char> raw;
+    raw.reserve((size_t)(w * 4 + 1) * h);
+    for (int y = 0; y < h; ++y) {
+        raw.push_back(0);   // 行滤波：None
+        raw.insert(raw.end(), pixels + (size_t)y * w * 4, pixels + (size_t)(y + 1) * w * 4);
+    }
+    const std::vector<unsigned char> idat = zlibWrapStored(raw);
+    std::vector<unsigned char> png;
+    png.reserve(idat.size() + 128);
+    const unsigned char sig[8] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    png.insert(png.end(), sig, sig + 8);
+    std::vector<unsigned char> ihdr;
+    putU32(ihdr, (unsigned)w);
+    putU32(ihdr, (unsigned)h);
+    ihdr.push_back(8);    // 位深
+    ihdr.push_back(6);    // 颜色类型：RGBA
+    ihdr.push_back(0); ihdr.push_back(0); ihdr.push_back(0);
+    pngChunk(png, "IHDR", ihdr);
+    pngChunk(png, "IDAT", idat);
+    pngChunk(png, "IEND", {});
+    return png;
 }
 
 constexpr int kGridDotStep = 4;                // 网格点线：沿线每 4px 一个点（交点处必有）
@@ -996,7 +1025,13 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
 
     auto model = std::make_unique<ControlModel>();
     model->props.type = controlTypeOf(toolboxId);
-    model->props.id = std::string(prefix) + "_" + std::to_string(++m_seq);
+    // P0-113：id 防撞——载入工程后 m_seq 可能与既有 id 重叠（重复 id 致无法选中/撤销挂死 ✗）
+    {
+        std::string newId;
+        do { newId = std::string(prefix) + "_" + std::to_string(++m_seq); }
+        while (findModel(newId));
+        model->props.id = std::move(newId);
+    }
     model->props.rect = { x, y, w, h };
     model->props.extended["caption"] = caption;
 
@@ -3936,6 +3971,23 @@ void CanvasPane::rebuildDynamicRows() {
                     } else {
                         cc = m_schemaTarget.GetColor(prop.c_str());
                     }
+                    // P0-106：模型未显式设置该状态 → 显示 normal 值（与运行时回退一致 ✗）
+                    {
+                        const std::string state = (prop.size() > grpName.size() &&
+                                                   prop[grpName.size()] == '.')
+                            ? prop.substr(grpName.size() + 1) : "normal";
+                        bool explicitSet = false;
+                        if (const ControlModel* mm = findModel(m_schemaTarget.GetId());
+                            mm && mm->props.extended.contains("colors")) {
+                            const auto& cs = mm->props.extended["colors"];
+                            explicitSet = cs.contains(grpName) && cs[grpName].is_object() &&
+                                          cs[grpName].contains(state) &&
+                                          cs[grpName][state].is_string() &&
+                                          !cs[grpName][state].get<std::string>().empty();
+                        }
+                        if (!explicitSet && state != "normal")
+                            cc = m_schemaTarget.GetColor((grpName + ".normal").c_str());
+                    }
                     char hex[12];
                     std::snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X",
                                   cc.r, cc.g, cc.b, cc.a);
@@ -5252,7 +5304,7 @@ void CanvasPane::tickInput() {
 
 CanvasPane::PlacedControl* CanvasPane::placedById(const std::string& id) {
     for (auto& it : m_items)
-        if (it.model->props.id == id) return &it;
+        if (it.model && it.model->props.id == id) return &it;   // moved-from 项 model 为空 ✗
     return nullptr;
 }
 
@@ -5366,10 +5418,25 @@ std::string CanvasPane::benchTreeNodeLabel() const {
     return m_benchId.empty() ? u8"画布" : (u8"画布 " + m_benchId);
 }
 
+// P0-112：bench id 预置/自愈——工程 viewport 无 id（或与控件 id 冲突 ✗）时补唯一缺省，
+// 避免空 id 跨工程残留与依赖 m_benchId 的查找失效（Root() 已是挂载正路，此处保证记账一致 ✗）。
+void CanvasPane::ensureBenchId() {
+    if (!m_benchId.empty() && !findModel(m_benchId)) return;
+    std::string cand = "canvas";
+    for (int n = 2; findModel(cand); ++n) cand = "canvas" + std::to_string(n);
+    m_benchId = cand;
+    syncTreeRename(kBenchTreeNode, benchTreeNodeLabel());
+}
+
 void CanvasPane::SetCanvasTree(Control tree) {
     m_canvasTree = tree;
     if (!m_canvasTree.IsValid()) return;
     m_ui->TreeViewAddNode(m_canvasTree, "", kBenchTreeNode, benchTreeNodeLabel());
+    // P0-105：控件树拖拽父子——启用引擎内置换序（P0-96 自含 ✗）+ reordered 回写模型
+    m_canvasTree.SetBool(PropertyNames::kReorderable, 1);
+    m_canvasTree.SetCallback(PropertyNames::kEventReordered, [this](const Event& e) {
+        onTreeReordered(e);
+    });
     m_canvasTree.SetCallback(PropertyNames::kEventSelect, [this](const Event& e) {
         if (m_treeSync) return;
         const std::string id = e.GetNodeId();
@@ -5385,6 +5452,281 @@ void CanvasPane::SetCanvasTree(Control tree) {
         const ControlModel* m = findModel(id);
         setPlaceTarget(m && isContainerType(m->props.type) ? id : std::string());
     });
+}
+
+// P0-107：右键命中行 → 同步选中（复刻树 select 回调语义；树视觉选中经 m_treeSync 抑制回环）
+void CanvasPane::selectTreeRow(const std::string& id) {
+    if (id.empty()) return;
+    if (id == kBenchTreeNode) {
+        selectBench();
+        setPlaceTarget(std::string());
+        return;
+    }
+    if (!findModel(id)) return;
+    selectItem(id);   // 内部 syncTreeSelection 已同步树选中（含祖先展开）✓
+    syncTabCurrentToPage(id);
+    const ControlModel* m = findModel(id);
+    setPlaceTarget(m && isContainerType(m->props.type) ? id : std::string());
+}
+
+// P0-105：控件树内置换序完成（引擎已移动树节点 ✗）——**泵内仅记录参数**（回调发生在引擎
+// 拖拽事件分发中，同步改树/控件会造成重入挂死 ✗），下一帧 TickInput 再回写模型/画布。
+void CanvasPane::onTreeReordered(const Event& e) {
+    if (m_treeSync) return;
+    std::printf("[P0105] reordered(1) getters...\n");
+    const std::string dsrc = e.GetDragId();
+    const int dkind = e.GetHintKind();
+    const std::string dtgt = e.GetHintTargetId();
+    std::printf("[P0105] reordered(2) src=%s kind=%d target=%s\n",
+                dsrc.c_str(), dkind, dtgt.c_str());
+    m_treeReorderSrc = dsrc;
+    m_treeReorderHintKind = dkind;
+    m_treeReorderHintTarget = dtgt;
+    m_treeReorderPending = !m_treeReorderSrc.empty();
+    std::printf("[P0105] reordered(3) pending=%d\n", m_treeReorderPending ? 1 : 0);
+}
+
+// 落点回写（引擎 §1 口径 ✗）：INTO→target（页解析）；BEFORE/AFTER→target 父 + 目标序
+//（AFTER +1，源摘除位移补偿）。画布根节点的前后落点=实为"置入画布根"（纠正引擎的根级兄弟 ✗）。
+void CanvasPane::applyTreeReorder(const std::string& srcId, int hintKind,
+                                  const std::string& hintTarget) {
+    PlacedControl* pc = placedById(srcId);
+    if (!pc) return;
+    std::string newParent;
+    bool benchEdge = false;   // 画布根节点上下边缘落点
+    if (hintKind == UI_DROP_HINT_INTO) {
+        newParent = hintTarget == kBenchTreeNode ? std::string() : resolvedParentIdOf(hintTarget);
+    } else if (hintKind == UI_DROP_HINT_BEFORE || hintKind == UI_DROP_HINT_AFTER) {
+        if (hintTarget == kBenchTreeNode) {
+            benchEdge = true;   // 根级前后 = 置入画布根 ✗
+        } else {
+            PlacedControl* t = placedById(hintTarget);
+            if (!t) return;
+            newParent = t->parentId;
+        }
+    } else {
+        return;
+    }
+    if (newParent == srcId) return;
+    // P0-108：换父保屏幕位置——先取旧全局左上角，挂到新父后再换算相对坐标 ✗
+    const bool reparent = (pc->parentId != newParent);
+    // 目标父不可解析（引擎侧无法挂载 ✗）→ 整体放弃：避免"坐标已按新父换算、引擎仍挂旧父"跳位 ✗
+    Control parentCtl;
+    float parentGx = 0.0f, parentGy = 0.0f;
+    if (!engineParentOf(newParent, parentCtl, parentGx, parentGy)) {
+        std::printf("[P0105] apply aborted: engine parent '%s' unresolved\n", newParent.c_str());
+        setStatusHint(u8"目标容器不可用：" + newParent);
+        return;
+    }
+    float oldGx = 0.0f, oldGy = 0.0f;
+    if (reparent) globalOriginOf(*pc, oldGx, oldGy);
+    pc->parentId = newParent;
+    // P0-110：模型扁平序重排——插入位置必须相对"目标元素"的绝对位置 ✗。
+    // 旧实现把"兄弟索引"当 m_items 绝对索引：嵌套容器下插错位置 → 模型序与树序错位，
+    // 之后上移/下移的相邻项与 z 序反向挂载全部跟着错（用户实测间歇性 ✗）。
+    {
+        auto srcIt = std::find_if(m_items.begin(), m_items.end(),
+                                  [&](const PlacedControl& x) {
+                                      return x.model && x.model->props.id == srcId;
+                                  });
+        if (srcIt != m_items.end()) {
+            PlacedControl moved = std::move(*srcIt);
+            m_items.erase(srcIt);
+            std::ptrdiff_t pos = -1;
+            if (hintKind == UI_DROP_HINT_BEFORE || hintKind == UI_DROP_HINT_AFTER) {
+                if (hintTarget == kBenchTreeNode) {
+                    pos = (std::ptrdiff_t)m_items.size();   // 根级前后：追加为最后一根项
+                } else {
+                    auto tIt = std::find_if(m_items.begin(), m_items.end(),
+                                            [&](const PlacedControl& x) {
+                                                return x.model && x.model->props.id == hintTarget;
+                                            });
+                    if (tIt != m_items.end())
+                        pos = (tIt - m_items.begin()) +
+                              (hintKind == UI_DROP_HINT_AFTER ? 1 : 0);
+                }
+            } else {
+                // INTO：追加为新父的最后一个子（与引擎树 moveNode(-1) 追加语义一致 ✗）
+                for (std::ptrdiff_t i = 0; i < (std::ptrdiff_t)m_items.size(); ++i)
+                    if (m_items[(size_t)i].parentId == newParent) pos = i + 1;
+                if (pos < 0 && !newParent.empty()) {
+                    auto pIt = std::find_if(m_items.begin(), m_items.end(),
+                                            [&](const PlacedControl& x) {
+                                                return x.model && x.model->props.id == newParent;
+                                            });
+                    if (pIt != m_items.end()) pos = pIt - m_items.begin() + 1;
+                }
+            }
+            if (pos < 0 || pos > (std::ptrdiff_t)m_items.size())
+                pos = (std::ptrdiff_t)m_items.size();
+            m_items.insert(m_items.begin() + pos, std::move(moved));
+        }
+        pc = placedById(srcId);
+    }
+    // P0-109：引擎真实父（WinFrame→ClientPanel ✗）——曾直接用容器控件，子控件被挂到
+    // WinFrame 本体而非 ClientPanel：z 序同步失效 + 坐标基准错位（用户实测间歇性 ✗）
+    if (pc && pc->ctl.IsValid()) parentCtl.AddChild(pc->ctl);
+    if (reparent && pc && pc->model) {
+        pc->model->props.rect.x = oldGx - parentGx;
+        pc->model->props.rect.y = oldGy - parentGy;
+        if (pc->ctl.IsValid())
+            pc->ctl.SetRect(pc->model->props.rect.x, pc->model->props.rect.y,
+                            pc->model->props.rect.w, pc->model->props.rect.h);
+    }
+    if (benchEdge && m_canvasTree.IsValid() && m_ui) {
+        // 树节点纠正：引擎已把节点移成根级兄弟 ✗——重新挂到画布根节点下
+        m_treeSync = true;
+        m_ui->TreeViewMoveNode(m_canvasTree, srcId, kBenchTreeNode, -1);
+        m_treeSync = false;
+    }
+    std::printf("[P0105] apply src=%s parent='%s' benchEdge=%d\n",
+                srcId.c_str(), newParent.c_str(), benchEdge ? 1 : 0);
+    syncZOrder(newParent);   // P0-107：绘制顺序同步（树底=最前 ✗）
+    selectItem(srcId);
+    commitUndo("tree-reparent");
+    setStatusHint(u8"已调整层级：" + srcId + u8" → " +
+                  (newParent.empty() ? std::string(u8"画布根") : newParent));
+}
+
+void CanvasPane::treeDelete() { deleteSelected(); }
+
+// 同父内上移/下移（m_items 树序 + 引擎树节点顺序同步）
+void CanvasPane::treeMoveInParent(int delta) {
+    if (m_selIds.empty()) { setStatusHint(u8"请先在控件树中选择控件"); return; }
+    const std::string id = m_selIds.front();
+    PlacedControl* pc = placedById(id);
+    if (!pc) return;
+    const std::string pid = pc->parentId;
+    std::vector<std::string> sib;   // 同父兄弟（m_items 树序 ✗）
+    for (const auto& x : m_items)
+        if (x.parentId == pid) sib.push_back(x.model->props.id);
+    auto it = std::find(sib.begin(), sib.end(), id);
+    if (it == sib.end()) return;
+    const int ord = (int)(it - sib.begin());
+    const int tgt = ord + delta;
+    if (tgt < 0 || tgt >= (int)sib.size()) return;
+    const std::string tgtId = sib[(size_t)tgt];
+    // 摘除源 → 定位目标（新索引）→ 插到目标之前/之后。
+    // 先定位再移动（moved-from 项 model 为空，后续 find_if 解引用会崩溃 ✗）
+    auto src = std::find_if(m_items.begin(), m_items.end(),
+                            [&](const PlacedControl& x) {
+                                return x.model && x.model->props.id == id;
+                            });
+    if (src == m_items.end()) return;
+    PlacedControl moved = std::move(*src);
+    m_items.erase(src);
+    auto ti = std::find_if(m_items.begin(), m_items.end(),
+                           [&](const PlacedControl& x) {
+                               return x.model && x.model->props.id == tgtId;
+                           });
+    if (ti == m_items.end()) { m_items.push_back(std::move(moved)); }
+    else {
+        size_t pos = (size_t)(ti - m_items.begin());
+        if (delta > 0) ++pos;   // 下移：放到目标之后 ✗
+        m_items.insert(m_items.begin() + (std::ptrdiff_t)pos, std::move(moved));
+    }
+    // 引擎树节点顺序同步（同父、索引=新树序 ✗）
+    if (m_canvasTree.IsValid() && m_ui) {
+        m_treeSync = true;
+        m_ui->TreeViewMoveNode(m_canvasTree, id, pid.empty() ? kBenchTreeNode : pid, tgt);
+        m_treeSync = false;
+    }
+    syncZOrder(pid);   // P0-107：绘制顺序同步（树底=最前 ✗）
+    selectItem(id);
+    commitUndo("tree-move");
+    setStatusHint(u8"已" + std::string(delta < 0 ? u8"上移" : u8"下移") + u8"：" + id);
+}
+
+// P0-109：模型父 id → 引擎真实父控件 + 内容区全局原点。
+// 根=bench（原点 0,0）；WinFrame→ClientPanel；tab→当前页 Panel；普通容器=自身左上 ✗。
+// 直接用容器控件会把子控件挂到 WinFrame 本体而非 ClientPanel → z 序同步失效 + 坐标基准错位。
+bool CanvasPane::engineParentOf(const std::string& modelParentId, Control& outParent,
+                                float& outOriginX, float& outOriginY) {
+    outOriginX = 0.0f;
+    outOriginY = 0.0f;
+    if (modelParentId.empty()) {
+        if (!m_viewport) return false;
+        // P0-111：bench 句柄用 Root()（P0-61）——工程 viewport 无 id 时 m_benchId 为空 ✗，
+        // FindControl("") 无效 → 根级 AddChild 静默失败而坐标已按根换算（控件跳位用户实测 ✗）
+        outParent = m_viewport->Root();
+        return outParent.IsValid();
+    }
+    SRect cr{};
+    if (resolveContainer(modelParentId, outParent, cr)) {
+        outOriginX = cr.x;
+        outOriginY = cr.y;
+        return outParent.IsValid();
+    }
+    if (PlacedControl* p = placedById(modelParentId)) {
+        outParent = p->ctl;
+        globalOriginOf(*p, outOriginX, outOriginY);
+        return outParent.IsValid();
+    }
+    return false;
+}
+
+// P0-107：引擎 z 序同步——容器子控件的绘制顺序 = 控件树顺序（**树底=最前** ✗）。
+// 与"新建追加到树底且画布置顶"一致（用户需求 ✗）；载入顺序天然一致，首次调整不再翻转 ✓。
+// 实现：对同父子项按树序逐个 RemoveChild+AddChild 重挂（AddChild 追加到末尾=绘制最上 ✓）。
+void CanvasPane::syncZOrder(const std::string& parentId) {
+    std::vector<PlacedControl*> kids;
+    for (auto& it : m_items)
+        if (it.parentId == parentId && it.model && !isTabPage(it.model->props.id) &&
+            it.ctl.IsValid())
+            kids.push_back(&it);
+    if (kids.empty()) return;
+    Control parent;
+    float ox = 0.0f, oy = 0.0f;
+    if (!engineParentOf(parentId, parent, ox, oy) || !parent.IsValid()) return;
+    for (auto it = kids.begin(); it != kids.end(); ++it) {   // 顺序：树底最后 Add = 绘制最前 ✓
+        parent.RemoveChild((*it)->ctl);
+        parent.AddChild((*it)->ctl);
+    }
+}
+
+// 移到画布根（父=bench ✗）
+void CanvasPane::treeMoveToRoot() {
+    if (m_selIds.empty()) { setStatusHint(u8"请先在控件树中选择控件"); return; }
+    const std::string id = m_selIds.front();
+    PlacedControl* pc = placedById(id);
+    if (!pc || pc->parentId.empty()) return;
+    // P0-108：换父保屏幕位置（画布根内容原点 = (0,0) ✗）
+    float oldGx = 0.0f, oldGy = 0.0f;
+    globalOriginOf(*pc, oldGx, oldGy);
+    pc->parentId.clear();
+    // P0-110：模型序同步——追加为根级最后一个（与引擎树 append 一致 ✗）
+    {
+        auto srcIt = std::find_if(m_items.begin(), m_items.end(),
+                                  [&](const PlacedControl& x) {
+                                      return x.model && x.model->props.id == id;
+                                  });
+        if (srcIt != m_items.end()) {
+            PlacedControl moved = std::move(*srcIt);
+            m_items.erase(srcIt);
+            m_items.push_back(std::move(moved));
+        }
+        pc = placedById(id);
+    }
+    if (pc) {
+        pc->model->props.rect.x = oldGx;
+        pc->model->props.rect.y = oldGy;
+        if (pc->ctl.IsValid())
+            pc->ctl.SetRect(oldGx, oldGy,
+                            pc->model->props.rect.w, pc->model->props.rect.h);
+    }
+    if (pc->ctl.IsValid() && m_viewport) {
+        Control bench = m_viewport->Root();   // P0-111：不依赖 m_benchId（可能为空 ✗）
+        if (bench.IsValid()) bench.AddChild(pc->ctl);
+    }
+    if (m_canvasTree.IsValid() && m_ui) {
+        m_treeSync = true;
+        m_ui->TreeViewMoveNode(m_canvasTree, id, kBenchTreeNode, -1);
+        m_treeSync = false;
+    }
+    syncZOrder("");   // P0-107：绘制顺序同步（移到根 = 根级树底 = 最前 ✗）
+    selectItem(id);
+    commitUndo("tree-to-root");
+    setStatusHint(u8"已移到画布根：" + id);
 }
 
 // P1-b：主实例 statusBar 接线（放置目标提示；statusHint 段）。
@@ -5522,7 +5864,8 @@ static nlohmann::json modelPropsJson(const ControlModel& m, const nlohmann::json
         return !hasDefs || supported.count(k) != 0;
     };
     if (ex.contains("enabled") && isSupported("enabled")) j["enabled"] = ex["enabled"];
-    // 颜色：仅导出该类型声明的组/态子集（resolveColorGroups 口径）
+    // 颜色：仅导出该类型声明的组/态子集（resolveColorGroups 口径）；
+    // P0-106（引擎已实施 ✗）：未显式设置的状态由引擎解析回退 normal——导出只写显式态 ✓
     if (ex.contains("colors") && ex["colors"].is_object() && isSupported("colors")) {
         nlohmann::json out = nlohmann::json::object();
         const auto groups = resolveColorGroups(defs, defs.contains(m.props.type)
@@ -5910,22 +6253,35 @@ bool CanvasPane::Redo() {
 }
 
 void CanvasPane::clearCanvas() {
-    std::vector<std::string> toRemove;
-    std::function<void(const std::string&)> collect = [&](const std::string& pid) {
-        if (std::find(toRemove.begin(), toRemove.end(), pid) != toRemove.end()) return;
-        toRemove.push_back(pid);
-        for (auto& it : m_items)
-            if (it.parentId == pid) collect(it.model->props.id);
-    };
-    for (auto& it : m_items)
-        if (it.parentId.empty()) collect(it.model->props.id);
-    for (auto rit = toRemove.rbegin(); rit != toRemove.rend(); ++rit) {
-        if (PlacedControl* pc = placedById(*rit))
-            if (pc->ctl.IsValid()) pc->ctl.Destroy();
-        for (auto it = m_items.begin(); it != m_items.end(); ++it)
-            if (it->model->props.id == *rit) { m_items.erase(it); break; }
-        syncTreeRemove(*rit);
+    // P0-113：按条目对象收集（不再按 id 去重 ✗）——重复 id 曾致第二项被跳过：
+    // 父控件销毁时引擎连带释放其子控件，跳过项变悬垂句柄 → 下次撤销 Destroy 挂死 ✗。
+    const size_t n = m_items.size();
+    std::unordered_map<std::string, size_t> firstById;
+    for (size_t i = 0; i < n; ++i) firstById.emplace(m_items[i].model->props.id, i);
+    std::vector<std::vector<size_t>> kids(n);
+    std::vector<size_t> roots;
+    for (size_t i = 0; i < n; ++i) {
+        const std::string& pid = m_items[i].parentId;
+        auto it = pid.empty() ? firstById.end() : firstById.find(pid);
+        if (it != firstById.end() && it->second != i) kids[it->second].push_back(i);
+        else roots.push_back(i);
     }
+    std::vector<size_t> order;   // 父先子后
+    std::vector<bool> seen(n, false);
+    std::function<void(size_t)> dfs = [&](size_t i) {
+        if (i >= n || seen[i]) return;
+        seen[i] = true;
+        order.push_back(i);
+        for (size_t c : kids[i]) dfs(c);
+    };
+    for (size_t r : roots) dfs(r);
+    for (size_t i = 0; i < n; ++i) if (!seen[i]) dfs(i);   // 异常结构兜底（环/自父）
+    for (auto rit = order.rbegin(); rit != order.rend(); ++rit) {   // 子先父后销毁 ✓
+        PlacedControl& pc = m_items[*rit];
+        if (pc.ctl.IsValid()) pc.ctl.Destroy();
+        syncTreeRemove(pc.model->props.id);
+    }
+    m_items.clear();
     m_dragId.clear();
     m_dragParentId.clear();
     m_dragCtl = Control();
@@ -5944,6 +6300,7 @@ bool CanvasPane::buildFromLayoutJson(const nlohmann::json& layout, bool useViewp
         return false;
     UndoSuspendGuard undoSuspend(m_undoSuspended);   // 加载/重建期间不记录撤销
     clearCanvas();
+    m_benchId.clear();   // P0-112：先复位——避免上一工程残留（无 viewport.id 时 ✗）
     if (layout.contains("viewport") && layout["viewport"].is_object()) {
         const auto& vp = layout["viewport"];
         if (useViewportSize) {
@@ -5987,7 +6344,27 @@ bool CanvasPane::buildFromLayoutJson(const nlohmann::json& layout, bool useViewp
         }
         std::vector<std::unique_ptr<ControlModel>> kids;
         kids.swap(model->children);
-        const std::string id = model->props.id;
+        std::string id = model->props.id;
+        // P0-113：载入去重——旧版放置撞号遗留的重复 id 就地改名（保证选中/撤销安全 ✗）
+        if (id.empty() || findModel(id)) {
+            const std::string base = id.empty() ? std::string("control") : id;
+            std::string cand = base;
+            for (int n = 2; findModel(cand); ++n) cand = base + "_" + std::to_string(n);
+            std::printf("[CanvasPane] load: duplicate id '%s' -> '%s'\n",
+                        id.c_str(), cand.c_str());
+            id = cand;
+            model->props.id = id;
+        }
+        // 序号防撞：抬高生成序号（与重命名路径同口径 ✗）
+        {
+            const auto us = id.find_last_of('_');
+            if (us != std::string::npos && us + 1 < id.size()) {
+                try {
+                    const int n = std::stoi(id.substr(us + 1));
+                    if (n > m_seq) m_seq = n;
+                } catch (...) {}
+            }
+        }
         const SRect r = model->props.rect;
         Control ctl = createViewportControl(tb, r.x, r.y, r.w, r.h, *model);
         if (!ctl.IsValid()) { ok = false; return; }
@@ -6017,6 +6394,8 @@ bool CanvasPane::buildFromLayoutJson(const nlohmann::json& layout, bool useViewp
                     if (pageModel->props.type.empty()) pageModel->props.type = "panel";
                     if (pageModel->props.id.empty())
                         pageModel->props.id = "tabpage_" + std::to_string(++m_seq);
+                    while (findModel(pageModel->props.id))   // P0-113：页 id 防撞 ✗
+                        pageModel->props.id = "tabpage_" + std::to_string(++m_seq);
                     const std::string pageId = pageModel->props.id;
                     const std::string pageTitle = t.value("title", "");
                     tabsModel.push_back({ { "title", pageTitle }, { "page-id", pageId } });
@@ -6038,6 +6417,7 @@ bool CanvasPane::buildFromLayoutJson(const nlohmann::json& layout, bool useViewp
         auto model = ControlModel::fromJson(cj);
         if (model) walk(std::move(model), "");
     }
+    ensureBenchId();   // P0-112：缺省/冲突时补唯一 bench id ✗
     selectItem("");
     refreshPlaceTargetHint();
     refreshStatusRight();
@@ -6659,6 +7039,136 @@ bool CanvasPane::ExportCode(const std::string& dir) {
 
 bool CanvasPane::ExportCodeCpp(const std::string& dir) {
     return exportProject(dir, true);    // 可编译 C++ 项目（C++ Binding 宿主）
+}
+
+// F7.3：截图 PNG 写出（复用网格瓦片同款轻量 PNG 编码器——零第三方依赖）
+bool CanvasPane::WriteScreenshotPng(const std::string& path, const uint8_t* px, int w, int h) {
+    if (!px || w <= 0 || h <= 0) return false;
+    const std::vector<unsigned char> png = buildRgbaPng(w, h, px);
+    std::ofstream f(utf8Path(path), std::ios::binary);
+    if (!f) return false;
+    f.write(reinterpret_cast<const char*>(png.data()), (std::streamsize)png.size());
+    return (bool)f;
+}
+
+// F7.3：项目报告导出（report.md + screenshot.png）
+// report.md：项目概要（项目文件/画布/生成时间）+ 控件清单/分布 + 事件绑定清单 + 资源；
+// screenshot.png：布局截图——优先由调用方（App）从**预览实例**捕获后传入（纯净：无设计器
+// 界面/网格/选中框）；shotW/H=0 时回退设计画布 CaptureBench（含设计器视口周边，仅供自测）。
+bool CanvasPane::ExportReport(const std::string& dir, int shotW, int shotH) {
+    std::error_code ec;
+    const auto u8dir = utf8Path(dir);
+    std::filesystem::create_directories(u8dir, ec);
+    if (ec) {
+        setStatusHint(u8"导出失败：无法创建目录 " + dir);
+        return false;
+    }
+
+    // —— 控件清单（模型树先序：根 = parentId 不在控件集合中的项——bench/页面等）——
+    std::set<std::string> ids;
+    for (const auto& it : m_items) ids.insert(it.model->props.id);
+    struct Row { const ControlModel* m; int depth; };
+    std::vector<Row> rows;
+    std::function<void(const std::string&, int)> walk = [&](const std::string& pid, int depth) {
+        for (const auto& it : m_items) {
+            if (it.parentId != pid) continue;
+            rows.push_back({ it.model.get(), depth });
+            walk(it.model->props.id, depth + 1);
+        }
+    };
+    std::vector<std::string> rootParents;
+    for (const auto& it : m_items)
+        if (!ids.count(it.parentId) &&
+            std::find(rootParents.begin(), rootParents.end(), it.parentId) == rootParents.end())
+            rootParents.push_back(it.parentId);
+    for (const auto& rp : rootParents) walk(rp, 0);
+
+    std::map<std::string, int> typeCounts;
+    for (const auto& r : rows) typeCounts[r.m->props.type]++;
+    const auto binds = collectEventBindings();
+
+    // —— 截图（先于报告：报告需记录实际像素尺寸）——
+    // 调用方已提供（预览实例捕获 + WriteScreenshotPng 写入）→ 直接引用；否则设计画布回退捕获
+    const bool shotFromPreview = (shotW > 0 && shotH > 0);
+    bool shotOk = shotFromPreview;
+    if (!shotOk && m_viewport) {
+        const int allocW = (int)(m_designW * m_zoom) + 8;
+        const int allocH = (int)(m_designH * m_zoom) + 8;
+        const size_t bytes = (size_t)allocW * allocH * 4;
+        if (bytes > 0 && bytes < (size_t)64 * 1024 * 1024) {   // 上限 ~64MB（超大画布跳过截图）
+            std::vector<uint8_t> px(bytes);
+            if (m_viewport->CaptureBench(px.data(), &shotW, &shotH) &&
+                shotW > 0 && shotH > 0 && (size_t)shotW * shotH * 4 <= bytes)
+                shotOk = WriteScreenshotPng(
+                    (u8dir / utf8Path("screenshot.png")).u8string(), px.data(), shotW, shotH);
+        }
+    }
+
+    // —— report.md ——
+    std::ostringstream md;
+    md << "# 项目报告\n\n";
+    md << "- 项目文件：" << (m_projectPath.empty() ? std::string(u8"（未保存）") : m_projectPath) << "\n";
+    md << "- 画布尺寸：" << (int)m_designW << " × " << (int)m_designH
+       << "（标题：" << m_benchTitle << "）\n";
+    {
+        std::time_t t = std::time(nullptr);
+        std::tm tmv{};
+#ifdef _WIN32
+        localtime_s(&tmv, &t);
+#else
+        localtime_r(&t, &tmv);
+#endif
+        char ts[32] = {0};
+        std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tmv);
+        md << "- 生成时间：" << ts << "\n";
+    }
+    md << "- 控件总数：" << rows.size() << "\n";
+    md << "- 控件分布：";
+    for (const auto& tc : typeCounts) md << tc.first << "×" << tc.second << " ";
+    md << "\n- 事件绑定：" << binds.size() << "\n";
+    md << "\n## 控件清单\n\n| # | 控件 id | 类型 | 位置 (x, y, w, h) | 标题 |\n";
+    md << "|---|---|---|---|---|\n";
+    int idx = 1;
+    for (const auto& r : rows) {
+        const auto& p = r.m->props;
+        md << "| " << idx++ << " | " << std::string((size_t)r.depth * 2, ' ') << p.id << " | "
+           << p.type << " | " << (int)p.rect.x << ", " << (int)p.rect.y << ", "
+           << (int)p.rect.w << ", " << (int)p.rect.h << " | "
+           << p.extended.value("caption", std::string()) << " |\n";
+    }
+    md << "\n## 事件绑定\n\n| # | 控件 id | 事件 | handler |\n|---|---|---|---|\n";
+    idx = 1;
+    for (const auto& b : binds)
+        md << "| " << idx++ << " | " << b.controlId << " | " << b.jsonEvent << " | "
+           << b.handler << " |\n";
+    if (!m_resourceProviders.empty()) {
+        md << "\n## 资源\n\n";
+        for (const auto& rp : m_resourceProviders)
+            md << "- " << rp.first << "：" << rp.second << "\n";
+    }
+    md << "\n## 布局截图\n\n";
+    if (shotOk)
+        md << "![布局截图](screenshot.png)\n\n（screenshot.png——" << shotW << " × " << shotH
+           << " 像素"
+           << (shotFromPreview ? u8"，预览实例 1:1 纯净截图" :
+                (u8"，设计画布当前缩放 " + std::to_string((int)(m_zoom * 100)) + "%" +
+                 ((shotW < (int)(m_designW * m_zoom) - 1) ? u8"，当前视图可见区域" : "")))
+           << "）\n";
+    else
+        md << "（未生成——后端不支持像素回读或画布超出尺寸上限）\n";
+
+    std::ofstream rf(u8dir / utf8Path("report.md"), std::ios::binary);
+    if (!rf) {
+        setStatusHint(u8"导出失败：无法写入 report.md");
+        return false;
+    }
+    rf << md.str();
+    const bool ok = (bool)rf;
+    if (ok)
+        setStatusHint(u8"项目报告已导出：" + dir + (shotOk ? u8"（含截图）" : u8"（无截图）"));
+    else
+        setStatusHint(u8"导出失败：写入不完整");
+    return ok;
 }
 
 // F7.3/F7.4：完整可编译宿主工程导出（cpp=false：main.c 裸 C ABI；cpp=true：main.cpp + binding 包）
@@ -7712,6 +8222,91 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
                   "undo: tree items restored");
         }
     }
+    // P0-105：控件树动作（模型级 ✗）——移到根 + 撤销还原
+    {
+        std::string childId, oldParent;
+        for (auto& it : m_items)
+            if (!it.parentId.empty()) {
+                childId = it.model->props.id;
+                oldParent = it.parentId;
+                break;
+            }
+        if (!childId.empty()) {
+            selectItem(childId);   // 动作作用于当前选中项 ✗
+            float bgx = 0.0f, bgy = 0.0f;
+            if (PlacedControl* pcb = placedById(childId)) globalOriginOf(*pcb, bgx, bgy);
+            treeMoveToRoot();
+            PlacedControl* pc2 = placedById(childId);
+            check(pc2 && pc2->parentId.empty(), "tree: move-to-root reparents model");
+            float agx = 0.0f, agy = 0.0f;
+            if (pc2) globalOriginOf(*pc2, agx, agy);
+            check(pc2 && std::fabs(agx - bgx) < 0.5f && std::fabs(agy - bgy) < 0.5f,
+                  "tree: move-to-root keeps global position");
+            check(Undo(), "tree: move-to-root undoable");
+            PlacedControl* pc3 = placedById(childId);
+            check(pc3 && pc3->parentId == oldParent, "tree: move-to-root undo restores parent");
+        } else {
+            check(false, "tree: child fixture missing");
+        }
+    }
+    // P0-112：bench id 预置/自愈（唯一 + 随保存外发 ✗）
+    check(!m_benchId.empty() && !findModel(m_benchId), "canvas: bench id preset unique");
+    {
+        const nlohmann::json sj = serializeLayoutJson();
+        check(sj.contains("viewport") && sj["viewport"].value("id", "") == m_benchId,
+              "canvas: bench id serialized");
+    }
+    // P0-111：根句柄（bench）——不依赖工程 viewport id（可能缺失 ✗）
+    check(m_viewport && m_viewport->Root().IsValid(), "canvas: bench root handle");
+    // P0-107：行命中 API（右键行作用于光标行 ✗）
+    {
+        const auto r = m_canvasTree.GetRect();
+        std::string hit;
+        for (float yy = r.y + 2; yy < r.y + r.h && hit.empty(); yy += 4.0f)
+            hit = m_ui->TreeViewGetNodeAt(m_canvasTree, r.x + 10, yy);
+        check(!hit.empty(), "tree: GetNodeAt hits visible row");
+        const std::string miss = m_ui->TreeViewGetNodeAt(m_canvasTree, r.x + 10, r.y + r.h + 20);
+        check(miss.empty(), "tree: GetNodeAt misses outside content");
+    }
+    // P0-110：拖拽重排的模型扁平序（绝对位置相对目标元素 ✗）
+    {
+        std::vector<std::string> roots;
+        for (auto& it : m_items)
+            if (it.parentId.empty()) roots.push_back(it.model->props.id);
+        if (roots.size() >= 2) {
+            const std::string a = roots.front(), b = roots.back();
+            applyTreeReorder(a, UI_DROP_HINT_AFTER, b);
+            int ia = -1, ib = -1, n = 0;
+            for (auto& it : m_items) {
+                if (it.model && it.model->props.id == a) ia = n;
+                if (it.model && it.model->props.id == b) ib = n;
+                ++n;
+            }
+            check(ia == ib + 1, "tree: drop-after keeps absolute adjacency");
+            Undo();
+        } else {
+            check(false, "tree: root fixture missing");
+        }
+    }
+    // F7.3 项目报告导出（report.md + screenshot.png）
+    {
+        const std::string rdir = dir + "/selftest_report";
+        const bool ok = ExportReport(rdir);
+        check(ok, "report: export ok");
+        std::ifstream rf(utf8Path(rdir + "/report.md"), std::ios::binary);
+        const std::string rt((std::istreambuf_iterator<char>(rf)),
+                             std::istreambuf_iterator<char>());
+        check(rt.find("## 控件清单") != std::string::npos &&
+              rt.find("## 事件绑定") != std::string::npos,
+              "report: sections present");
+        check(rt.find("控件总数：" + std::to_string(m_items.size())) != std::string::npos,
+              "report: control count matches");
+        std::ifstream pf(utf8Path(rdir + "/screenshot.png"), std::ios::binary);
+        char sig[8] = {0};
+        pf.read(sig, 8);
+        check(pf.good() && (unsigned char)sig[0] == 0x89 && sig[1] == 'P' && sig[2] == 'N' && sig[3] == 'G',
+              "report: screenshot png present");
+    }
     // 长路径（>260 字符）保存/打开往返（Windows MAX_PATH 规避——utf8Path 的 \\?\ 前缀）
     {
         std::string longDir = dir + "/";
@@ -7729,6 +8324,50 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
                   "long-path: save/open roundtrip (>260 chars)");
         } else {
             check(false, "long-path: fixture path length < 261 (unexpected)");
+        }
+    }
+    // P0-113：载入后放置 id 防撞 + 放置撤销（重复 id 曾致无法选中/撤销挂死 ✗）
+    {
+        const size_t before = m_items.size();
+        placeControl("tPanel", 60, 60, false);
+        bool ok = m_items.size() == before + 1;
+        if (ok) {
+            const std::string placedId = m_items.back().model->props.id;
+            int cnt = 0;
+            for (auto& it : m_items)
+                if (it.model->props.id == placedId) ++cnt;
+            ok = cnt == 1;
+        }
+        check(ok, "ids: placement unique after load");
+        check(Undo(), "ids: undo after placement ok");
+        check(m_items.size() == before, "ids: undo restores item count");
+    }
+    // P0-106：颜色状态缺省回退（引擎已实施 ✗）——新建探针（无显式态）先设自定义 normal
+    {
+        Control probe = m_viewport ? m_viewport->CreateButton("p106probe", -1000, -1000, 80, 24)
+                                   : Control();
+        if (probe.IsValid()) {
+            const UIColor custom = { 0x12, 0x34, 0x56, 0xFF };
+            probe.SetColor(PropertyNames::kBackground, custom);
+            const UIColor h = probe.GetColor(PropertyNames::kStateHover);
+            const UIColor p = probe.GetColor(PropertyNames::kStatePressed);
+            const UIColor d = probe.GetColor(PropertyNames::kStateDisabled);
+            check(h.r == custom.r && h.g == custom.g && h.b == custom.b && h.a == custom.a &&
+                  p.r == custom.r && p.g == custom.g && p.b == custom.b && p.a == custom.a &&
+                  d.r == custom.r && d.g == custom.g && d.b == custom.b && d.a == custom.a,
+                  "color: unset states fall back to normal");
+            const UIColor hover = { 0xAA, 0xBB, 0xCC, 0xFF };
+            probe.SetColor(PropertyNames::kStateHover, hover);
+            const UIColor custom2 = { 0x65, 0x43, 0x21, 0xFF };
+            probe.SetColor(PropertyNames::kBackground, custom2);
+            const UIColor h2 = probe.GetColor(PropertyNames::kStateHover);
+            const UIColor p2 = probe.GetColor(PropertyNames::kStatePressed);
+            check(h2.r == hover.r && h2.g == hover.g && h2.b == hover.b && h2.a == hover.a &&
+                  p2.r == custom2.r && p2.g == custom2.g && p2.b == custom2.b && p2.a == custom2.a,
+                  "color: explicit state survives normal change");
+            probe.Destroy();
+        } else {
+            check(false, "color: probe create failed");
         }
     }
     NewProject();
@@ -7789,6 +8428,8 @@ std::string CanvasPane::SelfTestIdOfType(const std::string& type) const {
 // 新建（清空画布 + 解绑项目路径 + 缺省画布尺寸 + 清资源）
 void CanvasPane::NewProject() {
     clearCanvas();
+    m_benchId.clear();
+    ensureBenchId();   // P0-112：新工程预置 bench id ✗
     SetCanvasSize(1280.0f, 800.0f);
     m_resourceProviders.clear();
     refreshResourceList();
@@ -7893,9 +8534,11 @@ void CanvasPane::RemoveSelectedResourceProvider() {
 }
 
 // 设计态挂载：经 LoadLayout 顶层 resourceProviders（引擎 mountPath 懒加载；
-// 无独立运行时挂载 API——布局挂载路径无 controls 亦执行）
+// 无独立运行时挂载 API——布局挂载路径无 controls 亦执行）。
+// 空列表跳过：无挂载语义，且部分布局会触发 LayoutParser 解析错误噪音（启动/打开日志干扰排障）
 void CanvasPane::mountResourceProviders() {
     if (!m_viewport) return;
+    if (m_resourceProviders.empty()) return;
     nlohmann::json j;
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& rp : m_resourceProviders)
@@ -8387,6 +9030,11 @@ void CanvasPane::SetToolboxTree(Control tree) {
 }
 
 void CanvasPane::TickInput() {
+    // P0-105：延迟应用控件树重排（避免在引擎拖拽分发泵内重入改树 ✗）
+    if (m_treeReorderPending && !m_treeSync) {
+        m_treeReorderPending = false;
+        applyTreeReorder(m_treeReorderSrc, m_treeReorderHintKind, m_treeReorderHintTarget);
+    }
     tickInput();
 }
 

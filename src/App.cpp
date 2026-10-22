@@ -212,6 +212,24 @@ bool App::SdlApi::pollRedoKey() {
     return edge;
 }
 
+// 右键按下沿（P0-105：控件树上下文菜单）+ 窗口坐标
+bool App::SdlApi::pollRight(float& x, float& y) {
+    static bool wasDown = false;
+    if (!getMouseState) return false;
+    if (mainWindow && getMouseFocus && getMouseFocus() != mainWindow) {
+        x = -100000.0f; y = -100000.0f;
+        wasDown = false;
+        return false;
+    }
+    float mx = 0, my = 0;
+    const unsigned buttons = getMouseState(&mx, &my);
+    x = mx; y = my;
+    const bool down = (buttons & 0x04u) != 0;   // SDL_BUTTON_RMASK
+    const bool edge = down && !wasDown;
+    wasDown = down;
+    return edge;
+}
+
 // 中键状态 + 窗口坐标（画布平移）
 bool App::SdlApi::pollMiddle(float& x, float& y) {
     if (!getMouseState) return false;
@@ -317,6 +335,7 @@ bool App::init() {
     // 的指针空间不一致），曾致守卫恒阻塞——设计器 SDL 全部输入失效（工具拖放/页签拖动死、假框选消失）。
     m_sdl.mainWindow = m_sdl.windowHandle();
     setupCanvas();
+    setupTreeContextMenu();   // P0-105：控件树右键菜单
     bindToolbar();
     if (m_canvas) {
         m_canvas->SetMouseSource([this](float& x, float& y) { return m_sdl.pollMouse(x, y); });
@@ -580,6 +599,7 @@ void App::openRecentFile(size_t idx) {
         recordRecentFile(p, true);
         m_dirty = false;
         updateWindowTitle();
+        m_frameCaptureLeft = 120;   // P0-104 诊断：打开成功后逐帧区域哈希
     }
 }
 
@@ -598,10 +618,20 @@ void App::registerActions() {
         (void)ctl;
         std::printf("[App] action not implemented yet\n");
     };
-    // 菜单浮层项点击：标记画布跳过本帧（弹层显示在画布上方，SDL 轮询须同步跳过）
+    // 菜单浮层项点击包装。
+    // P0-103 后引擎统一延迟菜单回调（帧起始 flush）；画布穿透抑制由主循环按
+    // "菜单开启态帧起始快照"标记（见 run 循环）。
+    // P0-104：执行动作前先呈现一帧干净画面——否则模态对话框（文件/目录对话框）关
+    // 闭时 DWM 会露出"末次呈现帧"（即点击菜单项时菜单仍开启的旧画面 → 面板闪动 ✗）。
     auto guard = [this](std::function<void(Control)> fn) {
         return [this, fn](Control ctl) {
-            if (m_canvas) m_canvas->SuppressCanvasClickThisFrame();
+            if (m_ui) {
+                m_ui->Clear();
+                m_ui->Render();
+                if (m_canvas) m_canvas->RenderViewport();
+                m_ui->RenderOverlays();
+                m_ui->Present();   // 干净帧（菜单已关闭）→ 模态关闭后不再露出旧菜单画面
+            }
             fn(ctl);
         };
     };
@@ -614,7 +644,7 @@ void App::registerActions() {
     const char* actions[] = {
         "onMenuNew", "onMenuOpen", "onMenuSave", "onMenuSaveAs",
         "onMenuImportJson", "onMenuExportJson", "onMenuExportCode", "onMenuExportCpp",
-        "onMenuExit",
+        "onMenuExportReport", "onMenuExit",
         "onMenuUndo", "onMenuRedo", "onMenuCopy", "onMenuPaste", "onMenuDelete",
         "onMenuFront", "onMenuBack", "onMenuMoveUp", "onMenuMoveDown",
         "onMenuZoom25", "onMenuZoom50", "onMenuZoom75", "onMenuZoom100",
@@ -674,6 +704,7 @@ void App::registerActions() {
                     recordRecentFile(p, true);   // F5.4
                     m_dirty = false;
                     updateWindowTitle();
+                    m_frameCaptureLeft = 120;    // P0-104 诊断：打开成功后逐帧区域哈希
                 }
             }));
         } else if (std::string(name) == "onMenuSave") {
@@ -732,6 +763,21 @@ void App::registerActions() {
                     m_canvas->ExportCodeCpp(cdir);
                 }
             }));
+        } else if (std::string(name) == "onMenuExportReport") {
+            // F7.3：选目录 → report.md + screenshot.png（截图走预览实例——纯净无设计器界面/网格/选中框）
+            m_ui->RegisterAction(name, guard([this](Control) {
+                if (!m_canvas) return;
+                const std::string rdir = pickFolderDialog(L"选择项目报告导出目录", m_lastFolderDir);
+                if (rdir.empty()) return;
+                m_lastFolderDir = rdir;
+                saveSettings();
+                if (!m_previewUi) {
+                    openPreviewWindow();                 // 未开预览 → 临时打开（截图源）
+                    m_reportPreviewOpened = true;        // 截后关闭恢复原状态
+                }
+                m_reportPendingDir = rdir;
+                m_reportPendingDelay = 2;                // 等预览渲染两帧后泵内捕获
+            }));
         } else if (std::string(name) == "onMenuAbout") {
             m_ui->RegisterAction(name, guard([this](Control) {
                 std::printf("[App] CornerstoneDesigner v0.1 (stage 1 skeleton)\n");
@@ -781,6 +827,21 @@ void App::setupCanvas() {
         (void)cx; (void)cy;
         std::printf("[App] canvas click node=%s\n", id.c_str());
     });
+}
+
+// P0-105：控件树右键菜单（持久 ContextMenu；条目经 ContextMenuAddItemEx 绑定动作 ✗）
+void App::setupTreeContextMenu() {
+    m_treeMenu = m_ui->CreateContextMenu(0, 0, 220, 100);
+    if (!m_treeMenu.IsValid()) return;
+    auto addAct = [this](const char* cap, std::function<void()> fn) {
+        Control item = m_ui->ContextMenuAddItemEx(m_treeMenu, cap);
+        if (!item.IsValid()) return;
+        item.SetCallback(PropertyNames::kEventClick, [fn](const Event&) { fn(); });
+    };
+    addAct(u8"删除", [this] { if (m_canvas) m_canvas->treeDelete(); });
+    addAct(u8"上移", [this] { if (m_canvas) m_canvas->treeMoveInParent(-1); });
+    addAct(u8"下移", [this] { if (m_canvas) m_canvas->treeMoveInParent(+1); });
+    addAct(u8"移到画布根", [this] { if (m_canvas) m_canvas->treeMoveToRoot(); });
 }
 
 void App::bindToolbar() {
@@ -1168,6 +1229,32 @@ void App::pumpPreviewWindow(double delta) {
     m_previewUi->Clear();
     m_previewUi->Render();
     m_previewUi->RenderOverlays();   // P0-52①：浮层通道（菜单弹层/下拉/右键菜单——预览缺此致主菜单点击"无反应"）
+    // F7.3：报告截图（预览实例——Present 前 readback 读当前缓冲；纯净无设计器界面/网格/选中框）
+    if (!m_reportPendingDir.empty() && --m_reportPendingDelay <= 0 && m_canvas) {
+        const std::string rdir = m_reportPendingDir;
+        m_reportPendingDir.clear();
+        std::error_code ec;
+        std::filesystem::create_directories(appFsPath(rdir), ec);   // 先建目录（PNG 写入先于报告）
+        const int pw = (int)m_canvas->GetCanvasW();
+        const int ph = (int)m_canvas->GetCanvasH();
+        int sw = 0, sh = 0;
+        bool shotOk = false;
+        if (pw > 0 && ph > 0) {
+            const size_t bytes = (size_t)pw * ph * 4 + 4096;   // 预览 1:1（含少量余量）
+            std::vector<uint8_t> px(bytes);
+            const bool capOk = m_previewUi->CaptureBench(px.data(), &sw, &sh);
+            const bool fitOk = capOk && sw > 0 && sh > 0 && (size_t)sw * sh * 4 <= bytes;
+            if (fitOk)
+                shotOk = m_canvas->WriteScreenshotPng(rdir + "/screenshot.png", px.data(), sw, sh);
+            std::printf("[Report] preview capture: canvas=%dx%d cap=%d dims=%dx%d fit=%d write=%d\n",
+                        pw, ph, capOk ? 1 : 0, sw, sh, fitOk ? 1 : 0, shotOk ? 1 : 0);
+        }
+        m_canvas->ExportReport(rdir, shotOk ? sw : 0, shotOk ? sh : 0);
+        if (m_reportPreviewOpened) {   // 临时预览用完即关（恢复导出前状态）
+            closePreviewWindow();
+            m_reportPreviewOpened = false;
+        }
+    }
     if (m_previewCheckPending) {     // auto=3 校验（Present 前——readback 读当前缓冲）
         m_previewCheckPending = false;
         runPreviewChecks();
@@ -1269,10 +1356,72 @@ void App::runPreviewChecks() {
                         ic.GetBool(PropertyNames::kLoop),
                         ic.GetInt(PropertyNames::kTotalFrames));
     }
+    // F7.3：报告导出（预览截图）端到端——挂起待办（泵内 Present 前捕获 → 导出）
+    m_reportPendingDir = "Temp/preview_report";
+    m_reportPendingDelay = 2;
 }
+
+#ifdef _WIN32
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
+// P0-105：未处理异常打印（偶发挂死——异常码/地址/模块偏移/栈回溯+符号行号 ✗）
+static LONG WINAPI unhandledExceptionLog(EXCEPTION_POINTERS* info) {
+    const auto* rec = info ? info->ExceptionRecord : nullptr;
+    std::printf("[Crash] unhandled exception code=0x%08lX address=%p\n",
+                rec ? (unsigned long)rec->ExceptionCode : 0ul,
+                rec ? rec->ExceptionAddress : nullptr);
+    if (rec && rec->ExceptionAddress) {
+        HMODULE mod = nullptr;
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                   GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               reinterpret_cast<LPCSTR>(rec->ExceptionAddress), &mod) && mod) {
+            char path[MAX_PATH] = {0};
+            GetModuleFileNameA(mod, path, MAX_PATH);
+            std::printf("[Crash] module=%s offset=0x%llX\n", path,
+                        static_cast<unsigned long long>(
+                            reinterpret_cast<uintptr_t>(rec->ExceptionAddress) -
+                            reinterpret_cast<uintptr_t>(mod)));
+        }
+    }
+    void* frames[32] = {0};
+    const USHORT n = RtlCaptureStackBackTrace(2, 32, frames, nullptr);
+    HANDLE proc = GetCurrentProcess();
+    SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
+    if (SymInitialize(proc, nullptr, TRUE)) {
+        for (USHORT i = 0; i < n; ++i) {
+            char symBuf[sizeof(SYMBOL_INFO) + 256] = {0};
+            auto* si = reinterpret_cast<SYMBOL_INFO*>(symBuf);
+            si->SizeOfStruct = sizeof(SYMBOL_INFO);
+            si->MaxNameLen = 255;
+            DWORD64 disp = 0;
+            IMAGEHLP_LINE64 line{};
+            line.SizeOfStruct = sizeof(line);
+            DWORD lineDisp = 0;
+            if (SymFromAddr(proc, reinterpret_cast<DWORD64>(frames[i]), &disp, si)) {
+                if (SymGetLineFromAddr64(proc, reinterpret_cast<DWORD64>(frames[i]),
+                                         &lineDisp, &line))
+                    std::printf("[Crash]   #%d %s+0x%llX (%s:%lu)\n", i, si->Name,
+                                static_cast<unsigned long long>(disp), line.FileName,
+                                static_cast<unsigned long>(line.LineNumber));
+                else
+                    std::printf("[Crash]   #%d %s+0x%llX\n", i, si->Name,
+                                static_cast<unsigned long long>(disp));
+            } else {
+                std::printf("[Crash]   #%d %p\n", i, frames[i]);
+            }
+        }
+        SymCleanup(proc);
+    }
+    std::fflush(stdout);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#endif
 
 int App::run(int autoSeconds) {
     // 构建标识（用户排障：核对运行实例与构建时间——旧进程常致"修复未生效"误判）
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(&unhandledExceptionLog);   // P0-105：挂死/退出定位
+#endif
     std::printf("[App] CornerstoneDesigner build %s %s\n", __DATE__, __TIME__);
     // 命令行路径参数：启动即打开（超长路径不经文件对话框——不依赖系统长路径注册表）
     if (!m_openPathArg.empty() && m_canvas) {
@@ -1282,6 +1431,7 @@ int App::run(int autoSeconds) {
             recordRecentFile(m_openPathArg, true);
             m_dirty = false;
             updateWindowTitle();
+            m_frameCaptureLeft = 120;   // P0-104 诊断
         }
     }
     std::chrono::steady_clock::time_point deadline;
@@ -1298,6 +1448,39 @@ int App::run(int autoSeconds) {
     int frame = 0;
 
     while (!m_ui->IsQuitRequested() && !m_exitRequested) {
+        // P0-105/P0-107：控件树右键菜单（右键命中 tvTree → GetNodeAt 行命中 →
+        // 先同步选中光标行，再弹菜单；滚动条/空白/树外不弹 ✗）
+        {
+            float rx = 0, ry = 0;
+            if (m_sdl.pollRight(rx, ry)) {
+                auto tree = m_ui->FindControl("tvTree");
+                if (tree.IsValid()) {
+                    const auto r = tree.GetRect();
+                    if (rx >= r.x && rx < r.x + r.w && ry >= r.y && ry < r.y + r.h &&
+                        m_treeMenu.IsValid()) {
+                        const std::string rowId = m_ui->TreeViewGetNodeAt(tree, rx, ry);
+                        if (!rowId.empty()) {
+                            if (m_canvas) m_canvas->selectTreeRow(rowId);   // 模型+树同步 ✓
+                            m_ui->ContextMenuShow(m_treeMenu, rx, ry);
+                        }
+                    }
+                }
+            }
+        }
+        // P0-103：菜单开启态帧起始快照——菜单浮层上的点击不穿透到画布 SDL 轮询。
+        // 引擎已统一延迟菜单回调（下一帧 flush），故穿透抑制须在"点击帧"（本帧）标记：
+        // 帧起始若菜单开启（active-index ≠ -1）→ 本帧画布交互整体跳过（含点击/框选）。
+        if (m_canvas) {
+            auto mb = m_ui->FindControl("menuBar");
+            const int ai = mb.IsValid() ? mb.GetInt(PropertyNames::kActiveIndex) : -2;
+            static int lastAi = -2;
+            if (ai != lastAi) {   // 排障：菜单开启/关闭时间线（用户报"打开项目时文件菜单闪动"）
+                std::printf("[Menu] active-index %d -> %d (frame %d)\n", lastAi, ai, frame);
+                lastAi = ai;
+            }
+            if (ai != -1)
+                m_canvas->SuppressCanvasClickThisFrame();
+        }
         m_ui->ProcessEvents();
         // P0-100：OS 拖入处理（泵后——避免泵内重入；.csd 打开 / .json 导入 / 其余忽略）
         if (!m_pendingDropPath.empty() && m_canvas) {
@@ -1317,6 +1500,7 @@ int App::run(int autoSeconds) {
                     recordRecentFile(dp, true);
                     m_dirty = false;
                     updateWindowTitle();
+                    m_frameCaptureLeft = 120;   // P0-104 诊断
                 }
             } else if (ext == ".json") {
                 std::printf("[Drop] import %s\n", dp.c_str());
@@ -1426,12 +1610,73 @@ int App::run(int autoSeconds) {
                         m_canvas->ProjectPath().c_str(),
                         dropOk ? "DROP-OK" : "DROP-FAIL");
         }
+        // P0-104 排障：最近菜单刷新后，窗口左上"文件"菜单区是否逐帧闪烁（区域哈希序列 ✗）
+        if (autoMode && autoSeconds == 1 && frame >= 32 && frame <= 52 && frame % 4 == 0) {
+            static std::vector<uint8_t> fbuf((size_t)1920 * 1080 * 4);
+            int w = 0, h = 0;
+            if (m_ui->CaptureBench(fbuf.data(), &w, &h) && w > 0 && h > 0) {
+                const size_t stride = (size_t)w * 4;
+                uint64_t hsh = 1469598103934665603ull;
+                for (int y = 0; y < 600 && y < h; ++y)
+                    for (int x = 0; x < 400 && x < w; ++x) {
+                        hsh ^= fbuf[(size_t)y * stride + (size_t)x * 4 + 1];   // G 通道
+                        hsh *= 1099511628211ull;
+                    }
+                std::printf("[P0104] frame=%d region-hash=%016llx\n", frame,
+                            (unsigned long long)hsh);
+            }
+        }
         if (m_canvas) m_canvas->ProcessViewportEvents();   // 子视口事件循环（未消费事件回退 owner）
         syncRootToWindow();
 
         // auto=2：项目 IO 自测（放置→保存→打开→导出→导入往返；一次性）
+        // P0-104 复现探针（auto=2）：合成"打开设计器菜单 → 点外部关闭"前置（✗ 用户触发条件之一）
+        // → 随后自测的导入/重建（另一条件）→ 观察左上"文件"菜单区区域哈希是否闪烁
+        if (autoMode && autoSeconds == 2 && frame == 20) {
+            UIEvent ue{};
+            ue.type = UI_EVENT_MOUSE_MOVE;
+            *reinterpret_cast<float*>(ue.data) = 40.0f;
+            *reinterpret_cast<float*>(ue.data + 4) = 16.0f;
+            m_ui->PushEvent(ue);
+        }
+        if (autoMode && autoSeconds == 2 && frame == 22) {
+            auto mb = m_ui->FindControl("menuBar");
+            const int hv = mb.IsValid() ? mb.GetInt(PropertyNames::kHoveredIndex) : -99;
+            std::printf("[P0104] calib hovered-index=%d\n", hv);
+            UIEvent ue{};
+            ue.type = UI_EVENT_MOUSE_DOWN;   // 打开"文件"菜单
+            *reinterpret_cast<float*>(ue.data) = 40.0f;
+            *reinterpret_cast<float*>(ue.data + 4) = 16.0f;
+            *reinterpret_cast<int*>(ue.data + 8) = 1;
+            m_ui->PushEvent(ue);
+        }
+        if (autoMode && autoSeconds == 2 && frame == 25) {
+            UIEvent ue{};                    // 点外部关闭（P0-88 watcher）
+            ue.type = UI_EVENT_MOUSE_DOWN;
+            *reinterpret_cast<float*>(ue.data) = 960.0f;
+            *reinterpret_cast<float*>(ue.data + 4) = 800.0f;
+            *reinterpret_cast<int*>(ue.data + 8) = 1;
+            m_ui->PushEvent(ue);
+        }
+        if (autoMode && autoSeconds == 2 && frame >= 32 && frame <= 75) {
+            static std::vector<uint8_t> fbuf((size_t)1920 * 1080 * 4);
+            int w = 0, h = 0;
+            if (m_ui->CaptureBench(fbuf.data(), &w, &h) && w > 0 && h > 0) {
+                const size_t stride = (size_t)w * 4;
+                uint64_t hsh = 1469598103934665603ull;
+                for (int y = 0; y < 600 && y < h; ++y)
+                    for (int x = 0; x < 400 && x < w; ++x) {
+                        hsh ^= fbuf[(size_t)y * stride + (size_t)x * 4 + 1];
+                        hsh *= 1099511628211ull;
+                    }
+                std::printf("[P0104] auto2 frame=%d region-hash=%016llx\n", frame,
+                            (unsigned long long)hsh);
+            }
+        }
         if (autoMode && autoSeconds == 2 && frame == 30 && m_canvas) {
             m_canvas->SelfTestIo("Temp");
+            // 自测为长阻塞调用（秒级）——延长截止留 1s 帧窗口（P0-104 区域哈希探针需要渲染帧）
+            deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
         }
         // auto=3：预览独立窗体冒烟（放置样例 → 多实例开→泵→退出）；校验延迟到
         // 泵内 Present 前（readback 须在缓冲交换前执行）
@@ -1440,6 +1685,28 @@ int App::run(int autoSeconds) {
             togglePreview();
             m_previewCheckPending = (bool)m_previewUi;
             if (m_previewCheckPending) pumpPreviewWindow(0.016);   // 立即泵一帧（Present 前跑校验）
+        }
+        if (autoMode && autoSeconds == 3 && frame == 50 && m_canvas) {
+            // F7.3：报告导出端到端——report.md + screenshot.png（预览 1:1；dims=画布尺寸）
+            const std::string rdir = "Temp/preview_report";
+            std::ifstream rf(appFsPath(rdir + "/report.md"), std::ios::binary);
+            const std::string rt((std::istreambuf_iterator<char>(rf)),
+                                 std::istreambuf_iterator<char>());
+            bool dimsOk = false;
+            {
+                std::ifstream pf(appFsPath(rdir + "/screenshot.png"), std::ios::binary);
+                unsigned char hd[24] = {0};
+                pf.read(reinterpret_cast<char*>(hd), 24);
+                if (pf.good() && hd[0] == 0x89 && hd[1] == 'P' && hd[2] == 'N' && hd[3] == 'G') {
+                    const int pw = (hd[16] << 24) | (hd[17] << 16) | (hd[18] << 8) | hd[19];
+                    const int ph = (hd[20] << 24) | (hd[21] << 16) | (hd[22] << 8) | hd[23];
+                    dimsOk = (pw == (int)m_canvas->GetCanvasW() && ph == (int)m_canvas->GetCanvasH());
+                }
+            }
+            const bool mdOk = rt.find("预览实例 1:1 纯净截图") != std::string::npos;
+            std::printf("[AUTO3] report preview-shot dims=%d md=%d -> %s\n",
+                        dimsOk ? 1 : 0, mdOk ? 1 : 0,
+                        (dimsOk && mdOk) ? "REPORT-OK" : "REPORT-FAIL");
         }
 
         auto now = Clock::now();
@@ -1462,6 +1729,83 @@ int App::run(int autoSeconds) {
         m_ui->Render();
         if (m_canvas) m_canvas->RenderViewport();
         m_ui->RenderOverlays();   // P0-52①：owner 浮层（下拉/菜单/弹窗）重绘于画布子视口之上
+        // P0-104 诊断（真实流程）：打开工程成功后逐帧区域哈希（左上 400×600——"文件"菜单区 ✗）
+        // 供引擎按帧序列分析闪烁模式（用户正常操作即可，无需特殊动作）
+        if (m_frameCaptureLeft > 0 && m_ui) {
+            --m_frameCaptureLeft;
+            static std::vector<uint8_t> dfbuf((size_t)1920 * 1080 * 4);
+            static std::vector<uint8_t> dfprev;   // 上一帧区域快照（差异包围盒用）
+            int dw = 0, dh = 0;
+            if (m_ui->CaptureBench(dfbuf.data(), &dw, &dh) && dw > 0 && dh > 0) {
+                const int rw = 400, rh = 600;
+                const size_t dstride = (size_t)dw * 4;
+                std::vector<uint8_t> cur((size_t)rw * rh * 4);
+                for (int y = 0; y < rh && y < dh; ++y)
+                    std::memcpy(cur.data() + (size_t)y * rw * 4,
+                                dfbuf.data() + (size_t)y * dstride, (size_t)rw * 4);
+                uint64_t dhsh = 1469598103934665603ull;
+                for (uint8_t b : cur) { dhsh ^= b; dhsh *= 1099511628211ull; }
+                if (dfprev.size() == cur.size()) {
+                    int bx0 = rw, by0 = rh, bx1 = -1, by1 = -1, n = 0;
+                    for (int y = 0; y < rh; ++y)
+                        for (int x = 0; x < rw; ++x) {
+                            const size_t off = ((size_t)y * rw + (size_t)x) * 4;
+                            if (cur[off + 1] != dfprev[off + 1]) {   // G 通道差异
+                                ++n;
+                                if (x < bx0) bx0 = x;
+                                if (y < by0) by0 = y;
+                                if (x > bx1) bx1 = x;
+                                if (y > by1) by1 = y;
+                            }
+                        }
+                    // 引擎配合：逐帧记录菜单栏 hovered-index / active-index
+                //（区分取证帧"文件"高亮是 hover 还是 active——若 hover 则说明陈旧鼠标曾命中 File ✗）
+                {
+                    auto mbar = m_ui->FindControl("menuBar");
+                    const int hv = mbar.IsValid() ? mbar.GetInt(PropertyNames::kHoveredIndex) : -99;
+                    const int av = mbar.IsValid() ? mbar.GetInt(PropertyNames::kActiveIndex) : -99;
+                    std::printf("[P0104-DIAG]   bar hovered=%d active=%d\n", hv, av);
+                }
+                std::printf("[P0104-DIAG] left=%d hash=%016llx changed=%d bbox=(%d,%d)-(%d,%d)\n",
+                                m_frameCaptureLeft, (unsigned long long)dhsh, n,
+                                bx0, by0, bx1, by1);
+                    if (n > 0) {
+                        // 变化帧取证（引擎要求：帧内容 + 鼠标轨迹 ✗）——存 PNG + 打印鼠标原始状态。
+                        // 路径锚定 exe 目录（不依赖 CWD ✗）+ 确保目录存在 + 打印保存结果（勿静默 ✗）
+                        char name[64] = {0};
+                        std::snprintf(name, sizeof(name), "Temp/p104_f%03d.png", m_frameCaptureLeft);
+                        const std::string abs = exeRelative(name);
+                        std::error_code pngEc;
+                        std::filesystem::create_directories(
+                            std::filesystem::u8path(abs).parent_path(), pngEc);
+                        const bool pngOk = m_canvas &&
+                            m_canvas->WriteScreenshotPng(abs, cur.data(), rw, rh);
+                        float mx = 0, my = 0;
+                        const unsigned btn =
+                            m_sdl.getMouseState ? m_sdl.getMouseState(&mx, &my) : 0u;
+                        std::printf("[P0104-DIAG]   png=%s saved=%d mouse=(%.0f,%.0f) buttons=0x%X\n",
+                                    abs.c_str(), pngOk ? 1 : 0, mx, my, btn);
+                    }
+                } else {
+                    // 首帧也存 PNG（闪动面板可能就出现在首帧 ✗——后续变化帧的 bbox 会显出它的消失 ✗）
+                    char name[64] = {0};
+                    std::snprintf(name, sizeof(name), "Temp/p104_f%03d.png", m_frameCaptureLeft);
+                    const std::string abs = exeRelative(name);
+                    std::error_code pngEc;
+                    std::filesystem::create_directories(
+                        std::filesystem::u8path(abs).parent_path(), pngEc);
+                    const bool pngOk = m_canvas &&
+                        m_canvas->WriteScreenshotPng(abs, cur.data(), rw, rh);
+                    float mx = 0, my = 0;
+                    const unsigned btn =
+                        m_sdl.getMouseState ? m_sdl.getMouseState(&mx, &my) : 0u;
+                    std::printf("[P0104-DIAG] left=%d hash=%016llx (first) png=%s saved=%d mouse=(%.0f,%.0f) buttons=0x%X\n",
+                                m_frameCaptureLeft, (unsigned long long)dhsh, abs.c_str(),
+                                pngOk ? 1 : 0, mx, my, btn);
+                }
+                dfprev = std::move(cur);
+            }
+        }
         m_ui->Present();
         pumpPreviewWindow(delta);   // 预览独立窗体（多实例泵；含关闭回收）
 

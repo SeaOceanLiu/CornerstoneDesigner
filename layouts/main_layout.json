@@ -88,6 +88,12 @@
                                     }
                                 },
                                 {
+                                    "caption": "导出项目报告",
+                                    "events": {
+                                        "onClick": "onMenuExportReport"
+                                    }
+                                },
+                                {
                                     "id": "recentMenu",
                                     "caption": "最近文件",
                                     "items": []
