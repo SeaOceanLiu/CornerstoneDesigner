@@ -77,6 +77,7 @@ private:
         bool pollF5Key();                     // F5 键按下沿（预览切换；每帧调一次）
         bool pollUndoKey();                   // Ctrl+Z 按下沿（撤销；每帧调一次）
         bool pollRedoKey();                   // Ctrl+Y 按下沿（重做；每帧调一次）
+        bool pollJsonKey();                   // Ctrl+J 按下沿（原始 JSON；每帧调一次 ✗）
         bool pollCtrl();                      // Ctrl 按住态（多选修饰键；每帧调一次）
         bool pollMiddle(float& x, float& y);  // 中键状态 + 窗口坐标（画布平移）
         bool pollSpace();                     // 空格按住态（空格+左键拖拽平移）

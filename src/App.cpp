@@ -195,6 +195,23 @@ bool App::SdlApi::pollUndoKey() {
     return edge;
 }
 
+bool App::SdlApi::pollJsonKey() {
+    static bool wasDown = false;
+    if (!getKeyboardState) return false;
+    if (mainWindow && getKeyboardFocus && getKeyboardFocus() != mainWindow) {
+        wasDown = false;
+        return false;
+    }
+    int numkeys = 0;
+    const unsigned char* state = getKeyboardState(&numkeys);
+    if (!state || numkeys <= 13) return false;
+    const bool ctrl = numkeys > 228 && (state[224] != 0 || state[228] != 0);   // LCTRL/RCTRL
+    const bool down = ctrl && state[13] != 0;   // SDL_SCANCODE_J=13
+    const bool edge = down && !wasDown;
+    wasDown = down;
+    return edge;
+}
+
 bool App::SdlApi::pollRedoKey() {
     static bool wasDown = false;
     if (!getKeyboardState) return false;
@@ -646,6 +663,7 @@ void App::registerActions() {
         "onMenuImportJson", "onMenuExportJson", "onMenuExportCode", "onMenuExportCpp",
         "onMenuExportReport", "onMenuExit",
         "onMenuUndo", "onMenuRedo", "onMenuCopy", "onMenuPaste", "onMenuDelete",
+        "onMenuEditJson",
         "onMenuFront", "onMenuBack", "onMenuMoveUp", "onMenuMoveDown",
         "onMenuZoom25", "onMenuZoom50", "onMenuZoom75", "onMenuZoom100",
         "onMenuZoom150", "onMenuZoom200",
@@ -788,6 +806,11 @@ void App::registerActions() {
             m_ui->RegisterAction(name, guard([this](Control) { if (m_canvas) m_canvas->Undo(); }));
         } else if (std::string(name) == "onMenuRedo") {
             m_ui->RegisterAction(name, guard([this](Control) { if (m_canvas) m_canvas->Redo(); }));
+        } else if (std::string(name) == "onMenuEditJson") {
+            m_ui->RegisterAction(name, guard([this](Control) {
+                std::printf("[F35] action onMenuEditJson\n");
+                if (m_canvas) m_canvas->ShowRawJsonDialog();   // F3.5：原始 JSON（有选中=该控件；无=整布局 ✗）
+            }));
         } else if (std::string(name) == "onMenuDelete") {
             m_ui->RegisterAction(name, guard([this](Control) { if (m_canvas) m_canvas->deleteSelected(); }));
         } else if (std::string(name).rfind("onMenuZoom", 0) == 0) {
@@ -1536,6 +1559,8 @@ int App::run(int autoSeconds) {
                 else m_canvas->Redo();
             }
         }
+        if (m_sdl.pollJsonKey() && m_canvas)
+            m_canvas->ShowRawJsonDialog();   // F3.5：Ctrl+J 原始 JSON（菜单同动作 ✗）
         refreshMenuStates();   // 菜单"撤销/重做"可用态（引擎按 item id 注册后生效——清单 P0-87）
         if (autoMode && autoSeconds == 1 && frame == 30) {
             // 工具条宽度跟随校验（canvasToolbar top-stretch）＋菜单项 id 可达性探针

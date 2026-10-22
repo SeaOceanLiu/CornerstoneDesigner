@@ -18,6 +18,7 @@
 #include <functional>
 #include <memory>
 #include <set>
+#include <map>
 #include <unordered_map>
 #include <string>
 #include <unordered_map>
@@ -37,6 +38,36 @@ class UICornerstone;
 }
 
 namespace Designer {
+
+// F3.5/F4.6：共享文本编辑窗体（JSON / 事件代码）——等宽字体 + 字号滑条 + 放大/还原 +
+// 回车保护（隐藏"回车确认"语义，仅保留内置按钮点击确认 ✗）。顶部附属域可选（头文件包含）。
+class TextEditorDialog {
+public:
+    void Open(UICornerstone::UICornerstone* ui, bool showTop, const std::string& topText,
+              const std::string& bodyText,
+              std::function<void(const std::string& top, const std::string& body)> onApply);
+    bool IsOpen() const;
+    void Close();
+    void ApplyFontSize(int px);
+    void ToggleExpanded() { m_expanded = !m_expanded; Layout(); }
+    Control DialogHandle() const { return m_dlg; }
+    Control TopHandle() const { return m_top; }
+    Control BodyHandle() const { return m_body; }
+    Control SliderHandle() const { return m_slider; }
+    Control ZoomHandle() const { return m_zoom; }
+    int FontSize() const { return m_fontSize; }
+private:
+    static std::string ReadLong(UIInstance inst, Control& ctl, const char* prop);
+    void EnsureCreated();
+    void Layout();
+    UICornerstone::UICornerstone* m_ui = nullptr;
+    Control m_dlg, m_top, m_body, m_zoom, m_slider, m_label;
+    bool m_showTop = false;
+    bool m_expanded = false;
+    int m_fontSize = 16;
+    std::function<void(const std::string&, const std::string&)> m_onApply;
+    std::string m_lastBody;   // 光标跟随启发式：上次正文（末尾追加/退格 → 滚到底 ✗）
+};
 
 class CanvasPane {
 public:
@@ -68,6 +99,8 @@ public:
 
     // 工具箱联动：双击工具箱项 → 视口内放置对应控件
     void SetToolboxTree(Control tree);
+    void locateToolboxNode(const std::string& query);   // F1.3：按名称定位工具项（展开+选中+滚动 ✗）
+    void applyJsonFontSize(int px);   // F3.5：设置编辑域字号（10–28 钳制 + 标签回显 ✓）
     void SetDragCursorFn(std::function<void(bool)> fn) { m_dragCursorFn = std::move(fn); }
     // 鼠标源（App 注入 SDL 轮询；返回左键是否按下，填充窗口坐标）
     using MouseSourceFn = std::function<bool(float&, float&)>;
@@ -154,6 +187,11 @@ public:
     void SetPreviewMode(bool on);
     void SetStatePreview(int mode);   // P0-114：设计态状态预览（0=跟随 1=常态 2=悬停 3=按下 4=禁用 ✗）
     void SetStatePreviewUiCallback(std::function<void(int)> fn) { m_statePreviewUiFn = std::move(fn); }
+    void ShowRawJsonDialog();   // F3.5：所选控件原始 JSON（查看/编辑/应用 ✗）
+    void applyRawJsonText(const std::string& text, const std::string& targetId, bool whole);
+    void ShowHandlerCodeDialog(const std::string& handler);   // F4.6：编辑事件生成代码（函数体 ✗）
+    void applyHandlerCodeText(const std::string& handler, const std::string& includes,
+                              const std::string& body);
     bool IsPreviewMode() const { return m_previewMode; }
 
     // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
@@ -376,6 +414,8 @@ private:
     void showTabDeleteConfirm(const std::string& tabsId, const std::string& pendingText,
                               const std::string& msg);
     Control m_tabDeleteDlg;                                  // 删除页确认对话框（懒建复用）
+    TextEditorDialog m_jsonEditor;                           // F3.5：原始 JSON 编辑窗（共享基类）
+    TextEditorDialog m_codeEditor;                           // F4.6：事件代码编辑窗（共享基类）
     Control m_tabDeleteLabel;
     std::string m_pendingTabsId;                             // 待确认的 tabs 编辑（id/文本）
     std::string m_pendingTabsText;
@@ -493,6 +533,10 @@ private:
     Control m_dragCtl;
 
     Control m_toolboxTree;
+    Control m_toolboxSearch;              // F1.3：工具箱搜索框（edit-box，text-changed 定位）
+    std::string m_handlerIncludes;        // F4.6：events.c 头文件包含（随工程保存 ✗）
+    std::map<std::string, std::string> m_handlerBodies;   // F4.6：handler 函数体（随工程保存 ✗）
+    bool m_toolboxSearchSelecting = false;   // F1.3：程序化选中（不布防放置候选 ✗）
     Control m_canvasTree;          // 控件树（主实例 tvTree）
     Control m_statusTarget;        // 主实例 statusBar（放置目标提示）
     Control m_propPanel;           // 主实例 propertyPanel（Delete 归属判定）

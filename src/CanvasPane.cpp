@@ -255,6 +255,37 @@ std::string toolboxIconOf(const std::string& tb) {
     return std::string();
 }
 
+// F1.3：工具箱目录（组 id/组标签/项 id/项标签）——搜索定位用（与 main_layout 工具箱 items 同源 ✗）
+struct ToolboxCatalogEntry { const char* group; const char* groupLabel; const char* id; const char* label; };
+static const ToolboxCatalogEntry kToolboxCatalog[] = {
+    { "grpBasic", "基础控件", "tBtn", "按钮 Button" },
+    { "grpBasic", "基础控件", "tLabel", "标签 Label" },
+    { "grpBasic", "基础控件", "tImage", "图片 Image" },
+    { "grpBasic", "基础控件", "tCheck", "复选框 CheckBox" },
+    { "grpBasic", "基础控件", "tEdit", "输入框 EditBox" },
+    { "grpBasic", "基础控件", "tArea", "多行文本 TextArea" },
+    { "grpBasic", "基础控件", "tBar", "进度条 ProgressBar" },
+    { "grpBasic", "基础控件", "tSlider", "滑块 Slider" },
+    { "grpBasic", "基础控件", "tScroll", "滚动条 ScrollBar" },
+    { "grpBasic", "基础控件", "tShape", "图形 Shape" },
+    { "grpContainer", "容器控件", "tPanel", "面板 Panel" },
+    { "grpContainer", "容器控件", "tWin", "窗口 WinFrame" },
+    { "grpContainer", "容器控件", "tSplit", "分割条 Splitter" },
+    { "grpContainer", "容器控件", "tTabs", "页签 TabControl" },
+    { "grpList", "列表/树控件", "tCombo", "下拉框 ComboBox" },
+    { "grpList", "列表/树控件", "tList", "列表 ListView" },
+    { "grpList", "列表/树控件", "tTree", "树 TreeView" },
+    { "grpAdv", "高级控件", "tNum", "数字框 NumericUpDown" },
+    { "grpAdv", "高级控件", "tColor", "取色器 ColorPicker" },
+    { "grpAdv", "高级控件", "tMenu", "菜单 MenuBar" },
+    { "grpAdv", "高级控件", "tStatus", "状态栏 StatusBar" },
+    { "grpAdv", "高级控件", "tAni", "动画 Animation" },
+    { "grpAdv", "高级控件", "tDialog", "弹窗 Dialog" },
+    { "grpAdv", "高级控件", "tCtx", "右键菜单 ContextMenu" },
+    { "grpAdv", "高级控件", "tPopup", "弹层 Popup" },
+    { "grpAdv", "高级控件", "tConfirm", "确认框 ConfirmPopup" },
+};
+
 // 字体名大小写不敏感比较（引擎 P0-46 读回枚举名小写化——清单为驼峰原名）
 bool ieqNoCase(const std::string& a, const std::string& b) {
     if (a.size() != b.size()) return false;
@@ -296,6 +327,8 @@ std::string sanitizePropValue(const std::string& prop, std::string s) {
 }  // namespace
 
 namespace Designer {
+
+static std::string readControlTextLong(UIInstance inst, Control& ctl, const char* prop);   // F3.5 前向声明
 
 // P0-114：状态预览键（0=跟随/1=常态/2=悬停/3=按下/4=禁用 ✗）
 static const char* kStatePreviewKeys[] = { "normal", "normal", "hover", "pressed", "disabled" };
@@ -4935,6 +4968,13 @@ void CanvasPane::tickInput() {
         m_mouseWasDown = down;
         return;
     }
+    // 编辑对话框/浮层覆盖画布：画布不响应鼠标（点击对话框不应被当作空白点击清选择 ✗）
+    if (m_jsonEditor.IsOpen() || m_codeEditor.IsOpen() ||
+        (m_tabDeleteDlg.IsValid() && m_tabDeleteDlg.GetBool(PropertyNames::kPopupVisible)) ||
+        (m_benchDlg.IsValid() && m_benchDlg.GetBool(PropertyNames::kPopupVisible))) {
+        m_mouseWasDown = down;
+        return;
+    }
 
     // 页签排序拖动（P0-91③）：释放时按目标位 TabMovePage 迁移；拖动中状态栏提示
     if (m_tabDragActive) {
@@ -6253,10 +6293,25 @@ double undoNowSeconds() {
 }
 }   // namespace
 
+// F4.6：撤销快照 = 布局 + handler 函数体（代码编辑可撤销 ✗）
+static nlohmann::json makeUndoSnapshot(const nlohmann::json& layout,
+                                       const std::map<std::string, std::string>& bodies,
+                                       const std::string& includes) {
+    nlohmann::json j;
+    j["layout"] = layout;
+    if (!bodies.empty()) {
+        nlohmann::json h = nlohmann::json::object();
+        for (const auto& [k, v] : bodies) h[k] = v;
+        j["handlers"] = std::move(h);
+    }
+    if (!includes.empty()) j["includes"] = includes;
+    return j;
+}
+
 void CanvasPane::commitUndo(const std::string& coalesceKey) {
     if (m_undoSuspended) return;
     if (m_dirtyFn) m_dirtyFn();   // 窗口标题"未保存 *"（编辑提交；撤销/重做内部不再经此）
-    const std::string snap = serializeLayoutJson().dump();
+    const std::string snap = makeUndoSnapshot(serializeLayoutJson(), m_handlerBodies, m_handlerIncludes).dump();
     const double now = undoNowSeconds();
     if (m_undoStack.empty()) {
         m_undoStack.push_back(snap);
@@ -6281,18 +6336,29 @@ void CanvasPane::commitUndo(const std::string& coalesceKey) {
 
 void CanvasPane::resetUndo() {
     m_undoStack.clear();
-    m_undoStack.push_back(serializeLayoutJson().dump());
+    m_undoStack.push_back(makeUndoSnapshot(serializeLayoutJson(), m_handlerBodies, m_handlerIncludes).dump());
     m_undoPos = 0;
     m_undoKey.clear();
     m_undoTime = 0.0;
 }
 
 void CanvasPane::restoreSnapshot(const std::string& json) {
-    nlohmann::json layout = nlohmann::json::parse(json, nullptr, false);
-    if (layout.is_discarded()) return;
+    nlohmann::json snap = nlohmann::json::parse(json, nullptr, false);
+    if (snap.is_discarded()) return;
+    nlohmann::json layout = snap;
+    if (snap.is_object() && snap.contains("layout") && snap["layout"].is_object()) {
+        layout = snap["layout"];
+        m_handlerBodies.clear();   // 快照未含 handlers = 该步无代码（旧快照兼容见 else ✗）
+        if (snap.contains("handlers") && snap["handlers"].is_object())
+            for (auto it = snap["handlers"].begin(); it != snap["handlers"].end(); ++it)
+                if (it.value().is_string())
+                    m_handlerBodies[it.key()] = it.value().get<std::string>();
+        m_handlerIncludes = snap.value("includes", std::string());
+    }
     m_undoSuspended = true;
     if (buildFromLayoutJson(layout, true)) refreshStatusRight();
     m_undoSuspended = false;
+    refreshEventPanel();   // F4.6：撤销后事件面板/代码状态同步
 }
 
 bool CanvasPane::Undo() {
@@ -6496,8 +6562,15 @@ bool CanvasPane::SaveProject(const std::string& path) {
     nlohmann::json csd;
     csd["app"] = "CornerstoneDesigner";
     csd["version"] = 1;
-    csd["metadata"] = { { "canvas", { { "width", m_designW }, { "height", m_designH },
-                                      { "title", m_benchTitle } } } };
+    nlohmann::json meta = { { "canvas", { { "width", m_designW }, { "height", m_designH },
+                                           { "title", m_benchTitle } } } };
+    if (!m_handlerBodies.empty()) {   // F4.6：事件生成代码（函数体）随工程保存 ✗
+        nlohmann::json hb = nlohmann::json::object();
+        for (const auto& [k, v] : m_handlerBodies) hb[k] = v;
+        meta["handlers"] = std::move(hb);
+    }
+    if (!m_handlerIncludes.empty()) meta["handlerIncludes"] = m_handlerIncludes;   // F4.6 ✗
+    csd["metadata"] = std::move(meta);
     csd["layout"] = serializeLayoutJson();
     std::ofstream f(utf8Path(path), std::ios::binary);   // 宽字符路径
     if (!f) {
@@ -6536,6 +6609,15 @@ bool CanvasPane::OpenProject(const std::string& path) {
     const float h = csd.contains("metadata") ? csd["metadata"].value("canvas", nlohmann::json::object()).value("height", 0.0f) : 0.0f;
     m_benchTitle = csd.contains("metadata")
         ? csd["metadata"].value("canvas", nlohmann::json::object()).value("title", std::string()) : std::string();
+    m_handlerBodies.clear();   // F4.6：载入 handler 函数体（缺省空 ✗）
+    m_handlerIncludes = csd.contains("metadata") && csd["metadata"].is_object()
+        ? csd["metadata"].value("handlerIncludes", std::string()) : std::string();
+    if (csd.contains("metadata") && csd["metadata"].is_object() &&
+        csd["metadata"].contains("handlers") && csd["metadata"]["handlers"].is_object())
+        for (auto it = csd["metadata"]["handlers"].begin();
+             it != csd["metadata"]["handlers"].end(); ++it)
+            if (it.value().is_string())
+                m_handlerBodies[it.key()] = it.value().get<std::string>();
     if (!buildFromLayoutJson(csd["layout"], false)) {
         setStatusHint(u8"打开失败：layout 无效");
         return false;
@@ -6566,16 +6648,30 @@ std::string CanvasPane::buildEventsHeaderText() const {
 
 std::string CanvasPane::buildEventsSourceText() const {
     std::string out = "// events.c - Auto-generated by CornerstoneDesigner\n"
-                      "#include \"events.h\"\n\n";
+                      "#include \"events.h\"\n";
+    std::string inc = m_handlerIncludes;
+    while (!inc.empty() && (inc.back() == '\n' || inc.back() == ' ' || inc.back() == '\r'))
+        inc.pop_back();
+    if (!inc.empty()) {
+        out += inc;
+        out += "\n";
+    }
+    out += "\n";
     std::vector<std::string> seen;
     for (const auto& b : collectEventBindings())
         if (std::find(seen.begin(), seen.end(), b.handler) == seen.end()) {
             seen.push_back(b.handler);
-            out += "void " + b.handler + "(UIControlHandle ctl, void* user) {\n"
-                   "    (void)ctl;\n"
-                   "    (void)user;\n"
-                   "    // TODO: 实现 " + b.handler + "\n"
-                   "}\n\n";
+            auto bit = m_handlerBodies.find(b.handler);
+            out += "void " + b.handler + "(UIControlHandle ctl, void* user) {\n";
+            if (bit != m_handlerBodies.end() && !bit->second.empty()) {
+                out += bit->second;   // F4.6：设计器内编辑的函数体（原样导出 ✗）
+                if (out.back() != '\n') out += "\n";
+            } else {
+                out += "    (void)ctl;\n"
+                       "    (void)user;\n"
+                       "    // TODO: 实现 " + b.handler + "\n";
+            }
+            out += "}\n\n";
         }
     return out;
 }
@@ -8451,6 +8547,141 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
             check(false, "state: two fixtures missing");
         }
     }
+    // F1.3：工具箱搜索定位（选中+滚动；不布防放置候选 ✗）
+    if (m_toolboxTree.IsValid() && m_toolboxSearch.IsValid()) {
+        locateToolboxNode("button");
+        check(m_ui->TreeViewGetSelectedId(m_toolboxTree) == "tBtn",
+              "toolbox: search locates Button");
+        check(m_pendingPlaceTool.empty(), "toolbox: search does not arm placing");
+        locateToolboxNode("不存在的控件");
+    } else {
+        check(false, "toolbox: search fixture missing");
+    }
+    // F4.6：事件生成代码可编辑（函数体随导出/保存/撤销 ✓）
+    {
+        std::string cid, jsonEv;
+        for (auto& it : m_items) {
+            if (!it.ctl.IsValid()) continue;
+            for (const auto& sp : kEventSpecs) {
+                const std::string types = std::string(",") + sp.types + ",";
+                if (types.find("," + it.model->props.type + ",") != std::string::npos) {
+                    cid = it.model->props.id;
+                    jsonEv = sp.json;
+                    break;
+                }
+            }
+            if (!cid.empty()) break;
+        }
+        const std::string handler = "onSelftestCode";
+        if (!cid.empty() && isHandlerNameUnique(handler)) {
+            check(addEventBinding(cid, jsonEv, handler), "code: bind test handler");
+            selectItem(cid);
+            const std::string selBefore = m_selectedId;
+            ShowHandlerCodeDialog(handler);
+            check(m_selectedId == selBefore && !selBefore.empty(),
+                  "code: selection kept while editing");
+            check(m_codeEditor.IsOpen(), "code: editor dialog ready");
+            check(!m_codeEditor.DialogHandle().GetBool(PropertyNames::kConfirmVisible),
+                  "code: enter-confirm disabled");
+            check(m_codeEditor.TopHandle().IsValid() && m_codeEditor.BodyHandle().IsValid(),
+                  "code: includes/body editors present");
+            check(m_codeEditor.SliderHandle().IsValid() && m_codeEditor.ZoomHandle().IsValid(),
+                  "code: font slider + zoom present");
+            {
+                std::string f = m_codeEditor.BodyHandle().GetString(PropertyNames::kFont);
+                std::string norm;
+                for (char ch : f)
+                    if (ch != '_' && ch != '-')
+                        norm += (char)std::tolower((unsigned char)ch);
+                check(norm == "maplemononfcnregular", "code: editor monospace font");
+            }
+            m_codeEditor.ApplyFontSize(20);
+            check(m_codeEditor.BodyHandle().GetInt(PropertyNames::kFontSize) == 20,
+                  "code: font size applies");
+            m_codeEditor.ApplyFontSize(16);
+            m_codeEditor.Close();
+            const std::string incBefore = m_handlerIncludes;
+            applyHandlerCodeText(handler, "#include <stdio.h>", "    // selftest edited body");
+            const std::string src = buildEventsSourceText();
+            check(src.find("// selftest edited body") != std::string::npos &&
+                  src.find("#include <stdio.h>") != std::string::npos,
+                  "code: export uses edited body + includes");
+            check(Undo(), "code: body edit undoable");
+            check(m_handlerBodies.find(handler) == m_handlerBodies.end() &&
+                  m_handlerIncludes == incBefore,
+                  "code: undo restores body/includes");
+            // 保存/打开往返（metadata.handlers / handlerIncludes ✗）
+            m_handlerBodies[handler] = "    // selftest edited body";
+            m_handlerIncludes = "#include <stdio.h>";
+            const std::string hpath = dir + "/selftest_handler_code.csd";
+            const size_t nBefore = m_items.size();
+            const bool saveOk = SaveProject(hpath);
+            NewProject();
+            const bool openOk = OpenProject(hpath);
+            check(saveOk && openOk && m_items.size() == nBefore &&
+                  m_handlerBodies.count(handler) == 1 &&
+                  m_handlerIncludes.find("stdio.h") != std::string::npos,
+                  "code: handler body/includes save/open roundtrip");
+        } else {
+            check(false, "code: fixture missing");
+        }
+    }
+    // F3.5：原始 JSON 应用（改 rect.w → 重建 → 撤销还原 ✗）
+    {
+        PlacedControl* pc = nullptr;
+        for (auto& it : m_items)
+            if (it.ctl.IsValid()) { pc = &it; break; }
+        if (pc) {
+            const std::string id = pc->model->props.id;
+            const float oldW = pc->model->props.rect.w;
+            selectItem(id);
+            ShowRawJsonDialog();
+            if (m_jsonEditor.IsOpen() && m_jsonEditor.BodyHandle().IsValid()) {
+                const std::string txt = readControlTextLong(
+                    m_ui ? m_ui->Handle() : nullptr, m_jsonEditor.BodyHandle(),
+                    PropertyNames::kTextContent);
+                nlohmann::json j = nlohmann::json::parse(txt, nullptr, false);
+                if (j.is_object() && j.contains("rect") && j["rect"].is_object()) {
+                    j["rect"]["w"] = oldW + 10.0f;
+                    applyRawJsonText(j.dump(2), id, /*whole=*/false);
+                    ControlModel* after = findModel(id);
+                    check(after && std::fabs(after->props.rect.w - (oldW + 10.0f)) < 0.01f,
+                          "json: edit applied");
+                    check(Undo(), "json: edit undoable");
+                    ControlModel* back = findModel(id);
+                    check(back && std::fabs(back->props.rect.w - oldW) < 0.01f,
+                          "json: undo restores");
+                } else {
+                    check(false, "json: node parse failed");
+                }
+                {
+                    std::string f = m_jsonEditor.BodyHandle().GetString(PropertyNames::kFont);
+                    std::string norm;
+                    for (char ch : f)
+                        if (ch != '_' && ch != '-')
+                            norm += (char)std::tolower((unsigned char)ch);
+                    check(norm == "maplemononfcnregular", "json: editor uses monospace font");
+                }
+                check(!m_jsonEditor.DialogHandle().GetBool(PropertyNames::kConfirmVisible),
+                      "json: enter-confirm disabled");
+                check(m_jsonEditor.ZoomHandle().IsValid(), "json: zoom button present");
+                check(m_jsonEditor.SliderHandle().IsValid(), "json: font size slider present");
+                m_jsonEditor.ApplyFontSize(20);
+                check(m_jsonEditor.BodyHandle().GetInt(PropertyNames::kFontSize) == 20,
+                      "json: slider applies font size");
+                m_jsonEditor.ApplyFontSize(16);
+                const float w0 = m_jsonEditor.DialogHandle().GetRect().w;
+                m_jsonEditor.ToggleExpanded();
+                check(m_jsonEditor.DialogHandle().GetRect().w > w0, "json: dialog expands");
+                m_jsonEditor.ToggleExpanded();
+                m_jsonEditor.Close();
+            } else {
+                check(false, "json: dialog missing");
+            }
+        } else {
+            check(false, "json: fixture missing");
+        }
+    }
     // P0-106：颜色状态缺省回退（引擎已实施 ✗）——新建探针（无显式态）先设自定义 normal
     {
         Control probe = m_viewport ? m_viewport->CreateButton("p106probe", -1000, -1000, 80, 24)
@@ -8537,6 +8768,8 @@ std::string CanvasPane::SelfTestIdOfType(const std::string& type) const {
 // 新建（清空画布 + 解绑项目路径 + 缺省画布尺寸 + 清资源）
 void CanvasPane::NewProject() {
     clearCanvas();
+    m_handlerBodies.clear();   // F4.6：新工程无事件代码 ✗
+    m_handlerIncludes = "#include <stdio.h>";   // F4.6：常用 printf 缺省可用 ✗
     m_benchId.clear();
     ensureBenchId();   // P0-112：新工程预置 bench id ✗
     SetCanvasSize(1280.0f, 800.0f);
@@ -9025,7 +9258,12 @@ void CanvasPane::refreshEventPanel() {
             if (!e.value().is_string()) continue;
             const std::string json = e.key();
             const std::string handler = e.value().get<std::string>();
-            Control row = m_ui->CreatePanel(0, 0, 464, 32);
+            float rowW = 464.0f;
+            if (m_evHost.IsValid()) {
+                const UIRect hr = m_evHost.GetRect();
+                if (hr.w > 300.0f) rowW = hr.w;
+            }
+            Control row = m_ui->CreatePanel(0, 0, rowW, 32);
             if (!row.IsValid()) continue;
             row.SetEnum(PropertyNames::kLayout, "h-flow");
             row.SetBool(PropertyNames::kBorderVisible, false);
@@ -9037,16 +9275,24 @@ void CanvasPane::refreshEventPanel() {
                     row.AddChild(lb);
                 }
             };
-            mk(m->props.id, 60.0f);
-            mk(json, 90.0f);
-            Control hb = m_ui->CreateLabel(handler, 16.0f, 0, 0, 200, 32);
+            mk(m->props.id, 56.0f);
+            mk(json, 78.0f);
+            Control hb = m_ui->CreateLabel(handler, 16.0f, 0, 0, 120, 32);
             if (hb.IsValid()) {
                 hb.SetColor(PropertyNames::kText, UIColor{0x8F, 0xC8, 0xFF, 255});
                 hb.SetFloat(PropertyNames::kChildFlowWeight, 1.0f);
                 row.AddChild(hb);
             }
             const std::string cid = m->props.id;
-            Control del = m_ui->CreateButton(u8"删除", 0, 0, 56, 32);
+            const std::string hname = handler;
+            Control code = m_ui->CreateButton(u8"代码", 0, 0, 48, 32);
+            if (code.IsValid()) {
+                code.SetCallback(PropertyNames::kEventClick, [this, hname](const Event&) {
+                    ShowHandlerCodeDialog(hname);
+                });
+                row.AddChild(code);
+            }
+            Control del = m_ui->CreateButton(u8"删除", 0, 0, 48, 32);
             if (del.IsValid()) {
                 del.SetCallback(PropertyNames::kEventClick, [this, cid, json](const Event&) {
                     if (removeEventBinding(cid, json)) {
@@ -9114,6 +9360,7 @@ void CanvasPane::SetToolboxTree(Control tree) {
     m_toolboxTree = tree;
     if (!m_toolboxTree.IsValid()) return;
     m_toolboxTree.SetCallback(PropertyNames::kEventSelect, [this](const Event& e) {
+        if (m_toolboxSearchSelecting) return;   // F1.3：搜索定位高亮不布防放置候选 ✗
         const std::string id = e.GetNodeId();
         std::printf("[Toolbox] select node=%s\n", id.c_str());
         if (id.empty()) return;
@@ -9137,6 +9384,303 @@ void CanvasPane::SetToolboxTree(Control tree) {
         m_lastToolId = id;
         m_lastToolTime = now;
     });
+    m_ui->TreeViewExpandAll(m_toolboxTree);   // 工具箱默认全展开（组内工具直接可见 ✗）
+    // F1.3：工具箱搜索（按名称定位：展开组 + 选中 + 滚动可见 ✗）
+    m_toolboxSearch = m_ui ? m_ui->FindControl("edToolSearch") : Control();
+    if (m_toolboxSearch.IsValid()) {
+        m_toolboxSearch.SetCallback(PropertyNames::kEventTextChanged, [this](const Event& e) {
+            locateToolboxNode(e.GetTextChanged());
+        });
+    }
+}
+
+void CanvasPane::locateToolboxNode(const std::string& query) {
+    if (!m_toolboxTree.IsValid() || !m_ui || query.empty()) return;
+    auto lower = [](std::string v) {
+        for (auto& ch : v)
+            if (ch >= 'A' && ch <= 'Z') ch = (char)(ch - 'A' + 'a');
+        return v;
+    };
+    const std::string q = lower(query);
+    for (const auto& e : kToolboxCatalog) {
+        const std::string hay = lower(std::string(e.id) + " " + e.label);
+        if (hay.find(q) == std::string::npos) continue;
+        m_toolboxSearchSelecting = true;
+        m_ui->TreeViewExpandAll(m_toolboxTree);            // 组全展开，保证命中行可见
+        m_ui->TreeViewSelectNode(m_toolboxTree, e.id);     // 选中 + ensureSelectedVisible 滚动 ✓
+        m_toolboxSearchSelecting = false;
+        return;
+    }
+}
+
+// F3.5：长文本读取——Binding Control::GetString 固定 256B 缓冲会截断（JSON 超长 ✗）；
+// C ABI UICornerstone_GetString 支持 maxLen → 动态扩缓冲重试（binding DynamicApi 直取 ✓）。
+static std::string readControlTextLong(UIInstance inst, Control& ctl, const char* prop) {
+    if (!inst || !ctl.IsValid() || !prop || !UICornerstone::Dyn::API().fnGetString)
+        return std::string();
+    size_t cap = 4096;
+    for (int tries = 0; tries < 5; ++tries) {
+        std::vector<char> buf(cap, 0);
+        if (!UICornerstone::Dyn::API().fnGetString(inst, ctl.Handle(), prop,
+                                                   buf.data(), (int)cap))
+            return std::string();
+        const size_t n = std::strlen(buf.data());
+        if (n + 1 < cap) return std::string(buf.data(), n);   // 未截断
+        cap *= 4;
+    }
+    return std::string();
+}
+
+// F3.5/F4.6：共享文本编辑窗（等宽字体 + 字号滑条 + 放大/还原 + 回车保护 ✗）========
+std::string TextEditorDialog::ReadLong(UIInstance inst, Control& ctl, const char* prop) {
+    return readControlTextLong(inst, ctl, prop);
+}
+
+void TextEditorDialog::ApplyFontSize(int px) {
+    m_fontSize = std::max(10, std::min(28, px));
+    if (m_body.IsValid()) m_body.SetInt(PropertyNames::kFontSize, m_fontSize);
+    if (m_top.IsValid())
+        m_top.SetInt(PropertyNames::kFontSize, std::max(10, m_fontSize - 3));
+    if (m_label.IsValid())
+        m_label.SetString(PropertyNames::kCaption, u8"字号 " + std::to_string(m_fontSize));
+    if (m_slider.IsValid() &&
+        (int)std::lround(m_slider.GetFloat(PropertyNames::kValue)) != m_fontSize)
+        m_slider.SetFloat(PropertyNames::kValue, (float)m_fontSize);
+}
+
+void TextEditorDialog::EnsureCreated() {
+    if (m_dlg.IsValid() || !m_ui) return;
+    m_dlg = m_ui->CreateDialog(u8"应用", u8"取消", 0, 0, 760, 560);
+    if (!m_dlg.IsValid()) return;
+    // 回车保护：仅关闭"回车=确认"语义；内置"应用/取消"按钮保留可点击 ✗
+    m_dlg.SetBool(PropertyNames::kConfirmVisible, 0);
+    if (m_showTop) {
+        m_top = m_ui->CreateTextArea(12, 12, 736, 64);
+        if (m_top.IsValid()) {
+            m_top.SetString(PropertyNames::kFont, "maplemono-nf-cn-regular");
+            m_dlg.AddChild(m_top);
+        }
+    }
+    m_body = m_ui->CreateTextArea(12, m_showTop ? 84 : 12, 736, 424);
+    if (!m_body.IsValid()) return;
+    m_body.SetString(PropertyNames::kFont, "maplemono-nf-cn-regular");
+    m_body.SetBool(PropertyNames::kWordWrap, 1);   // 自动换行（长行不横向丢光标 ✗）
+    // 光标跟随（引擎 ensureCursorVisible 之外的兜底）：末尾追加/退格输入 → 滚到底；
+    // 中间编辑不打扰。scroll-y 由引擎钳制到最大滚动量 ✓。
+    m_body.SetCallback(PropertyNames::kEventTextChanged, [this](const Event& e) {
+        const std::string t = e.GetTextChanged();
+        const bool tailEdit =
+            (t.size() >= m_lastBody.size() && t.compare(0, m_lastBody.size(), m_lastBody) == 0) ||
+            (t.size() <= m_lastBody.size() && m_lastBody.compare(0, t.size(), t) == 0);
+        if (tailEdit) m_body.SetInt(PropertyNames::kScrollY, 1 << 20);
+        m_lastBody = t;
+    });
+    m_dlg.AddChild(m_body);
+    m_zoom = m_ui->CreateButton(u8"放大", 12, 512, 96, 28);
+    if (m_zoom.IsValid()) {
+        m_dlg.AddChild(m_zoom);
+        m_zoom.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+            ToggleExpanded();
+        });
+    }
+    m_slider = m_ui->CreateSlider(120, 512, 170, 22, 10.0f, 28.0f, (float)m_fontSize);
+    if (m_slider.IsValid()) {
+        m_dlg.AddChild(m_slider);
+        m_slider.SetCallback(PropertyNames::kEventValueChanged, [this](const Event& e) {
+            ApplyFontSize((int)std::lround(e.GetValueChanged()));
+        });
+    }
+    m_label = m_ui->CreateLabel(u8"字号", 13.0f, 298, 512, 90, 22);
+    if (m_label.IsValid()) m_dlg.AddChild(m_label);
+    m_dlg.SetCallback(PropertyNames::kEventClose, [this](const Event& e) {
+        if (e.GetCloseResult() != 1 || !m_onApply) return;
+        std::string topText = m_top.IsValid()
+            ? ReadLong(m_ui ? m_ui->Handle() : nullptr, m_top, PropertyNames::kTextContent)
+            : std::string();
+        std::string bodyText = m_body.IsValid()
+            ? ReadLong(m_ui ? m_ui->Handle() : nullptr, m_body, PropertyNames::kTextContent)
+            : std::string();
+        m_onApply(topText, bodyText);
+    });
+    ApplyFontSize(m_fontSize);
+}
+
+void TextEditorDialog::Layout() {
+    if (!m_dlg.IsValid() || !m_ui) return;
+    Control root = m_ui->Root();
+    const UIRect rr = root.IsValid() ? root.GetRect() : UIRect{ 0, 0, 1280, 800 };
+    const float vw = rr.w > 100.0f ? rr.w : 1280.0f;
+    const float vh = rr.h > 100.0f ? rr.h : 800.0f;
+    const float W = m_expanded ? std::floor(vw * 0.92f) : 760.0f;
+    const float H = m_expanded ? std::floor(vh * 0.92f) : 560.0f;
+    m_dlg.SetRect(std::floor((vw - W) * 0.5f), std::floor((vh - H) * 0.5f), W, H);
+    m_dlg.SetBool(PropertyNames::kVisible, 0);   // 重开触发 Dialog 按钮重排 ✓
+    m_dlg.SetBool(PropertyNames::kVisible, 1);
+    if (m_top.IsValid()) m_top.SetRect(12, 12, W - 24, 64);
+    if (m_body.IsValid())
+        m_body.SetRect(12, m_showTop ? 84 : 12, W - 24, H - (m_showTop ? 84 : 12) - 64);
+    if (m_zoom.IsValid()) {
+        m_zoom.SetRect(12, H - 40, 96, 28);
+        m_zoom.SetString(PropertyNames::kCaption, m_expanded ? u8"还原" : u8"放大");
+    }
+    if (m_slider.IsValid()) m_slider.SetRect(120, H - 38, 170, 22);
+    if (m_label.IsValid()) m_label.SetRect(298, H - 38, 90, 22);
+}
+
+void TextEditorDialog::Open(
+    UICornerstone::UICornerstone* ui, bool showTop, const std::string& topText,
+    const std::string& bodyText,
+    std::function<void(const std::string&, const std::string&)> onApply) {
+    m_ui = ui;
+    m_showTop = showTop;
+    m_onApply = std::move(onApply);
+    EnsureCreated();
+    if (!m_dlg.IsValid()) return;
+    if (m_top.IsValid()) m_top.SetString(PropertyNames::kTextContent, topText);
+    if (m_body.IsValid()) m_body.SetString(PropertyNames::kTextContent, bodyText);
+    m_lastBody = bodyText;
+    ApplyFontSize(m_fontSize);
+    Layout();
+}
+
+bool TextEditorDialog::IsOpen() const {
+    return m_dlg.IsValid() && m_dlg.GetBool(PropertyNames::kPopupVisible);
+}
+
+void TextEditorDialog::Close() {
+    if (m_dlg.IsValid()) m_dlg.SetBool(PropertyNames::kVisible, 0);
+}
+
+// F3.5：原始 JSON 视图——展示所选控件节点（无选中=整布局），应用时替换并重建 ✓
+static nlohmann::json* findLayoutNodeById(nlohmann::json& node, const std::string& id) {
+    if (node.is_object() && node.value("id", std::string()) == id) return &node;
+    if (node.contains("children") && node["children"].is_array())
+        for (auto& ch : node["children"])
+            if (auto* hit = findLayoutNodeById(ch, id)) return hit;
+    return nullptr;
+}
+
+void CanvasPane::ShowRawJsonDialog() {
+    if (!m_ui || m_previewMode) return;
+    const bool whole = m_selectedId.empty() || !findModel(m_selectedId);
+    std::string text;
+    if (whole) {
+        text = serializeLayoutJson().dump(2);
+    } else {
+        nlohmann::json layout = serializeLayoutJson();
+        nlohmann::json* node = nullptr;
+        if (layout.contains("controls") && layout["controls"].is_array())
+            for (auto& c : layout["controls"])
+                if ((node = findLayoutNodeById(c, m_selectedId)) != nullptr) break;
+        if (!node) {
+            setStatusHint(u8"原始 JSON：未找到所选控件");
+            return;
+        }
+        text = node->dump(2);
+    }
+    const std::string target = whole ? std::string() : m_selectedId;
+    m_jsonEditor.Open(m_ui, /*showTop=*/false, std::string(), text,
+                      [this, target](const std::string&, const std::string& body) {
+                          applyRawJsonText(body, target, target.empty());
+                      });
+}
+
+void CanvasPane::applyRawJsonText(const std::string& text, const std::string& targetId,
+                                  bool whole) {
+    (void)whole;
+    if (targetId.empty()) {
+        // 整布局应用（无选中入口）：要求 controls 数组；复用载入路径，入撤销 ✓
+        nlohmann::json layout = nlohmann::json::parse(text, nullptr, false);
+        if (layout.is_discarded() || !layout.is_object() ||
+            !layout.contains("controls") || !layout["controls"].is_array()) {
+            setStatusHint(u8"原始 JSON：整布局需为含 controls 数组的对象");
+            return;
+        }
+        {
+            UndoSuspendGuard undoSuspend(m_undoSuspended);
+            if (!buildFromLayoutJson(layout, true)) {
+                setStatusHint(u8"原始 JSON：应用失败");
+                return;
+            }
+        }
+        commitUndo("json:edit-all");
+        setStatusHint(u8"已应用原始 JSON（整布局）");
+        return;
+    }
+    nlohmann::json edited = nlohmann::json::parse(text, nullptr, false);
+    if (edited.is_discarded() || !edited.is_object()) {
+        setStatusHint(u8"原始 JSON：解析失败（需为对象）");
+        return;
+    }
+    if (edited.value("id", std::string()) != targetId) {
+        setStatusHint(u8"原始 JSON：id 不可修改（请用属性面板改名）");
+        return;
+    }
+    const std::string type = edited.value("type", std::string());
+    if (toolboxIdOf(type).empty()) {
+        setStatusHint(u8"原始 JSON：未知控件类型 " + type);
+        return;
+    }
+    if (!edited.contains("rect") || !edited["rect"].is_object()) {
+        setStatusHint(u8"原始 JSON：缺少 rect");
+        return;
+    }
+    nlohmann::json layout = serializeLayoutJson();
+    nlohmann::json* node = nullptr;
+    if (layout.contains("controls") && layout["controls"].is_array())
+        for (auto& c : layout["controls"])
+            if ((node = findLayoutNodeById(c, targetId)) != nullptr) break;
+    if (!node) {
+        setStatusHint(u8"原始 JSON：未找到控件");
+        return;
+    }
+    // 未提供 children 时保留原子树（防止误删子树 ✗）
+    if (!edited.contains("children") && node->contains("children"))
+        edited["children"] = (*node)["children"];
+    *node = edited;
+    {
+        UndoSuspendGuard undoSuspend(m_undoSuspended);
+        if (!buildFromLayoutJson(layout, true)) {
+            setStatusHint(u8"原始 JSON：应用失败");
+            return;
+        }
+    }
+    selectItem(targetId);
+    commitUndo("json:edit");
+    setStatusHint(u8"已应用原始 JSON：" + targetId);
+}
+
+// F4.6：事件生成代码编辑——函数体 + 头文件包含（随工程保存/导出/撤销 ✓）
+void CanvasPane::ShowHandlerCodeDialog(const std::string& handler) {
+    if (!m_ui || m_previewMode || handler.empty()) return;
+    const std::string includes =
+        m_handlerIncludes.empty() ? std::string("#include <stdio.h>") : m_handlerIncludes;
+    std::string body;
+    auto it = m_handlerBodies.find(handler);
+    if (it != m_handlerBodies.end() && !it->second.empty()) body = it->second;
+    else body = "    // TODO: 实现 " + handler + "\n    (void)ctl;\n    (void)user;\n";
+    m_codeEditor.Open(m_ui, /*showTop=*/true, includes, body,
+                      [this, handler](const std::string& top, const std::string& b) {
+                          applyHandlerCodeText(handler, top, b);
+                      });
+    setStatusHint(u8"编辑事件代码（函数体）：" + handler);
+}
+
+void CanvasPane::applyHandlerCodeText(const std::string& handler, const std::string& includes,
+                                      const std::string& bodyIn) {
+    if (handler.empty()) return;
+    std::string inc = includes;
+    while (!inc.empty() && (inc.back() == '\n' || inc.back() == ' ' || inc.back() == '\r'))
+        inc.pop_back();
+    m_handlerIncludes = inc;
+    std::string body = bodyIn;
+    while (!body.empty() &&
+           (body.back() == ' ' || body.back() == '\t' || body.back() == '\r' || body.back() == '\n'))
+        body.pop_back();
+    if (body.empty()) m_handlerBodies.erase(handler);
+    else m_handlerBodies[handler] = body;
+    commitUndo();
+    setStatusHint(u8"已保存事件代码：" + handler);
 }
 
 void CanvasPane::TickInput() {

@@ -178,6 +178,16 @@
                                     "events": {
                                         "onClick": "onMenuMoveDown"
                                     }
+                                },
+                                {
+                                    "type": "separator"
+                                },
+                                {
+                                    "caption": "原始 JSON…",
+                                    "shortcut": "Ctrl+J",
+                                    "events": {
+                                        "onClick": "onMenuEditJson"
+                                    }
                                 }
                             ]
                         },
@@ -322,6 +332,34 @@
                                         {
                                             "title": "工具箱",
                                             "page": {
+                                            "type": "panel",
+                                            "id": "toolboxPage",
+                                            "rect": {
+                                                "x": 0,
+                                                "y": 0,
+                                                "w": 240,
+                                                "h": 700
+                                            },
+                                            "layout": { "type": "anchor" },
+                                            "children": [
+                                                {
+                                                    "type": "edit-box",
+                                                    "id": "edToolSearch",
+                                                    "rect": {
+                                                        "x": 8,
+                                                        "y": 6,
+                                                        "w": 224,
+                                                        "h": 26
+                                                    },
+                                                    "anchor": "top-stretch",
+                                                    "anchorOffset": { "left": 8, "right": 8, "top": 6 },
+                                                    "placeholder": "搜索控件…",
+                                                    "font": {
+                                                        "name": "HarmonyOS_Sans_SC_Regular",
+                                                        "size": 14
+                                                    }
+                                                },
+                                                {
                                                 "type": "tree-view",
                                                 "id": "tvToolbox",
                                                 "rect": {
@@ -331,6 +369,7 @@
                                                     "h": 700
                                                 },
                                                 "anchor": "fill",
+                                                    "anchorOffset": { "top": 40 },
                                                 "defaultExpand": true,
                                                 "items": [
                                                     {
@@ -571,6 +610,8 @@
                                                     }
                                                 ]
                                             }
+                                            ]
+                                        }
                                         },
                                         {
                                             "title": "控件树",
