@@ -39,6 +39,8 @@ private:
     void setupCanvas();                 // canvasArea → CanvasPane（子视口 + 网格覆盖层）
     void setupTreeContextMenu();        // P0-105：控件树右键菜单（删除/上移/下移/移到根 ✗）
     Control m_treeMenu;                 // P0-105：控件树上下文菜单（持久复用 ✗）
+    Control m_toolboxMenu;              // C3：工具箱组件右键菜单（编辑/删除 ✗）
+    std::string m_toolboxMenuTarget;    // 右键命中的组件名
     void bindToolbar();                 // 画布工具栏控件 → CanvasPane 交互接线
     void refreshMenuStates();           // 菜单可用态（撤销/重做；引擎按 item id 注册后生效）
     void togglePreview();               // 预览：独立窗体（引擎多实例）打开/刷新（工具栏/菜单 F5）

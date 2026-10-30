@@ -188,6 +188,33 @@
                                     "events": {
                                         "onClick": "onMenuEditJson"
                                     }
+                                },
+                                {
+                                    "type": "separator"
+                                },
+                                {
+                                    "caption": "由选中控件创建组件…",
+                                    "events": {
+                                        "onClick": "onMenuCreateComponent"
+                                    }
+                                },
+                                {
+                                    "caption": "编辑组件…",
+                                    "events": {
+                                        "onClick": "onMenuEditComponent"
+                                    }
+                                },
+                                {
+                                    "caption": "组件实例属性…",
+                                    "events": {
+                                        "onClick": "onMenuInstanceProps"
+                                    }
+                                },
+                                {
+                                    "caption": "删除组件…",
+                                    "events": {
+                                        "onClick": "onMenuDeleteComponent"
+                                    }
                                 }
                             ]
                         },

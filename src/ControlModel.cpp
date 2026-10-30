@@ -1,4 +1,4 @@
-// ControlModel.cpp
+﻿// ControlModel.cpp
 // CornerstoneDesigner
 
 #include "Designer/ControlModel.h"
@@ -37,7 +37,13 @@ std::unique_ptr<ControlModel> ControlModel::fromJson(const nlohmann::json& j) {
         node->props.rect.w = j["rect"].value("w", 0.0f);
         node->props.rect.h = j["rect"].value("h", 0.0f);
     }
-    if (j.contains("visible")) node->props.visible = j["visible"].get<bool>();
+    if (j.contains("visible")) {
+        if (j["visible"].is_boolean()) node->props.visible = j["visible"].get<bool>();
+        else if (j["visible"].is_string()) {   // P109：bool 占位符原样保留（引擎替换）
+            node->props.extended["visible"] = j["visible"];
+            node->props.visible = true;
+        }
+    }
     for (auto& [k, v] : j.items()) {
         if (k == "type" || k == "id" || k == "rect" || k == "visible" || k == "children")
             continue;

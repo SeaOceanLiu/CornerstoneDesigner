@@ -663,7 +663,8 @@ void App::registerActions() {
         "onMenuImportJson", "onMenuExportJson", "onMenuExportCode", "onMenuExportCpp",
         "onMenuExportReport", "onMenuExit",
         "onMenuUndo", "onMenuRedo", "onMenuCopy", "onMenuPaste", "onMenuDelete",
-        "onMenuEditJson",
+        "onMenuEditJson", "onMenuCreateComponent", "onMenuEditComponent",
+        "onMenuInstanceProps", "onMenuDeleteComponent",
         "onMenuFront", "onMenuBack", "onMenuMoveUp", "onMenuMoveDown",
         "onMenuZoom25", "onMenuZoom50", "onMenuZoom75", "onMenuZoom100",
         "onMenuZoom150", "onMenuZoom200",
@@ -806,6 +807,22 @@ void App::registerActions() {
             m_ui->RegisterAction(name, guard([this](Control) { if (m_canvas) m_canvas->Undo(); }));
         } else if (std::string(name) == "onMenuRedo") {
             m_ui->RegisterAction(name, guard([this](Control) { if (m_canvas) m_canvas->Redo(); }));
+        } else if (std::string(name) == "onMenuDeleteComponent") {
+            m_ui->RegisterAction(name, guard([this](Control) {
+                if (m_canvas) m_canvas->DeleteSelectedComponent();
+            }));
+        } else if (std::string(name) == "onMenuInstanceProps") {
+            m_ui->RegisterAction(name, guard([this](Control) {
+                if (m_canvas) m_canvas->ShowInstancePropsDialog();
+            }));
+        } else if (std::string(name) == "onMenuEditComponent") {
+            m_ui->RegisterAction(name, guard([this](Control) {
+                if (m_canvas) m_canvas->EditSelectedComponent();
+            }));
+        } else if (std::string(name) == "onMenuCreateComponent") {
+            m_ui->RegisterAction(name, guard([this](Control) {
+                if (m_canvas) m_canvas->ShowCreateComponentDialog();   // 组件系统：选中控件 → 组件
+            }));
         } else if (std::string(name) == "onMenuEditJson") {
             m_ui->RegisterAction(name, guard([this](Control) {
                 std::printf("[F35] action onMenuEditJson\n");
@@ -865,6 +882,29 @@ void App::setupTreeContextMenu() {
     addAct(u8"上移", [this] { if (m_canvas) m_canvas->treeMoveInParent(-1); });
     addAct(u8"下移", [this] { if (m_canvas) m_canvas->treeMoveInParent(+1); });
     addAct(u8"移到画布根", [this] { if (m_canvas) m_canvas->treeMoveToRoot(); });
+    // C4：树中右键组件实例 → 编辑组件（用户直觉入口；非实例时提示 ✗）
+    addAct(u8"编辑组件…", [this] { if (m_canvas) m_canvas->EditSelectedComponent(); });
+
+    // C3：工具箱组件右键（编辑/删除定义 ✗）
+    m_toolboxMenu = m_ui->CreateContextMenu(0, 0, 220, 80);
+    if (m_toolboxMenu.IsValid()) {
+        auto addTb = [this](const char* cap, std::function<void()> fn) {
+            Control item = m_ui->ContextMenuAddItemEx(m_toolboxMenu, cap);
+            if (!item.IsValid()) return;
+            item.SetCallback(PropertyNames::kEventClick, [this, fn](const Event&) {
+                m_canvas->SuppressCanvasClickThisFrame();
+                fn();
+            });
+        };
+        addTb(u8"编辑组件…", [this] {
+            if (m_canvas && !m_toolboxMenuTarget.empty())
+                m_canvas->EditComponentByName(m_toolboxMenuTarget);
+        });
+        addTb(u8"删除组件…", [this] {
+            if (m_canvas && !m_toolboxMenuTarget.empty())
+                m_canvas->DeleteComponentByName(m_toolboxMenuTarget);
+        });
+    }
 }
 
 void App::bindToolbar() {
@@ -1181,6 +1221,7 @@ void App::refreshMenuStates() {
 // pumpPreviewWindow 检测回收。
 void App::togglePreview() {
     if (!m_canvas) return;
+    // 组件编辑期允许预览——预览内容 = 当前模板画布（serializeLayoutJson 含 components ✗）
     if (!m_previewUi) {
         openPreviewWindow();
         return;
@@ -1505,6 +1546,18 @@ int App::run(int autoSeconds) {
                         if (!rowId.empty()) {
                             if (m_canvas) m_canvas->selectTreeRow(rowId);   // 模型+树同步 ✓
                             m_ui->ContextMenuShow(m_treeMenu, rx, ry);
+                        }
+                    }
+                }
+                // C3：工具箱组件右键（编辑/删除定义 ✗）
+                auto tbox = m_ui->FindControl("tvToolbox");
+                if (tbox.IsValid() && m_toolboxMenu.IsValid() && m_canvas) {
+                    const auto r = tbox.GetRect();
+                    if (rx >= r.x && rx < r.x + r.w && ry >= r.y && ry < r.y + r.h) {
+                        const std::string node = m_ui->TreeViewGetNodeAt(tbox, rx, ry);
+                        if (!node.empty() && m_canvas->IsComponentName(node)) {
+                            m_toolboxMenuTarget = node;
+                            m_ui->ContextMenuShow(m_toolboxMenu, rx, ry);
                         }
                     }
                 }

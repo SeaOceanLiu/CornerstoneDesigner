@@ -45,7 +45,7 @@ class TextEditorDialog {
 public:
     void Open(UICornerstone::UICornerstone* ui, bool showTop, const std::string& topText,
               const std::string& bodyText,
-              std::function<void(const std::string& top, const std::string& body)> onApply);
+              std::function<bool(const std::string& top, const std::string& body)> onApply);
     bool IsOpen() const;
     void Close();
     void ApplyFontSize(int px);
@@ -56,16 +56,19 @@ public:
     Control SliderHandle() const { return m_slider; }
     Control ZoomHandle() const { return m_zoom; }
     int FontSize() const { return m_fontSize; }
+    bool ApplyFromBody();   // 自测/复用：按当前正文执行应用回调（返回是否成功）
 private:
     static std::string ReadLong(UIInstance inst, Control& ctl, const char* prop);
     void EnsureCreated();
     void Layout();
     UICornerstone::UICornerstone* m_ui = nullptr;
     Control m_dlg, m_top, m_body, m_zoom, m_slider, m_label;
+    Control m_confirmBtn, m_applyBtn;   // 隐藏内置确认 → 自定义“应用”（失败不关闭 ✗）
+    Control m_statusLabel;              // 应用失败提示（窗口内可见，非模态 ✗）
     bool m_showTop = false;
     bool m_expanded = false;
     int m_fontSize = 16;
-    std::function<void(const std::string&, const std::string&)> m_onApply;
+    std::function<bool(const std::string&, const std::string&)> m_onApply;
     std::string m_lastBody;   // 光标跟随启发式：上次正文（末尾追加/退格 → 滚到底 ✗）
 };
 
@@ -188,10 +191,54 @@ public:
     void SetStatePreview(int mode);   // P0-114：设计态状态预览（0=跟随 1=常态 2=悬停 3=按下 4=禁用 ✗）
     void SetStatePreviewUiCallback(std::function<void(int)> fn) { m_statePreviewUiFn = std::move(fn); }
     void ShowRawJsonDialog();   // F3.5：所选控件原始 JSON（查看/编辑/应用 ✗）
-    void applyRawJsonText(const std::string& text, const std::string& targetId, bool whole);
+    void ShowCreateComponentDialog();   // 组件系统：选中控件创建组件（名称对话框 ✗）
+    void EditSelectedComponent();   // C2：编辑选中组件实例（进入模板编辑 ✗）
+    bool EnterComponentEdit(const std::string& name);
+    void ExitComponentEdit(bool apply);
+    bool IsEditingComponent() const { return !m_editingComponent.empty(); }
+    void ShowComponentPropsDialog();   // C2：组件 props 声明（JSON 编辑 ✗）
+    void ShowColorExprDialog(const std::string& id, const std::string& prop,
+                            const std::string& grp, const std::string& state);   // C4：颜色槽表达式（引擎 P0-110 前的绑定入口 ✗）
+    void ShowPropExprDialog(const std::string& id, const std::string& key,
+                            const std::string& title);   // P109：数值/布尔属性表达式入口 ✗
+    void ShowInstancePropsDialog();   // C3：组件实例 props 传值（JSON 编辑 ✗）
+    void DeleteSelectedComponent();   // 组件管理：删除组件定义及其全部实例（✗）
+    void ConfirmDeleteComponent(const std::string& name);   // 确认删除（含嵌入检查 ✗）
+    void DeleteComponentByName(const std::string& name);    // 工具箱右键删除 ✗
+    void EditComponentByName(const std::string& name);      // 工具箱右键编辑 ✗
+    bool IsComponentName(const std::string& id) const { return m_components.contains(id); }
+    bool componentEmbeddedIn(const std::string& name, std::string* by) const;
+    bool applyComponentDelete(const std::string& name);   // 实际删除（延迟消费/自测复用 ✗）
+    void buildComponentPropRows(ControlModel& m);
+    void applyInstanceStateProps(const std::string& text);
+    void setCompBarVisible(bool on, const std::string& name);   // C2 模式条（独占第二行 ✗）
+    void ShowMessageDialog(const std::string& msg);   // C2：阻断性提示（模态对话框 ✗）
+    void ensureCompBar();
+    bool applyComponentPropsText(const std::string& text);
+    bool applyRawJsonText(const std::string& text, const std::string& targetId, bool whole);
     void ShowHandlerCodeDialog(const std::string& handler);   // F4.6：编辑事件生成代码（函数体 ✗）
     void applyHandlerCodeText(const std::string& handler, const std::string& includes,
                               const std::string& body);
+    bool createComponentFromSelection(const std::string& name,
+                                     const std::string& sourceId = std::string());   // 模板=源控件子树 ✗
+    void syncToolboxComponents();                                  // 工具箱"组件"动态分组 ✓
+    Control createComponentPlaceholder(const std::string& name, float x, float y,
+                                       float w, float h);           // 设计态占位块 ✗
+    // C4：实例画布内可视化（模板展开为幽灵控件；不序列化/不进树/不参与选择 ✗）
+    void expandComponentGhosts(const std::string& instanceId);
+    void clearComponentGhosts(const std::string& instanceId);
+    void expandAllComponentGhosts();
+    void tickComponentGhosts();
+    std::string buildGhostNode(const nlohmann::json& node, const std::string& parentId,
+                               const std::string& owner, const nlohmann::json& props,
+                               int depth, bool rootOverride, float rootW, float rootH,
+                               std::set<std::string>& stack);
+    static bool isGhostModel(const ControlModel& m) {
+        return m.props.extended.contains("_compGhost");
+    }
+    bool isComponentType(const std::string& type) const {
+        return m_components.is_object() && m_components.contains(type);
+    }
     bool IsPreviewMode() const { return m_previewMode; }
 
     // 删除选中控件：销毁视口控件 + 移除模型 + 取消选中（清空属性面板/隐藏选中框）。
@@ -536,6 +583,33 @@ private:
     Control m_toolboxSearch;              // F1.3：工具箱搜索框（edit-box，text-changed 定位）
     std::string m_handlerIncludes;        // F4.6：events.c 头文件包含（随工程保存 ✗）
     std::map<std::string, std::string> m_handlerBodies;   // F4.6：handler 函数体（随工程保存 ✗）
+    nlohmann::json m_components = nlohmann::json::object();   // 组件系统：定义（引擎 components 区 ✗）
+    Control m_compDlg, m_compDlgName;                          // 创建组件对话框（懒建复用）
+    Control m_exprDlg, m_exprEdit, m_exprLabel;                // 表达式对话框（颜色/属性共用，懒建复用）
+    std::string m_exprTarget, m_exprProp, m_exprGrp, m_exprState;
+    std::string m_pendingComponentName;   // 延迟创建（对话框回调内不销毁控件 ✗）
+    std::string m_compSrcId;              // 打开创建对话框时的源控件 id（防弹窗点选改选 ✗）
+    std::string m_pendingComponentDelete;   // 延迟删除组件（回调内不销毁控件 ✗）
+    std::string m_compDeleteName;           // 待确认删除的组件名
+    Control m_confirmDlg, m_confirmLabel;   // 确认对话框（懒建复用）
+    std::vector<Control> m_compPropRows;   // 组件实例 props 动态行（原始控件 ✗）
+    std::string m_editingComponent;       // C2：正在编辑的组件名（空=设计画布）
+    std::string m_pendingEnterComponent;  // C2：延迟进入组件编辑（菜单回调内不重建画布 ✗）
+    int m_pendingExitComponent = -1;      // C2：延迟退出（-1 无 / 0 取消 / 1 应用）
+    std::unordered_map<std::string, size_t> m_ghostSig;       // C4：实例幽灵展开签名
+    std::unordered_map<std::string, Control> m_ghostFallback; // C4：缺模板时的占位标签
+    bool m_ghostBuilding = false;         // C4：幽灵构建中（抑制树同步 ✗）
+    std::string m_compEditSaved;          // C2：进入组件编辑前的主工程快照（JSON）
+    TextEditorDialog m_compPropsEditor;   // C2：组件 props 声明编辑器（共享窗 ✗）
+    Control m_compBar;              // C2：组件编辑条（主 UI 第二行，独占不遮挡 ✗）
+    Control m_compBarLabel;
+    Control m_compBarProps;
+    Control m_compBarExit;
+    Control m_msgDlg, m_msgLabel;   // 阻断提示对话框（懒建复用）
+    float m_compBarH = 0.0f;        // 0=隐藏；36=占用第二行（视口下移 ✓）
+    float m_pressX = 0.0f, m_pressY = 0.0f;   // 双击判定：按下位置（画布逻辑坐标）
+    std::string m_lastClickId;            // 双击判定：上次点击控件 id
+    double m_lastClickTime = 0.0;         // 双击判定：上次点击时刻
     bool m_toolboxSearchSelecting = false;   // F1.3：程序化选中（不布防放置候选 ✗）
     Control m_canvasTree;          // 控件树（主实例 tvTree）
     Control m_statusTarget;        // 主实例 statusBar（放置目标提示）
