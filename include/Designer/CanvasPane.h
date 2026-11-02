@@ -160,10 +160,13 @@ public:
     // 冲突/不合规：C 标识符校验 + handler 唯一（ev_err 红字提示，拒绝添加）。
     void SetEventPanel(Control typeCombo, Control handlerEdit, Control suggestBtn,
                        Control addBtn, Control errLabel, Control listHost);
+    void SetEventPanelVisible(bool visible);   // 事件 Tab 激活/离开：懒建/销毁 ListView
     void refreshEventPanel();      // 选中变化 / 绑定增删后刷新（下拉 + 列表）
     bool addEventBinding(const std::string& ctrlId, const std::string& jsonEvent,
                          const std::string& handler);
     bool removeEventBinding(const std::string& ctrlId, const std::string& jsonEvent);
+    bool addInstanceEventBinding(const std::string& instanceId, const std::string& eventKey,
+                                 const std::string& handler);   // C3：实例 _comp_ 事件 ✗
     bool isValidIdentifier(const std::string& name) const;      // C 标识符规范
     bool isHandlerNameUnique(const std::string& name) const;    // 全体绑定中唯一
     std::string suggestHandlerName(const std::string& ctrlId, const std::string& jsonEvent) const;
@@ -255,7 +258,10 @@ public:
 
     std::set<size_t> m_fixedWidthRows;   // 固定宽行（ColorPicker 120，宽度同步跳过）
     float m_seenDynW = -1.0f;            // 动态区容器宽观测（splitter 拖动后同步滚动条/行宽）
+    float m_seenEvW = 0.0f;              // 事件行宽观测（splitter 拖动）
     void syncDynamicWidth();             // 容器宽变化 → 滚动条/行宽同步
+    void syncEventWidth();               // 事件列表行宽跟随（h-flow 按比例）
+    void ensureEventList();              // 事件页可见时懒建 ListView
 
     // 属性面板联动（App 注入；选中回填面板，面板变更回写控件）
     void SetPropertyControls(Control x, Control y, Control w, Control h,
@@ -543,6 +549,12 @@ private:
     std::string m_engineRectId;
     bool m_dragOrigValid = false;       // 设计器拖动起始 rect（未移动不记历史）
     SRect m_dragOrigRect{ 0, 0, 0, 0 };
+    bool m_listColDragActive = false;
+    std::string m_listColDragId;
+    int m_listColDragIndex = -1;
+    float m_listColDragStartCx = 0;
+    float m_listColDragStartWidth = 0;
+    float m_listColDragLastWidth = 0;
     void restoreSnapshot(const std::string& json);
     void resetUndo();
 
@@ -664,12 +676,30 @@ private:
     Control m_benchDlg, m_benchDlgId, m_benchDlgTitle;   // 画布设置对话框（复用）
     // 事件面板句柄（App 接线）
     Control m_evType, m_evHandler, m_evSuggest, m_evAdd, m_evErr, m_evHost;
-    std::vector<Control> m_evRows;    // 动态绑定行（刷新时销毁重建）
+    Control m_evList;                 // ListView 绑定信息（控件/事件/handler/操作）
+    int m_evListRows = 0;
+    bool m_evTabActive = false;       // 事件页可见才创建 ListView（避免隐藏 ListView 重置全局光标）
+    std::vector<Control> m_evRows;    // 旧动态绑定行（保留清理兼容）
     std::vector<std::string> m_evTypeItems;   // 事件下拉值平行表（选中索引 → JSON 事件名）
     // 控件 id 行待提交状态（编辑完成再改名）
     std::string m_idRenameTarget, m_idRenameText;
     std::chrono::steady_clock::time_point m_idRenameDeadline;
     bool m_idRenamePending = false;
+    Control m_idRenameEdit;   // 当前 id 行 EditBox（焦点转移提交）
+    Control m_idDlg, m_idDlgLabel;
+    std::string m_idConfirmOld, m_idConfirmNew;
+    std::string m_idConfirmPendingOld, m_idConfirmPendingNew;
+    int m_idConfirmPendingRefs = 0;
+    bool m_idConfirmShowPending = false;
+    bool m_idConfirmAwaiting = false;
+    std::string m_idApplyOld, m_idApplyNew;
+    bool m_idApplyReplace = false;
+    bool m_idApplyPending = false;
+    int countHandlerRefs(const std::string& oldId) const;
+    int replaceHandlerRefs(const std::string& oldId, const std::string& newId);
+    void showIdRenameConfirm(int refs, const std::string& oldId, const std::string& newId);
+    void ensureIdConfirmDialog();
+    void processIdApply();
     bool  m_gridVisible = true;
     float m_gridCell = 40.0f;      // 画布逻辑坐标网格间距
     bool  m_snapEnabled = true;    // 吸附到网格

@@ -329,6 +329,7 @@ std::string sanitizePropValue(const std::string& prop, std::string s) {
 namespace Designer {
 
 static void stripGhostJson(nlohmann::json& j);   // C4：JSON 视图/载入剥离幽灵（定义见 F3.5 段）
+static std::string wrapDialogText(const std::string& text, size_t width);   // 通知/确认对话框换行
 
 // P0-114：状态预览键（0=跟随/1=常态/2=悬停/3=按下/4=禁用 ✗）
 static const char* kStatePreviewKeys[] = { "normal", "normal", "hover", "pressed", "disabled" };
@@ -423,8 +424,9 @@ void CanvasPane::UpdateViewport(float deltaSeconds) {
         if (p->ctl.GetEnum(PropertyNames::kState) != kStatePreviewKeys[mode])
             p->ctl.SetEnum(PropertyNames::kState, kStatePreviewKeys[mode]);
     }
-    // 控件 id 行：空闲到期提交（编辑完成再改名——防逐键 churn）
-    if (m_idRenamePending && std::chrono::steady_clock::now() >= m_idRenameDeadline)
+    // 控件 id 行：回车或焦点转移后提交（取消空闲定时弹确认 ✗）
+    if (m_idRenamePending && m_idRenameEdit.IsValid() && m_ui &&
+        !m_ui->DebugIsControlFocused(m_ui->Handle(), m_idRenameEdit.Handle()))
         commitPendingIdRename();
 }
 void CanvasPane::RenderViewport() {
@@ -3758,6 +3760,53 @@ void CanvasPane::buildComponentPropRows(ControlModel& m) {
         y += kPropLblH + kPropGapLbl;
     };
     label("comp:title", u8"[组件] " + m.props.type);
+    // 组件实例 id（与普通控件同口径：代码引用；回车/移开/500ms 提交 ✗）
+    if (m_selIds.size() == 1) {
+        if (ControlModel* mm = findModel(m_selectedId)) {
+            label("comp:idlabel", u8"控件 id（代码引用；回车或移开生效）");
+            Control ta = takePoolRow("comp:id", [&] {
+                return m_ui->CreateEditBox(kPropInsetX, y, rowW, kPropCtlH);
+            });
+            ta.SetRect(kPropInsetX, y, rowW, kPropCtlH);
+            ta.SetStateColor(PropertyNames::kBackground,
+                             UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
+            ta.SetStateColor(PropertyNames::kText,
+                             UIStateColor{kPropPanelText, kPropPanelText, kPropPanelText, kPropPanelText});
+            ta.SetStateColor(PropertyNames::kBorder,
+                             UIStateColor{kPropPanelBorder, kPropPanelBorderFocus,
+                                          kPropPanelBorderFocus, kPropPanelBorder});
+            ta.SetString(PropertyNames::kTextContent,
+                         (m_idRenamePending && m_idRenameTarget == m_selectedId)
+                             ? m_idRenameText : mm->props.id);
+            ta.SetCallback(PropertyNames::kEventTextChanged, [this](const Event& e) {
+                if (m_propSync) return;
+                ControlModel* m2 = findModel(m_selectedId);
+                if (!m2) return;
+                const std::string v = e.GetTextChanged();
+                if (v == m2->props.id) { m_idRenamePending = false; return; }
+                m_idRenameTarget = m_selectedId;
+                m_idRenameText = v;
+                m_idRenamePending = true;
+                bool validCandidate = !v.empty() && v != "@bench";
+                for (char c : v)
+                    if (std::isspace((unsigned char)c)) validCandidate = false;
+                if (validCandidate)
+                    for (auto& it : m_items)
+                        if (it.model && it.model->props.id == v) validCandidate = false;
+                m_idRenameDeadline = validCandidate
+                    ? std::chrono::steady_clock::now() + std::chrono::milliseconds(500)
+                    : std::chrono::steady_clock::time_point::max();
+            });
+            ta.SetCallback(PropertyNames::kEventEnter, [this](const Event&) {
+                commitPendingIdRename();
+            });
+            m_idRenameEdit = ta;
+            m_compPropRows.push_back(ta);
+            m_dynamicRows.push_back(ta);
+            m_dynamicRowY.push_back(y);
+            y += kPropCtlH + kPropRowGap;
+        }
+    }
     const auto& decl = m_components[m.props.type].value("props", nlohmann::json::object());
     const auto& cur = m.props.extended.value("props", nlohmann::json::object());
     if (decl.is_object()) {
@@ -4650,14 +4699,12 @@ void CanvasPane::rebuildDynamicRows() {
                 if (validCandidate)
                     for (auto& it : m_items)
                         if (it.model && it.model->props.id == v) validCandidate = false;
-                if (validCandidate)
-                    m_idRenameDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
-                else
-                    m_idRenameDeadline = std::chrono::steady_clock::time_point::max();   // 不自动提交
+                (void)validCandidate;   // 回车/焦点转移时统一校验，不做空闲定时
             });
             ta.SetCallback(PropertyNames::kEventEnter, [this](const Event&) {
                 commitPendingIdRename();
             });
+            m_idRenameEdit = ta;
             m_dynamicRows.push_back(ta);
             m_dynamicRowY.push_back(y);
             y += kPropCtlH + rowGap;
@@ -5373,6 +5420,15 @@ void CanvasPane::syncDynamicWidth() {
     }
 }
 
+void CanvasPane::syncEventWidth() {
+    if (!m_evHost.IsValid() || m_evRows.empty()) return;
+    const float w = m_evHost.GetRect().w;
+    if (w <= 100.0f || w == m_seenEvW) return;
+    // 行宽变化：重建行（h-flow 按新宽度重排；保留 v-flow 的 y，避免全部跑到顶部 ✗）
+    refreshEventPanel();
+    m_seenEvW = w;
+}
+
 void CanvasPane::applyDynScroll(float value) {
     const float viewH = m_propDynamic.IsValid() ? m_propDynamic.GetRect().h
                                                 : kPropDynHDefault;  // 兜底：与布局声明 propDynamic 高一致
@@ -5456,6 +5512,12 @@ int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
 }
 
 void CanvasPane::tickInput() {
+    if (m_idConfirmShowPending) {
+        m_idConfirmShowPending = false;
+        showIdRenameConfirm(m_idConfirmPendingRefs, m_idConfirmPendingOld,
+                            m_idConfirmPendingNew);
+    }
+    processIdApply();   // id 改名确认结果（替换代码 + 改名一次撤销）
     // C2：菜单/按钮回调内不重建画布（引擎事件分发期间销毁控件会吞事件 ✗）——延迟到 tick
     if (!m_pendingEnterComponent.empty()) {
         const std::string name = m_pendingEnterComponent;
@@ -5517,6 +5579,7 @@ void CanvasPane::tickInput() {
     const bool delEdge = m_keySource && m_keySource();
     if (delEdge && !m_panelEditActive) deleteSelected();
     syncDynamicWidth();   // 动态区宽度跟随（splitter 拖动后滚动条贴边/行宽同步）
+    syncEventWidth();     // 事件列表行宽跟随（h-flow 按比例）
 
     if (!m_viewport || !m_mouseSource) return;
     float wx = 0, wy = 0;
@@ -5574,6 +5637,46 @@ void CanvasPane::tickInput() {
                 m_tabDragGhost.SetBool(PropertyNames::kVisible, 1);
                 m_tabDragGhost.SetRect(cx + 12.0f, cy + 12.0f, 32.0f, 32.0f);
             }
+        }
+        m_mouseWasDown = down;
+        return;
+    }
+
+    if (m_listColDragActive) {
+        ControlModel* m = findModel(m_listColDragId);
+        PlacedControl* pc = placedById(m_listColDragId);
+        if (!m || !pc || !pc->ctl.IsValid() ||
+            !m->props.extended.contains("columns") ||
+            !m->props.extended["columns"].is_array() ||
+            m_listColDragIndex < 0 ||
+            m_listColDragIndex >= static_cast<int>(m->props.extended["columns"].size())) {
+            if (pc && pc->ctl.IsValid())
+                m_viewport->ListViewCancelColumnResize(pc->ctl);
+            m_listColDragActive = false;
+            m_listColDragId.clear();
+            m_listColDragIndex = -1;
+            m_mouseWasDown = down;
+            return;
+        }
+        if (down) {
+            float gx = 0, gy = 0;
+            globalOriginOf(*pc, gx, gy);
+            const float w = m_viewport->ListViewUpdateColumnResize(pc->ctl, cx - gx);
+            if (w >= 0.0f) {
+                m->props.extended["columns"][m_listColDragIndex]["width"] = w;
+                m_listColDragLastWidth = w;
+                setStatusHint(u8"列宽：第 " + std::to_string(m_listColDragIndex + 1) +
+                              u8" 列 " + std::to_string(static_cast<int>(w)) + u8" px");
+            }
+        } else {
+            m_viewport->ListViewEndColumnResize(pc->ctl, true);
+            if (std::fabs(m_listColDragLastWidth - m_listColDragStartWidth) >= 0.5f)
+                commitUndo("listcol:" + m_listColDragId);
+            fillPropertyPanel();
+            refreshPlaceTargetHint();
+            m_listColDragActive = false;
+            m_listColDragId.clear();
+            m_listColDragIndex = -1;
         }
         m_mouseWasDown = down;
         return;
@@ -5882,6 +5985,35 @@ void CanvasPane::tickInput() {
                 if (m_selIds.size() > 1 && ht == 1) beginGroupDrag(m_selectedId);
                 m_mouseWasDown = down;
                 return;
+            }
+        }
+        {
+            std::string lvId;
+            if (hitTest(cx, cy, lvId)) {
+                PlacedControl* pc = placedById(lvId);
+                if (pc && pc->ctl.IsValid() && pc->model->props.type == "list-view" &&
+                    pc->model->props.extended.contains("columns") &&
+                    pc->model->props.extended["columns"].is_array()) {
+                    float gx = 0, gy = 0;
+                    globalOriginOf(*pc, gx, gy);
+                    const float lx = cx - gx, ly = cy - gy;
+                    const int col = m_viewport->ListViewHitTestColumnDivider(pc->ctl, lx, ly);
+                    if (col >= 0 && col < static_cast<int>(pc->model->props.extended["columns"].size())) {
+                        selectItem(lvId);
+                        if (m_viewport->ListViewBeginColumnResize(pc->ctl, col, lx)) {
+                            m_listColDragActive = true;
+                            m_listColDragId = lvId;
+                            m_listColDragIndex = col;
+                            m_listColDragStartCx = cx;
+                            m_listColDragStartWidth =
+                                pc->model->props.extended["columns"][col].value("width", 100.0f);
+                            m_listColDragLastWidth = m_listColDragStartWidth;
+                            setStatusHint(u8"列宽：拖动调整第 " + std::to_string(col + 1) + u8" 列");
+                            m_mouseWasDown = down;
+                            return;
+                        }
+                    }
+                }
             }
         }
         std::string hit;
@@ -6734,6 +6866,12 @@ static const EventSpec kEventSpecs[] = {
     { "onCheckChanged",     "check-changed",     "check-box" },
     { "onValueChanged",     "value-changed",     "slider,scroll-bar,numeric-up-down,progress-bar" },
     { "onColorChanged",     "color-changed",     "color-picker" },
+    { "onCellEditBegin",    "cell-edit-begin",   "list-view" },
+    { "onCellEdited",       "cell-edited",      "list-view" },
+    { "onCellEditCancel",   "cell-edit-cancel",  "list-view" },
+    { "onNodeEditBegin",    "node-edit-begin",   "tree-view" },
+    { "onNodeEdited",       "node-edited",       "tree-view" },
+    { "onNodeEditCancel",   "node-edit-cancel",   "tree-view" },
     { "onPositionChanged",  "position-changed",  "win-frame" },
     { "onClose",            "close",             "win-frame" },
 };
@@ -8640,6 +8778,28 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
         check(refOk, "rename: child parentId updated");
         check(!renameControlId("myPanel", ""), "rename: empty rejected");
         check(!renameControlId("myPanel", childId), "rename: duplicate rejected");
+        // 代码引用确认替换（词边界）与一次撤销
+        m_handlerBodies["__idref"] = "FindControl(\"myPanel\"); // myPanel myPanelX";
+        check(countHandlerRefs("myPanel") == 2, "rename: code refs counted (word boundary)");
+        check(replaceHandlerRefs("myPanel", "myPanel2") == 2 &&
+                  m_handlerBodies["__idref"].find("myPanel2") != std::string::npos &&
+                  m_handlerBodies["__idref"].find("myPanelX") != std::string::npos,
+              "rename: code refs replaced");
+        m_handlerBodies["__idref"] = "FindControl(\"myPanel\");";
+        commitUndo("test:idbase");
+        m_idApplyOld = "myPanel";
+        m_idApplyNew = "myPanelU";
+        m_idApplyReplace = true;
+        m_idApplyPending = true;
+        processIdApply();
+        check(findModel("myPanelU") != nullptr &&
+                  m_handlerBodies["__idref"].find("myPanelU") != std::string::npos,
+              "rename: confirm replace applies id+code");
+        check(Undo(), "rename: replace undoable");
+        check(findModel("myPanel") != nullptr &&
+                  m_handlerBodies["__idref"].find("myPanel") != std::string::npos,
+              "rename: undo restores id+code");
+        m_handlerBodies.erase("__idref");
     }
     // 连续改名无残留（模拟逐键改名的树同步——中间 id 不应残留节点）
     {
@@ -9731,6 +9891,21 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
                             kv.second.GetString(PropertyNames::kTextContent) == "{{sh}}")
                             shRow = true;
                     check(shRow, "P109: shadow.enabled direct row");
+                    // C3：模板事件 _comp_（自动前缀；不生成宿主代码）
+                    check(addEventBinding(fsBid, "onClick", "onCompClick"),
+                          "C3: template _comp_ event binds");
+                    {
+                        const ControlModel* bmE = findModel(fsBid);
+                        check(bmE && bmE->props.extended.contains("events") &&
+                              bmE->props.extended["events"].value("onClick", std::string()) ==
+                                  "_comp_onCompClick",
+                              "C3: template event prefixed _comp_");
+                        bool leaked = false;
+                        for (const auto& b : collectEventBindings())
+                            if (b.handler.rfind("_comp_", 0) == 0) leaked = true;
+                        check(!leaked && buildEventsSourceText().find("_comp_") == std::string::npos,
+                              "C3: _comp_ not exported");
+                    }
                     // 阴影 offset 模型/序列化（退出重进不丢 ✗）
                     if (ControlModel* bm3 = findModel(fsBid)) {
                         bm3->props.extended["shadow"] = {
@@ -9817,6 +9992,33 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
                   "comp2: template updated");
             check(m_components["TestComp"]["props"].contains("label"),
                   "comp2: props stored");
+            // C3：实例 _comp_ 事件 → 宿主 handler（模板 key 暴露 + 实例 events 顶层键）
+            {
+                PlacedControl* inst = nullptr;
+                for (auto& it : m_items)
+                    if (it.model->props.type == "TestComp") { inst = &it; break; }
+                if (inst) {
+                    selectItem(inst->model->props.id);
+                    refreshEventPanel();
+                    bool keyListed = std::find(m_evTypeItems.begin(), m_evTypeItems.end(),
+                                               "onCompClick") != m_evTypeItems.end();
+                    check(keyListed, "C3: instance event key listed");
+                    const std::string iid = inst->model->props.id;
+                    check(addInstanceEventBinding(iid, "onCompClick", "onHostCompClick"),
+                          "C3: instance event binds host handler");
+                    const ControlModel* imE = findModel(iid);
+                    check(imE && imE->props.extended.contains("events") &&
+                              imE->props.extended["events"].value(
+                                  "onCompClick", std::string()) == "onHostCompClick",
+                          "C3: instance event stored");
+                    const std::string src = buildEventsSourceText();
+                    check(src.find("onHostCompClick") != std::string::npos &&
+                              src.find("_comp_") == std::string::npos,
+                          "C3: host handler exported");
+                } else {
+                    check(false, "C3: instance for events missing");
+                }
+            }
             // P109：font-size 占位符保存在模板（序列化不再丢弃 ✗）
             {
                 bool fsOk = false;
@@ -10115,6 +10317,13 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
             selectItem(inst->model->props.id);
             rebuildDynamicRows();
             check(!m_compPropRows.empty(), "comp3: instance props dynamic rows");
+            bool idRow = false;
+            for (auto& kv : m_rowPool)
+                if (kv.first == "comp:id" && kv.second.IsValid() &&
+                    kv.second.GetString(PropertyNames::kTextContent) ==
+                        inst->model->props.id)
+                    idRow = true;
+            check(idRow, "comp3: instance id row visible/editable");
         }
     }
     // 组件删除：定义 + 全部实例（可撤销）
@@ -10437,6 +10646,150 @@ void CanvasPane::syncTreeRename(const std::string& id, const std::string& label)
 // 控件 id 重命名（用户需求：代码引用）——模型/引用/引擎注册/锚定父/控件树 全链更新。
 // 引擎 id 表：空串注册=移除该控件全部 id（CABI SetControlId 语义）→ 再注册新 id。
 // 控件 id 行：提交待改名（切换选中/回车/空闲到期调用）；失败还原行显示
+static bool wordBoundaryAt(const std::string& text, size_t pos, size_t len) {
+    const bool leftOk = pos == 0 ||
+        !(std::isalnum((unsigned char)text[pos - 1]) || text[pos - 1] == '_');
+    const size_t e = pos + len;
+    const bool rightOk = e >= text.size() ||
+        !(std::isalnum((unsigned char)text[e]) || text[e] == '_');
+    return leftOk && rightOk;
+}
+
+static int countWordRefs(const std::string& text, const std::string& word) {
+    if (word.empty()) return 0;
+    int n = 0;
+    size_t pos = 0;
+    while ((pos = text.find(word, pos)) != std::string::npos) {
+        if (wordBoundaryAt(text, pos, word.size())) ++n;
+        pos += word.size();
+    }
+    return n;
+}
+
+static std::string replaceWordRefs(const std::string& text, const std::string& oldId,
+                                   const std::string& newId, int& n) {
+    if (oldId.empty()) return text;
+    std::string out;
+    size_t pos = 0;
+    while (pos < text.size()) {
+        const size_t p = text.find(oldId, pos);
+        if (p == std::string::npos) { out += text.substr(pos); break; }
+        out += text.substr(pos, p - pos);
+        if (wordBoundaryAt(text, p, oldId.size())) {
+            out += newId;
+            ++n;
+        } else {
+            out += oldId;
+        }
+        pos = p + oldId.size();
+    }
+    return out;
+}
+
+int CanvasPane::countHandlerRefs(const std::string& oldId) const {
+    int n = 0;
+    for (const auto& [h, body] : m_handlerBodies) n += countWordRefs(body, oldId);
+    n += countWordRefs(m_handlerIncludes, oldId);
+    return n;
+}
+
+int CanvasPane::replaceHandlerRefs(const std::string& oldId, const std::string& newId) {
+    int n = 0;
+    for (auto& [h, body] : m_handlerBodies)
+        body = replaceWordRefs(body, oldId, newId, n);
+    m_handlerIncludes = replaceWordRefs(m_handlerIncludes, oldId, newId, n);
+    return n;
+}
+
+void CanvasPane::ensureIdConfirmDialog() {
+    if (m_idDlg.IsValid() || !m_ui) return;
+    m_idDlg = m_ui->CreateDialog(u8"同步修改代码", u8"仅改名", 0, 0, 620, 200);
+    if (!m_idDlg.IsValid()) return;
+    m_idDlg.SetBool("close-on-click-outside", 0);   // 防触发点击/其它浮层误关（误判仅改名 ✗）
+    m_idDlgLabel = m_ui->CreateLabel(u8"", 15.0f, 20, 28, 580, 90);
+    if (m_idDlgLabel.IsValid()) {
+        m_idDlgLabel.SetBool(PropertyNames::kVisible, 1);
+        m_idDlg.AddChild(m_idDlgLabel);
+    }
+    m_idDlg.SetCallback(PropertyNames::kEventClose, [this](const Event& e) {
+        if (!m_idConfirmAwaiting) return;   // 预创建/被其它浮层关闭 → 忽略 ✗
+        m_idConfirmAwaiting = false;
+        m_idApplyOld = m_idConfirmOld;
+        m_idApplyNew = m_idConfirmNew;
+        m_idApplyReplace = (e.GetCloseResult() == 1);   // 1=同步；2/X/ESC=仅改名
+        m_idApplyPending = true;
+        std::printf("[IdRename] dialog result=%d replace=%d%c",
+                    e.GetCloseResult(), (int)m_idApplyReplace, 10);
+    });
+    m_idDlg.SetBool(PropertyNames::kVisible, 0);   // 预创建后立即隐藏（Startup 不显示 ✗）
+}
+
+void CanvasPane::showIdRenameConfirm(int refs, const std::string& oldId,
+                                     const std::string& newId) {
+    if (!m_ui) return;
+    m_idConfirmOld = oldId;
+    m_idConfirmNew = newId;
+    ensureIdConfirmDialog();
+    if (!m_idDlg.IsValid()) return;
+    m_idConfirmAwaiting = true;
+    std::printf("[IdRename] dialog refs=%d old=%s new=%s%c", refs,
+                oldId.c_str(), newId.c_str(), 10);
+    std::string msg = u8"发现 " + std::to_string(refs) + u8" 处 handler 代码引用旧 id：\n" +
+                      oldId + u8"\n是否一并替换为 " + newId +
+                      u8"？\n（替换与改名可一次撤销）";
+    if (m_idDlgLabel.IsValid())
+        m_idDlgLabel.SetString(PropertyNames::kCaption, wrapDialogText(msg, 44));
+    Control root = m_ui->Root();
+    const UIRect rr = root.IsValid() ? root.GetRect() : UIRect{ 0, 0, 1280, 800 };
+    m_idDlg.SetRect(std::floor((rr.w - 620.0f) * 0.5f),
+                    std::floor((rr.h - 200.0f) * 0.5f), 620.0f, 200.0f);
+    m_idDlg.SetBool(PropertyNames::kVisible, 0);
+    m_idDlg.SetBool(PropertyNames::kVisible, 1);
+    // “同步修改代码”较长：加宽确认按钮，取消按钮左移避免重叠
+    if (void* ch = m_idDlg.GetPtr(PropertyNames::kConfirmButton)) {
+        Control cb = m_ui->FromHandle(ch);
+        if (cb.IsValid()) {
+            UIRect r = cb.GetRect();
+            cb.SetRect(r.x - 60.0f, r.y, 140.0f, r.h);
+        }
+    }
+    if (void* ch = m_idDlg.GetPtr(PropertyNames::kCancelButton)) {
+        Control cb = m_ui->FromHandle(ch);
+        if (cb.IsValid()) {
+            UIRect r = cb.GetRect();
+            cb.SetRect(r.x - 60.0f, r.y, r.w, r.h);
+        }
+    }
+}
+
+void CanvasPane::processIdApply() {
+    if (!m_idApplyPending) return;
+    m_idApplyPending = false;
+    const std::string oldId = m_idApplyOld;
+    const std::string newId = m_idApplyNew;
+    const bool replace = m_idApplyReplace;
+    m_idApplyOld.clear();
+    m_idApplyNew.clear();
+    m_idApplyReplace = false;
+    if (oldId.empty() || newId.empty()) return;
+    if (!renameControlId(oldId, newId)) {
+        setStatusHint(u8"id 未修改（空/重复/含空白/保留键）：" + newId);
+        rebuildDynamicRows();
+        return;
+    }
+    const int n = replace ? replaceHandlerRefs(oldId, newId) : 0;
+    std::printf("[IdRename] apply old=%s new=%s replace=%d n=%d%c", oldId.c_str(),
+                newId.c_str(), (int)replace, n, 10);
+    commitUndo("id:rename");   // 改名 + 代码替换为同一撤销步 ✓
+    rebuildDynamicRows();
+    refreshEventPanel();
+    if (replace && n > 0)
+        setStatusHint(u8"控件 id 已改为：" + newId + u8"；已替换 " + std::to_string(n) +
+                      u8" 处 handler 代码引用（可撤销）");
+    else
+        setStatusHint(u8"控件 id 已改为：" + newId + u8"（仅改名；代码引用未替换）");
+}
+
 void CanvasPane::commitPendingIdRename() {
     if (!m_idRenamePending) return;
     m_idRenamePending = false;
@@ -10446,11 +10799,22 @@ void CanvasPane::commitPendingIdRename() {
     m_idRenameText.clear();
     ControlModel* m = findModel(target);
     if (!m || text == m->props.id) return;
+    const int refs = countHandlerRefs(target);
+    std::printf("[IdRename] commit old=%s new=%s refs=%d%c", target.c_str(),
+                text.c_str(), refs, 10);
+    if (refs > 0) {
+        // 不在 UpdateViewport 链路内建窗；延迟到 tickInput（首次修改稳定 ✗）
+        m_idConfirmPendingOld = target;
+        m_idConfirmPendingNew = text;
+        m_idConfirmPendingRefs = refs;
+        m_idConfirmShowPending = true;
+        return;
+    }
     if (!renameControlId(target, text)) {
         setStatusHint(u8"id 未修改（空/重复/含空白/保留键）：" + text);
         rebuildDynamicRows();   // 行刷新还原为当前 id
     } else {
-        commitUndo();   // F2.5：重命名为独立撤销步
+        commitUndo("id:rename");   // F2.5：重命名为独立撤销步
     }
 }
 
@@ -10525,7 +10889,30 @@ bool CanvasPane::renameControlId(const std::string& oldId, std::string newId) {
             } catch (...) {}
         }
     }
-    setStatusHint(u8"控件 id 已改为：" + newId);
+    refreshEventPanel();   // 事件栏显示新 id
+    int codeRefs = 0;
+    for (const auto& [h, body] : m_handlerBodies) {
+        size_t pos = 0;
+        while ((pos = body.find(oldId, pos)) != std::string::npos) {
+            ++codeRefs;
+            pos += oldId.size();
+        }
+    }
+    if (m_handlerIncludes.find(oldId) != std::string::npos) ++codeRefs;
+    for (const auto& it : m_items) {
+        if (!it.model) continue;
+        const auto& ev = it.model->props.extended.value("events", nlohmann::json::object());
+        if (!ev.is_object()) continue;
+        for (auto e = ev.begin(); e != ev.end(); ++e)
+            if (e.value().is_string() &&
+                e.value().get<std::string>().find(oldId) != std::string::npos)
+                ++codeRefs;
+    }
+    if (codeRefs > 0)
+        setStatusHint(u8"控件 id 已改为：" + newId + u8"；handler 代码/事件名中仍有 " +
+                      std::to_string(codeRefs) + u8" 处旧 id 引用，请手动同步");
+    else
+        setStatusHint(u8"控件 id 已改为：" + newId);
     return true;
 }
 
@@ -10567,9 +10954,13 @@ std::string CanvasPane::suggestHandlerName(const std::string& ctrlId,
 }
 
 bool CanvasPane::addEventBinding(const std::string& ctrlId, const std::string& jsonEvent,
-                                 const std::string& handler) {
+                                 const std::string& handlerIn) {
     const EventSpec* spec = findEventSpecByJson(jsonEvent);
     if (!spec) return false;
+    // 组件模板内的控件事件 → _comp_<event> 外部事件（引擎 remapEvents 契约 ✗）
+    std::string handler = handlerIn;
+    if (IsEditingComponent() && handler.rfind("_comp_", 0) != 0)
+        handler = "_comp_" + handler;
     if (!isValidIdentifier(handler)) return false;
     if (!isHandlerNameUnique(handler)) return false;
     PlacedControl* pc = placedById(ctrlId);
@@ -10611,10 +11002,58 @@ std::vector<CanvasPane::EventBinding> CanvasPane::collectEventBindings() const {
         const auto& ev = it.model->props.extended.value("events", nlohmann::json::object());
         if (!ev.is_object()) continue;
         for (auto e = ev.begin(); e != ev.end(); ++e)
-            if (e.value().is_string())
-                out.push_back({ it.model->props.id, e.key(), e.value().get<std::string>() });
+            if (e.value().is_string()) {
+                const std::string h = e.value().get<std::string>();
+                if (h.rfind("_comp_", 0) == 0) continue;   // 模板占位，不生成宿主 handler ✗
+                out.push_back({ it.model->props.id, e.key(), h });
+            }
     }
     return out;
+}
+
+// C3：组件实例 _comp_ 事件 → 宿主 handler（实例节点 events 顶层键；引擎展开时替换）
+bool CanvasPane::addInstanceEventBinding(const std::string& instanceId,
+                                         const std::string& eventKey,
+                                         const std::string& handler) {
+    PlacedControl* pc = placedById(instanceId);
+    if (!pc || !isComponentType(pc->model->props.type)) return false;
+    if (eventKey.empty() || !isValidIdentifier(eventKey)) return false;
+    if (!isValidIdentifier(handler) || !isHandlerNameUnique(handler)) return false;
+    pc->model->props.extended["events"][eventKey] = handler;
+    commitUndo();   // F2.5：事件绑定为独立撤销步
+    return true;
+}
+
+// 事件页可见时才创建 ListView：避免隐藏 ListView 的 setVisible(false) 重置全局 EW 光标
+void CanvasPane::SetEventPanelVisible(bool visible) {
+    if (m_evTabActive == visible) return;
+    m_evTabActive = visible;
+    if (!visible) {
+        if (m_evList.IsValid()) {
+            m_evList.Destroy();
+            m_evList = Control();
+        }
+        m_evListRows = 0;
+        return;
+    }
+    refreshEventPanel();
+}
+
+void CanvasPane::ensureEventList() {
+    if (m_evList.IsValid() || !m_evTabActive || !m_ui || !m_evHost.IsValid()) return;
+    m_evList = m_ui->CreateListView(0, 0, 464, 320);
+    if (!m_evList.IsValid()) return;
+    m_evList.SetEnum(PropertyNames::kMode, PropertyNames::kModeMulti);
+    m_evList.SetFloat(PropertyNames::kRowHeight, 32.0f);
+    m_evList.SetFloat(PropertyNames::kHeaderHeight, 28.0f);
+    m_evList.SetBool(PropertyNames::kGridlines, true);
+    m_evList.SetBool(PropertyNames::kCellEditing, true);
+    m_evList.SetString(PropertyNames::kReadOnlyColumns, "0,1,2,3");
+    m_ui->ListViewAddColumn(m_evList, u8"控件", 100);
+    m_ui->ListViewAddColumn(m_evList, u8"事件", 100);
+    m_ui->ListViewAddColumn(m_evList, u8"handler", 160);
+    m_ui->ListViewAddColumn(m_evList, u8"操作", 100);
+    m_evHost.AddChild(m_evList);
 }
 
 // 事件面板接线：存句柄 + 隐藏样例行 + 绑定交互（下拉/建议/添加/实时校验）
@@ -10627,8 +11066,15 @@ void CanvasPane::SetEventPanel(Control typeCombo, Control handlerEdit, Control s
     m_evAdd = addBtn;
     m_evErr = errLabel;
     m_evHost = listHost;
+    ensureIdConfirmDialog();   // 预创建：首次改名不再临时建窗 ✗
     if (auto row = m_ui->FindControl("bd_row"); row.IsValid())
-        row.SetBool(PropertyNames::kVisible, false);   // 样例行：仅作列宽参考
+        row.SetBool(PropertyNames::kVisible, false);   // 旧样例行隐藏
+    if (auto c = m_ui->FindControl("grpBound"); c.IsValid())
+        c.SetBool(PropertyNames::kVisible, false);
+    if (auto c = m_ui->FindControl("evtNote"); c.IsValid())
+        c.SetBool(PropertyNames::kVisible, false);
+    if (auto c = m_ui->FindControl("evHeader"); c.IsValid())
+        c.SetBool(PropertyNames::kVisible, false);
     // 事件类型下拉：选择即预填建议命名
     if (m_evType.IsValid())
         m_evType.SetCallback(PropertyNames::kEventSelectionChanged, [this](const Event&) {
@@ -10688,7 +11134,12 @@ void CanvasPane::SetEventPanel(Control typeCombo, Control handlerEdit, Control s
                 setStatusHint(u8"事件绑定失败：handler 重名");
                 return;
             }
-            if (addEventBinding(m_selectedId, json, handler)) {
+            const ControlModel* selM = findModel(m_selectedId);
+            const bool isComp = selM && isComponentType(selM->props.type);
+            const bool ok = isComp
+                ? addInstanceEventBinding(m_selectedId, json, handler)
+                : addEventBinding(m_selectedId, json, handler);
+            if (ok) {
                 setStatusHint(u8"已绑定：" + m_selectedId + " " + json + " → " + handler);
                 refreshEventPanel();
             }
@@ -10698,9 +11149,11 @@ void CanvasPane::SetEventPanel(Control typeCombo, Control handlerEdit, Control s
 // 刷新事件面板：事件下拉（按类型过滤、扣除已绑定）+ 建议命名预填 + 已绑定动态行
 void CanvasPane::refreshEventPanel() {
     if (!m_ui || !m_evType.IsValid()) return;
+    if (m_evTabActive) ensureEventList();
     for (auto& r : m_evRows)
         if (r.IsValid()) r.Destroy();
     m_evRows.clear();
+    m_seenEvW = 0.0f;
     m_evTypeItems.clear();
     m_ui->ComboBoxClearItems(m_evType);
     const ControlModel* m = findModel(m_selectedId);
@@ -10718,12 +11171,46 @@ void CanvasPane::refreshEventPanel() {
     if (!hasSel) return;
     const std::string& tp2 = m->props.type;
     const auto& ev = m->props.extended.value("events", nlohmann::json::object());
-    for (const auto& sp : kEventSpecs) {
-        const std::string types = std::string(",") + sp.types + ",";
-        if (types.find("," + tp2 + ",") == std::string::npos) continue;
-        if (ev.is_object() && ev.contains(sp.json)) continue;   // 一事件一绑定
-        m_ui->ComboBoxAddItem(m_evType, sp.json, sp.json);
-        m_evTypeItems.push_back(sp.json);
+    const bool isCompInst = isComponentType(tp2);
+    if (isCompInst) {
+        // 实例：模板中 _comp_<key> → 暴露 key（宿主绑定；引擎 remapEvents ✗）
+        struct CompEv { std::string key, cid, json; };
+        std::vector<CompEv> ces;
+        std::set<std::string> seen;
+        const nlohmann::json tpl = m_components.contains(tp2)
+            ? m_components[tp2].value("template", nlohmann::json::object())
+            : nlohmann::json::object();
+        std::function<void(const nlohmann::json&)> scan = [&](const nlohmann::json& n) {
+            if (!n.is_object()) return;
+            if (n.contains("events") && n["events"].is_object()) {
+                for (auto e = n["events"].begin(); e != n["events"].end(); ++e) {
+                    if (!e.value().is_string()) continue;
+                    const std::string h = e.value().get<std::string>();
+                    if (h.rfind("_comp_", 0) != 0) continue;
+                    const std::string key = h.substr(6);
+                    if (!isValidIdentifier(key) || !seen.insert(key).second) continue;
+                    ces.push_back({ key, n.value("id", std::string()), e.key() });
+                }
+            }
+            if (n.contains("children") && n["children"].is_array())
+                for (auto& c : n["children"]) scan(c);
+        };
+        scan(tpl);
+        for (const auto& ce : ces) {
+            if (ev.is_object() && ev.contains(ce.key)) continue;
+            std::string label = ce.key;
+            if (!ce.cid.empty()) label += "  (" + ce.cid + ":" + ce.json + ")";
+            m_ui->ComboBoxAddItem(m_evType, label, ce.key);
+            m_evTypeItems.push_back(ce.key);
+        }
+    } else {
+        for (const auto& sp : kEventSpecs) {
+            const std::string types = std::string(",") + sp.types + ",";
+            if (types.find("," + tp2 + ",") == std::string::npos) continue;
+            if (ev.is_object() && ev.contains(sp.json)) continue;   // 一事件一绑定
+            m_ui->ComboBoxAddItem(m_evType, sp.json, sp.json);
+            m_evTypeItems.push_back(sp.json);
+        }
     }
     if (!m_evTypeItems.empty()) {
         m_evType.SetInt(PropertyNames::kSelectedIndex, 0);
@@ -10731,62 +11218,61 @@ void CanvasPane::refreshEventPanel() {
             m_evHandler.SetString(PropertyNames::kTextContent,
                                   suggestHandlerName(m->props.id, m_evTypeItems[0]));
     }
-    // 已绑定列表（动态行：控件 id / 事件 / handler / 删除）
-    if (ev.is_object() && !ev.empty()) {
-        if (auto note = m_ui->FindControl("evtNote"); note.IsValid())
-            note.SetBool(PropertyNames::kVisible, false);   // 有绑定则不显示空态注释
+    // 已绑定列表：ListView（控件/事件/handler/操作）；操作列用 cell-control Panel
+    if (auto note = m_ui->FindControl("evtNote"); note.IsValid())
+        note.SetBool(PropertyNames::kVisible, false);
+    for (auto& r : m_evRows)
+        if (r.IsValid()) r.Destroy();
+    m_evRows.clear();
+    if (m_evList.IsValid()) {
+        while (m_evListRows > 0) {
+            --m_evListRows;
+            m_ui->ListViewRemoveRow(m_evList, m_evListRows);
+        }
+    }
+    if (ev.is_object() && !ev.empty() && m_evList.IsValid()) {
         for (auto e = ev.begin(); e != ev.end(); ++e) {
             if (!e.value().is_string()) continue;
             const std::string json = e.key();
             const std::string handler = e.value().get<std::string>();
-            float rowW = 464.0f;
-            if (m_evHost.IsValid()) {
-                const UIRect hr = m_evHost.GetRect();
-                if (hr.w > 300.0f) rowW = hr.w;
-            }
-            Control row = m_ui->CreatePanel(0, 0, rowW, 32);
-            if (!row.IsValid()) continue;
-            row.SetEnum(PropertyNames::kLayout, "h-flow");
-            row.SetBool(PropertyNames::kBorderVisible, false);
-            row.SetBool(PropertyNames::kTransparent, true);
-            auto mk = [&](const std::string& caption, float w) {
-                Control lb = m_ui->CreateLabel(caption, 16.0f, 0, 0, w, 32);
-                if (lb.IsValid()) {
-                    lb.SetColor(PropertyNames::kText, UIColor{0xE0, 0xE0, 0xE0, 255});
-                    row.AddChild(lb);
-                }
-            };
-            mk(m->props.id, 56.0f);
-            mk(json, 78.0f);
-            Control hb = m_ui->CreateLabel(handler, 16.0f, 0, 0, 120, 32);
-            if (hb.IsValid()) {
-                hb.SetColor(PropertyNames::kText, UIColor{0x8F, 0xC8, 0xFF, 255});
-                hb.SetFloat(PropertyNames::kChildFlowWeight, 1.0f);
-                row.AddChild(hb);
-            }
             const std::string cid = m->props.id;
             const std::string hname = handler;
-            Control code = m_ui->CreateButton(u8"代码", 0, 0, 48, 32);
-            if (code.IsValid()) {
-                code.SetCallback(PropertyNames::kEventClick, [this, hname](const Event&) {
-                    ShowHandlerCodeDialog(hname);
-                });
-                row.AddChild(code);
-            }
-            Control del = m_ui->CreateButton(u8"删除", 0, 0, 48, 32);
-            if (del.IsValid()) {
-                del.SetCallback(PropertyNames::kEventClick, [this, cid, json](const Event&) {
-                    if (removeEventBinding(cid, json)) {
-                        setStatusHint(u8"已解除绑定：" + cid + " " + json);
-                        refreshEventPanel();
+            if (!m_ui->ListViewAddRow(m_evList, "ev_" + std::to_string(m_evListRows),
+                                      { cid, json, handler, "" }))
+                continue;
+            const bool hasCode = hname.rfind("_comp_", 0) != 0;
+            const float btnW = 44.0f, gap = 4.0f;
+            const float panelW = hasCode ? (btnW * 2.0f + gap) : btnW;
+            Control panel = m_ui->CreatePanel(0, 0, panelW, 30);
+            if (panel.IsValid()) {
+                panel.SetBool(PropertyNames::kBorderVisible, false);
+                panel.SetBool(PropertyNames::kTransparent, true);
+                if (hasCode) {
+                    Control code = m_ui->CreateButton(u8"代码", 0, 1, btnW, 28);
+                    if (code.IsValid()) {
+                        code.SetCallback(PropertyNames::kEventClick, [this, hname](const Event&) {
+                            ShowHandlerCodeDialog(hname);
+                        });
+                        panel.AddChild(code);
                     }
-                });
-                row.AddChild(del);
+                }
+                Control del = m_ui->CreateButton(u8"删除", hasCode ? (btnW + gap) : 0, 1, btnW, 28);
+                if (del.IsValid()) {
+                    del.SetCallback(PropertyNames::kEventClick, [this, cid, json](const Event&) {
+                        if (removeEventBinding(cid, json)) {
+                            refreshEventPanel();
+                        }
+                    });
+                    panel.AddChild(del);
+                }
+                m_ui->RemoveChild(m_ui->Root(), panel);
+                m_ui->ListViewSetCellControl(m_evList, m_evListRows, 3, panel,
+                                             UI_LIST_CELL_LAYOUT_FILL);
             }
-            m_evHost.AddChild(row);
-            m_evRows.push_back(row);
+            ++m_evListRows;
         }
     }
+    if (m_evHost.IsValid()) m_seenEvW = m_evHost.GetRect().w;
 }
 
 void CanvasPane::syncTreeSelection() {

@@ -393,6 +393,10 @@ bool App::init() {
                                 m_ui->FindControl("ev_add"),
                                 m_ui->FindControl("ev_err"),
                                 m_ui->FindControl("tabEvent"));
+        if (auto pt = m_ui->FindControl("propertyTabs"); pt.IsValid())
+            pt.SetCallback(PropertyNames::kEventTabChanged, [this](const Event& e) {
+                if (m_canvas) m_canvas->SetEventPanelVisible(e.GetTabChangedIndex() == 1);
+            });
         m_canvas->SetPropertyControls(m_ui->FindControl("prop_x"),
                                       m_ui->FindControl("prop_y"),
                                       m_ui->FindControl("prop_w"),

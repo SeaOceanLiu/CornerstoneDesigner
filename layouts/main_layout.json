@@ -689,6 +689,8 @@
                                                         "rowHeight": 28,
                                                         "headerHeight": 28,
                                                         "gridlines": true,
+                                                        "cell-editing": true,
+                                                        "read-only-columns": "0,1",
                                                         "columns": [
                                                             {
                                                                 "title": "名称",
@@ -697,7 +699,7 @@
                                                             },
                                                             {
                                                                 "title": "路径",
-                                                                "width": 160,
+                                                                "width": 140,
                                                                 "sortable": true
                                                             }
                                                         ],
@@ -2002,6 +2004,7 @@
                                                     },
                                                     {
                                                         "type": "panel",
+                                                        "id": "evHeader",
                                                         "rect": {
                                                             "x": 0,
                                                             "y": 0,
