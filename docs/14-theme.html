@@ -16,7 +16,7 @@
 
 <p>主题用于统一控件外观：颜色、字体、圆角、间距、阴影，以及窗口变窄、容器变小、切换深色模式时的变化。它解决的是“同一个样式要改很多控件”的问题。</p>
 
-<div class="note">本章讲的是<strong>项目主题</strong>：它保存在工程里，作用于<strong>预览和导出的运行界面</strong>。设计器自身界面的颜色由另一份 <code>designer_theme.json</code> 控制，见 15.14。</div>
+<div class="note">本章讲的是<strong>项目主题</strong>：它保存在工程里，作用于<strong>预览和导出的运行界面</strong>。设计器自身界面的颜色由另一份 <code>designer_theme.json</code> 控制，见 15.15。</div>
 
 <div class="shot">
   <img src="assets/screenshots/05-theme-manager.png" alt="主题管理器">
@@ -65,7 +65,7 @@
   <li><strong>选中按钮</strong>，点击右侧“事件”旁边的“属性”，确认没有手动改过它的背景色。显式属性会覆盖主题。</li>
   <li>打开 <span class="menu-path">编辑 → 主题…</span>。</li>
   <li>在“作用域”保持“基主题”。</li>
-  <li>在“选择器”输入 <code>button.primary</code>。</li>
+  <li>在“选择器”输入或从下拉选择 <code>button.primary</code>。</li>
   <li>“背景色”填 <code>#2D7FF9FF</code>，“文字色”填 <code>#FFFFFFFF</code>。</li>
   <li>“边框色”填 <code>#4A90D9FF</code>，“文字阴影”填 <code>#00000066</code>。</li>
   <li>“字体”下拉选择 <code>harmonyos-sans-sc-regular</code>；“字号”填 <code>16</code>；“圆角”填 <code>8</code>。</li>
@@ -170,6 +170,8 @@
 </table>
 
 <div class="tip">简单记：<strong>名字可以自己起，语法不能自己编，枚举只能从清单里选。</strong>条件 ID、变体名、类名、控件 ID 是名字；选择器、查询、声明和容器字段是语法。</div>
+
+<div class="tip">主题管理器已把<strong>选择器、查询、容器、box-shadow</strong>做成“可编辑下拉框”：常用值可以直接选，也可以手动输入。新增规则/应用时会检查格式；选择器、query、容器或 box-shadow 不合法时，底部状态栏会提示原因并阻止保存。字号、圆角、内边距使用数值控件，字体使用下拉，颜色使用取色器。</div>
 
 <h3>选择器与属性表单</h3>
 
@@ -312,7 +314,7 @@ content-padding: { "left": 16, "top": 8, "right": 16, "bottom": 8 }</code></pre>
   <li>在预览中查看卡片外框是否出现柔和阴影。</li>
 </ol>
 
-<div class="warn">这里需要的是<strong>JSON 对象</strong>，不是 CSS 的 <code>0 6 16 #000</code> 简写。写成字符串、缺少花括号或字段名拼错时，管理器会提示“box-shadow 需要 JSON 对象”，该字段不会按预期保存。</div>
+<div class="warn">这里需要的是<strong>JSON 对象</strong>，不是 CSS 的 <code>0 6 16 #000</code> 简写。管理器提供轻/中/强阴影三个可编辑预设，也可以手动输入；不是合法对象、含未知字段或数值字段不是数字时，会提示错误并阻止保存。</div>
 
 <p>图 15-2 的按钮规则中 <code>box-shadow</code> 填的是 <code>{"color":"#00000066","offset-x":0,"offset-y":6,"blur":16,"spread":0}</code>；它会在按钮下方形成一层淡阴影。</p>
 
@@ -472,7 +474,7 @@ content-padding: { "left": 16, "top": 8, "right": 16, "bottom": 8 }</code></pre>
   ]
 }</code></pre>
 
-<p>查询可以写字符串，也可以写对象：<code>{"max-width": 800, "orientation": "portrait"}</code>。支持 min/max width/height、orientation 和缩放范围。</p>
+<p>查询可以写字符串，也可以写对象：<code>{"max-width": 800, "orientation": "portrait"}</code>。管理器提供常用查询下拉，也可直接输入；不支持的键、错误的方向值或非数字尺寸会被提示并阻止保存。支持 min/max width/height、orientation 和缩放范围。</p>
 
 <div class="note">当前管理器的“+媒体”在基主题下新建条件；如果要把媒体条件放进某个变体，请用“主题 JSON…”编辑 <code>variants.dark.media</code>。</div>
 
@@ -511,7 +513,7 @@ content-padding: { "left": 16, "top": 8, "right": 16, "bottom": 8 }</code></pre>
 <tr><td><code>#sidePanel</code></td><td>ID 为 sidePanel 的祖先</td></tr>
 </table>
 
-<p>容器选择器只支持简单形式，不支持空格后代选择器或逗号。查询推荐用对象形式 <code>{"max-width": 280}</code>，字符串形式也可用；比较的是容器内容区尺寸。</p>
+<p>容器选择器只支持简单形式，不支持空格后代选择器或逗号；管理器提供 <code>panel</code>、<code>.sidebar</code>、<code>panel.sidebar</code> 等常用下拉，也可手动输入。查询推荐用对象形式 <code>{"max-width": 280}</code>，字符串形式也可用；比较的是容器内容区尺寸。</p>
 
 <p>同样，<code>narrow</code> 只是条件 ID 示例，不是固定值；可以按用途命名，但建议唯一。</p>
 
@@ -639,7 +641,44 @@ content-padding: { "left": 16, "top": 8, "right": 16, "bottom": 8 }</code></pre>
 <tr><td>深色模式</td><td>变体 <code>dark</code></td><td>背景/文字变量覆盖</td></tr>
 </table>
 
-<h2>15.14 设计器自身 UI 主题</h2>
+<h2>15.14 内置主题模板与独立加载</h2>
+
+<p>设计器自带两套可直接使用的项目主题模板：<strong>明亮</strong>和<strong>暗黑</strong>。模板是独立的 JSON 文件，不依赖当前画布结构；应用后只设置项目主题，不会删除控件、改布局或清空已分配的类。</p>
+
+<table>
+<tr><th>菜单</th><th>作用</th></tr>
+<tr><td>编辑 → 应用明亮主题模板</td><td>加载 <code>themes/theme_light.json</code> 并设为当前项目主题</td></tr>
+<tr><td>编辑 → 应用暗黑主题模板</td><td>加载 <code>themes/theme_dark.json</code> 并设为当前项目主题</td></tr>
+<tr><td>编辑 → 加载主题文件…</td><td>选择任意主题 JSON，独立应用，不必先打开主题管理器</td></tr>
+</table>
+
+<div class="grid2">
+  <div class="shot">
+    <img src="assets/screenshots/theme-template-light.png" alt="明亮主题模板效果">
+    <div class="cap">应用明亮主题模板：浅色背景、白色卡片、蓝色主按钮</div>
+  </div>
+  <div class="shot">
+    <img src="assets/screenshots/theme-template-dark.png" alt="暗黑主题模板效果">
+    <div class="cap">应用暗黑主题模板：深色背景、深色卡片、亮色按钮</div>
+  </div>
+</div>
+
+<ol class="steps">
+  <li>打开一个已有工程，或先新建一个带按钮/面板的布局。</li>
+  <li>选择 <span class="menu-path">编辑 → 应用明亮主题模板</span> 或“应用暗黑主题模板”。</li>
+  <li>如果预览已经打开，应用模板后会自动重建预览；否则按 <span class="kbd">F5</span> 打开预览查看效果。</li>
+  <li>需要微调时，打开“主题…”或“主题 JSON…”继续修改；模板会成为当前 <code>.csd</code> 的项目主题。</li>
+</ol>
+
+<p>模板文件位于 exe 同目录的 <code>themes/theme_light.json</code> 和 <code>themes/theme_dark.json</code>（源码在仓库 <code>themes/</code>）。用户可以复制一份修改，或通过“加载主题文件…”应用自己的主题文件。</p>
+
+<div class="warn">模板只覆盖主题规则，不会覆盖控件的显式属性。如果按钮/面板在属性面板里已经显式设置颜色，模板不会改变它；“类”和“显式属性”的优先级仍按 15.1/15.5 的规则。</div>
+
+<div class="note"><strong>设计器放置控件时写入的默认外观不算“用户显式样式”。</strong>应用模板后，预览/导出会自动忽略按钮 <code>#FAFAFA</code>、标签 <code>#333333</code> 这类设计器缺省颜色，让模板生效；你手动改过的颜色仍会保留并继续覆盖模板。设计画布本身仍显示设计态默认外观，请以预览/导出为准。</div>
+
+<div class="note">“加载主题文件…”接受直接的主题对象，也接受带 <code>"theme"</code> 字段的布局 JSON；如果文件不是合法 JSON 对象，状态栏会提示，当前主题不变。预览已经打开时，通过菜单应用模板会自动重建预览；直接修改主题 JSON 后仍建议刷新预览。</div>
+
+<h2>15.15 设计器自身 UI 主题</h2>
 
 <p>设计器界面（菜单、工具箱、属性面板）使用另一份主题文件：exe 同目录的 <code>designer_theme.json</code>。它和项目主题<strong>完全分离</strong>：</p>
 
@@ -652,7 +691,7 @@ content-padding: { "left": 16, "top": 8, "right": 16, "bottom": 8 }</code></pre>
 
 <p>文件缺失或 JSON 非法时只输出诊断，不阻止启动。</p>
 
-<h2>15.15 排查：为什么主题没生效</h2>
+<h2>15.16 排查：为什么主题没生效</h2>
 
 <ol class="steps">
   <li><strong>看的是设计画布还是预览？</strong> 当前设计画布主要显示显式样式和设计态；请在预览或导出界面看完整主题。</li>
@@ -665,7 +704,7 @@ content-padding: { "left": 16, "top": 8, "right": 16, "bottom": 8 }</code></pre>
   <li><strong>box-shadow 是合法 JSON 对象吗？</strong> 管理器的 box-shadow 字段需要对象文本。</li>
 </ol>
 
-<h2>15.16 当前限制</h2>
+<h2>15.17 当前限制</h2>
 
 <ul>
   <li>设计画布不是项目主题的完整预览；以预览/导出为准。</li>

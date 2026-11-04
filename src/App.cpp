@@ -693,7 +693,9 @@ void App::registerActions() {
         "onMenuImportJson", "onMenuExportJson", "onMenuExportCode", "onMenuExportCpp",
         "onMenuExportReport", "onMenuExit",
         "onMenuUndo", "onMenuRedo", "onMenuCopy", "onMenuPaste", "onMenuDelete",
-        "onMenuEditJson", "onMenuTheme", "onMenuThemeJson", "onMenuCreateComponent", "onMenuEditComponent",
+        "onMenuEditJson", "onMenuTheme", "onMenuThemeJson",
+        "onMenuThemeLight", "onMenuThemeDark", "onMenuThemeLoad",
+        "onMenuCreateComponent", "onMenuEditComponent",
         "onMenuInstanceProps", "onMenuDeleteComponent",
         "onMenuFront", "onMenuBack", "onMenuMoveUp", "onMenuMoveDown",
         "onMenuZoom25", "onMenuZoom50", "onMenuZoom75", "onMenuZoom100",
@@ -735,6 +737,16 @@ void App::registerActions() {
         L"CornerstoneDesigner 项目 (*.csd)\0*.csd\0所有文件 (*.*)\0*.*\0";
     static const wchar_t* kJsonFilter =
         L"UICornerstone 布局 (*.json)\0*.json\0所有文件 (*.*)\0*.*\0";
+    static const wchar_t* kThemeFilter =
+        L"主题 JSON (*.json)\0*.json\0所有文件 (*.*)\0*.*\0";
+    auto applyProjectTheme = [this](const std::string& path) {
+        if (!m_canvas) return;
+        if (!m_canvas->ApplyThemeFile(path)) return;
+        if (m_previewUi) {          // 预览已打开：重建预览以立即看到模板效果
+            closePreviewWindow();
+            openPreviewWindow();
+        }
+    };
     for (const char* name : actions) {
         if (std::string(name) == "onMenuExit") {
             m_ui->RegisterAction(name, guard([this](Control) { m_exitRequested = true; }));
@@ -862,6 +874,20 @@ void App::registerActions() {
         } else if (std::string(name) == "onMenuThemeJson") {
             m_ui->RegisterAction(name, guard([this](Control) {
                 if (m_canvas) m_canvas->ShowThemeDialog();
+            }));
+        } else if (std::string(name) == "onMenuThemeLight") {
+            m_ui->RegisterAction(name, guard([this, applyProjectTheme](Control) {
+                applyProjectTheme(exeRelative("themes/theme_light.json"));
+            }));
+        } else if (std::string(name) == "onMenuThemeDark") {
+            m_ui->RegisterAction(name, guard([this, applyProjectTheme](Control) {
+                applyProjectTheme(exeRelative("themes/theme_dark.json"));
+            }));
+        } else if (std::string(name) == "onMenuThemeLoad") {
+            m_ui->RegisterAction(name, guard([this, fileDialog, applyProjectTheme](Control) {
+                if (!m_canvas) return;
+                const std::string p = fileDialog(false, kThemeFilter, L"json", L"加载主题文件");
+                if (!p.empty()) applyProjectTheme(p);
             }));
         } else if (std::string(name) == "onMenuEditJson") {
             m_ui->RegisterAction(name, guard([this](Control) {
@@ -1289,7 +1315,7 @@ void App::openPreviewWindow() {
         std::printf("[App] preview instance create FAILED\n");
         return;
     }
-    const nlohmann::json layout = m_canvas->serializeLayoutJson();
+    const nlohmann::json layout = m_canvas->serializeLayoutJson(true);
     const bool hasControls = layout.contains("controls") &&
                              layout["controls"].is_array() && !layout["controls"].empty();
     if (hasControls && !m_previewUi->LoadLayout(layout.dump())) {   // 空设计 → 空预览窗（引擎空布局返回 0）

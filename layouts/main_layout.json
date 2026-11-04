@@ -205,6 +205,27 @@
                                     "type": "separator"
                                 },
                                 {
+                                    "caption": "应用明亮主题模板",
+                                    "events": {
+                                        "onClick": "onMenuThemeLight"
+                                    }
+                                },
+                                {
+                                    "caption": "应用暗黑主题模板",
+                                    "events": {
+                                        "onClick": "onMenuThemeDark"
+                                    }
+                                },
+                                {
+                                    "caption": "加载主题文件…",
+                                    "events": {
+                                        "onClick": "onMenuThemeLoad"
+                                    }
+                                },
+                                {
+                                    "type": "separator"
+                                },
+                                {
                                     "caption": "由选中控件创建组件…",
                                     "events": {
                                         "onClick": "onMenuCreateComponent"

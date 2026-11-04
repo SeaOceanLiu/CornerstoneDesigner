@@ -1,0 +1,166 @@
+{
+  "variables": {
+    "--bg": "#0B0F16FF",
+    "--surface": "#151B26FF",
+    "--surface-alt": "#1E2836FF",
+    "--field": "#111826FF",
+    "--line": "#2A3648FF",
+    "--text": "#F3F6FBFF",
+    "--muted": "#9AA8BCFF",
+    "--primary": "#3B82F6FF",
+    "--primary-hover": "#60A5FAFF",
+    "--primary-pressed": "#2563EBFF",
+    "--danger": "#E06060FF",
+    "--danger-hover": "#C94B4BFF",
+    "--disabled": "#1F2937FF"
+  },
+  "styles": [
+    {
+      "selector": "panel",
+      "declarations": { "background": "var(--bg)" }
+    },
+    {
+      "selector": "panel.card",
+      "declarations": {
+        "background": "var(--surface)", "border-color": "var(--line)",
+        "border-visible": true, "border-radius": 12,
+        "content-padding": "16",
+        "box-shadow": { "color": "#00000066", "offset-x": 0, "offset-y": 8,
+                        "blur": 22, "spread": 0 }
+      }
+    },
+    {
+      "selector": "label",
+      "declarations": { "text-color": "var(--text)" }
+    },
+    {
+      "selector": "label.title",
+      "declarations": { "text-color": "var(--text)", "font-size": 24 }
+    },
+    {
+      "selector": "label.muted",
+      "declarations": { "text-color": "var(--muted)", "font-size": 13 }
+    },
+    {
+      "selector": "button",
+      "declarations": {
+        "background": "var(--primary)", "text-color": "#FFFFFFFF",
+        "border-color": "#3B82F6", "border-visible": true,
+        "border-radius": 8, "content-padding": "8 16", "font-size": 15
+      }
+    },
+    {
+      "selector": "button:hover",
+      "declarations": { "background": "var(--primary-hover)" }
+    },
+    {
+      "selector": "button:pressed",
+      "declarations": { "background": "var(--primary-pressed)" }
+    },
+    {
+      "selector": "button:disabled",
+      "declarations": {
+        "background": "var(--disabled)", "text-color": "var(--muted)",
+        "border-color": "var(--line)"
+      }
+    },
+    {
+      "selector": "button.secondary",
+      "declarations": {
+        "background": "var(--surface-alt)", "text-color": "var(--text)",
+        "border-color": "var(--line)", "border-visible": true
+      }
+    },
+    {
+      "selector": "button.secondary:hover",
+      "declarations": { "background": "#2A3648FF" }
+    },
+    {
+      "selector": "button.danger",
+      "declarations": {
+        "background": "var(--danger)", "text-color": "#FFFFFFFF",
+        "border-color": "#C94B4BFF"
+      }
+    },
+    {
+      "selector": "button.danger:hover",
+      "declarations": { "background": "var(--danger-hover)" }
+    },
+    {
+      "selector": "edit-box",
+      "declarations": {
+        "background": "var(--field)", "text-color": "var(--text)",
+        "border-color": "var(--line)", "border-visible": true,
+        "border-radius": 6, "content-padding": "7 10"
+      }
+    },
+    {
+      "selector": "text-area",
+      "declarations": {
+        "background": "var(--field)", "text-color": "var(--text)",
+        "border-color": "var(--line)", "border-visible": true,
+        "border-radius": 6, "content-padding": "7 10"
+      }
+    },
+    {
+      "selector": "combo-box",
+      "declarations": {
+        "background": "var(--field)", "text-color": "var(--text)",
+        "border-color": "var(--line)", "border-visible": true,
+        "border-radius": 6
+      }
+    },
+    {
+      "selector": "numeric-up-down",
+      "declarations": {
+        "background": "var(--field)", "text-color": "var(--text)",
+        "border-color": "var(--line)", "border-visible": true,
+        "border-radius": 6
+      }
+    },
+    {
+      "selector": "color-picker",
+      "declarations": {
+        "background": "var(--surface-alt)", "text-color": "var(--text)",
+        "border-color": "var(--line)", "border-visible": true,
+        "border-radius": 6
+      }
+    },
+    {
+      "selector": "check-box",
+      "declarations": { "text-color": "var(--text)" }
+    },
+    {
+      "selector": "list-view",
+      "declarations": {
+        "background": "var(--surface)", "text-color": "var(--text)",
+        "border-color": "var(--line)", "border-visible": true,
+        "header-background": "var(--surface-alt)"
+      }
+    },
+    {
+      "selector": "tree-view",
+      "declarations": {
+        "background": "var(--surface)", "text-color": "var(--text)",
+        "border-color": "var(--line)", "border-visible": true,
+        "header-background": "var(--surface-alt)"
+      }
+    },
+    {
+      "selector": "tab-control",
+      "declarations": { "background": "var(--surface)", "text-color": "var(--text)" }
+    },
+    {
+      "selector": "menu-bar",
+      "declarations": { "background": "var(--surface-alt)", "text-color": "var(--text)" }
+    },
+    {
+      "selector": "status-bar",
+      "declarations": { "background": "var(--surface-alt)", "text-color": "var(--muted)" }
+    },
+    {
+      "selector": "splitter",
+      "declarations": { "background": "var(--line)" }
+    }
+  ]
+}

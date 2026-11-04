@@ -55,6 +55,9 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/layouts/designer_theme.json
             $<TARGET_FILE_DIR:CornerstoneDesigner>/designer_theme.json
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/themes
+            $<TARGET_FILE_DIR:CornerstoneDesigner>/themes
         COMMAND ${CMAKE_COMMAND} -E make_directory
             $<TARGET_FILE_DIR:CornerstoneDesigner>/schema
         COMMAND ${CMAKE_COMMAND} -E copy_if_different

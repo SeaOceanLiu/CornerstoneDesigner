@@ -219,3 +219,7 @@
 | 2026-11-04 | 203 | 主题章节截图与作用域细节补齐 | 15.3 操作值对齐全部设置截图（背景/边框/文字阴影/字体/字号/圆角/内边距/box-shadow）；新增主题作用域截图（变体/媒体/容器）、作用域新增/删除说明、媒体/容器 query 格式与容器内容区说明、媒体/容器效果对照；box-shadow 字段含义/JSON 输入/错误示例 | docs/14-theme.html、docs/assets/screenshots、history |
 | 2026-11-04 | 204 | 手册澄清条件 ID 非固定枚举 | 主题章节明确条件 ID 只是可读名称，compact/narrow 仅为示例；命中由查询/容器决定，建议唯一；媒体与容器小节同步说明 | docs/14-theme.html、history |
 | 2026-11-04 | 205 | 主题命名与取值规则说明 | 14-theme.html 增加“哪些可以随便命名/必须按规则/只能选固定值”表：条件ID、变体名、类名、控件ID、变量名与选择器/查询/容器/声明/字体/颜色/box-shadow/作用域的限制，并补充条件ID非固定枚举说明 | docs/14-theme.html、history |
+| 2026-11-04 | 206 | 主题规则字段约束优化 | 主题管理器选择器/查询/容器/box-shadow 改为可编辑预设下拉；新增选择器、媒体/容器查询、容器选择器、box-shadow 校验，非法值阻止新增/应用并在底部提示；支持 query 对象；更新主题章节字段说明与实际截图；Debug/Release auto=2 272/0、auto=3、strict 通过 | CanvasPane.h/.cpp、docs/14-theme.html、screenshots、history |
+| 2026-11-04 | 207 | 内置明亮/暗黑主题模板 + 菜单独立加载 | 新增 `themes/theme_light.json`/`theme_dark.json`（变量、面板、按钮四态、次/危险按钮、输入/列表/树/菜单/状态栏等）；编辑菜单新增“应用明亮主题模板/应用暗黑主题模板/加载主题文件…”；`CanvasPane::ApplyThemeFile` 支持直接主题对象或 layout.theme，校验后设项目主题并入撤销；CMake 分发 themes；文档与截图补齐；模板实测 light/dark 加载成功 | themes/、CMakeLists、App.cpp、CanvasPane.h/.cpp、layouts/main_layout.json、docs、history |
+| 2026-11-04 | 208 | 主题模板默认样式剥离 | 修复新放置控件的设计器默认颜色覆盖模板问题：运行布局（预览/导出）在项目主题存在时剥离精确匹配的默认颜色组（按钮/标签/勾选/数字/下拉/页签），保留用户改过的颜色；设计画布与 .csd 保存不变；实测默认放置控件应用明亮/暗黑模板生效 | src/CanvasPane.h/.cpp、src/App.cpp、docs/14-theme.html、history |
+| 2026-11-04 | 209 | 模板应用预览自动刷新 | 编辑菜单应用明亮/暗黑/加载主题成功后，若预览已打开则自动重建预览；文档同步；验证 auto=2 272/0、auto=3、strict、Release | App.cpp、docs/14-theme.html、history |

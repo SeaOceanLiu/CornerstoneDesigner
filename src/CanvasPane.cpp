@@ -644,16 +644,84 @@ static void recordModelColors(ControlModel& model, const char* grp, const UIStat
     };
 }
 
+static UIStateColor designerFaceColors() {
+    return UIStateColor{ UIColor{0xFA, 0xFA, 0xFA, 255}, UIColor{0xE8, 0xF0, 0xFE, 255},
+                         UIColor{0xD8, 0xD8, 0xD8, 255}, UIColor{0xF0, 0xF0, 0xF0, 255} };
+}
+
+static UIStateColor designerBorderColors() {
+    return UIStateColor{ UIColor{0xB0, 0xB0, 0xB0, 255}, kPropPanelBorderFocus,
+                         kPropPanelBorderFocus, UIColor{0xC0, 0xC0, 0xC0, 255} };
+}
+
+static UIStateColor designerTextColors() {
+    return UIStateColor{ UIColor{0x33, 0x33, 0x33, 255}, UIColor{0x33, 0x33, 0x33, 255},
+                         UIColor{0x33, 0x33, 0x33, 255}, UIColor{0x99, 0x99, 0x99, 255} };
+}
+
+static UIStateColor designerTabTextColors() {
+    return UIStateColor{ UIColor{0xEB, 0xEB, 0xEB, 255}, UIColor{0xEB, 0xEB, 0xEB, 255},
+                         UIColor{0xEB, 0xEB, 0xEB, 255}, UIColor{0x99, 0x99, 0x99, 255} };
+}
+
+static UIStateColor designerShadowColors() {
+    return UIStateColor{ UIColor{0, 0, 0, 90}, UIColor{0, 0, 0, 90},
+                         UIColor{0, 0, 0, 110}, UIColor{0, 0, 0, 40} };
+}
+
+static bool colorGroupEquals(const nlohmann::json& group, const UIStateColor& sc) {
+    if (!group.is_object()) return false;
+    auto same = [](const nlohmann::json& v, const UIColor& c) {
+        return v.is_string() && v.get<std::string>() == uiColorHex(c);
+    };
+    return same(group.value("normal", nlohmann::json()), sc.normal) &&
+           same(group.value("hover", nlohmann::json()), sc.hover) &&
+           same(group.value("pressed", nlohmann::json()), sc.pressed) &&
+           same(group.value("disabled", nlohmann::json()), sc.disabled);
+}
+
+static void stripDefaultColorGroup(nlohmann::json& colors, const char* key,
+                                   const UIStateColor& sc) {
+    auto it = colors.find(key);
+    if (it != colors.end() && colorGroupEquals(*it, sc)) colors.erase(it);
+}
+
+// 运行布局专用：项目主题存在时，去掉设计器放置控件时写入的“默认外观”显式颜色。
+// 用户手动改过的颜色不会匹配默认值，因此会保留并继续覆盖主题。
+static void stripDesignerDefaultColors(nlohmann::json& node) {
+    if (!node.is_object()) return;
+    const std::string type = node.value("type", std::string());
+    if (node.contains("colors") && node["colors"].is_object()) {
+        auto& colors = node["colors"];
+        if (type == "button") {
+            stripDefaultColorGroup(colors, "background", designerFaceColors());
+            stripDefaultColorGroup(colors, "border", designerBorderColors());
+            stripDefaultColorGroup(colors, "text", designerTextColors());
+            stripDefaultColorGroup(colors, "text-shadow", designerShadowColors());
+        } else if (type == "tab-control") {
+            stripDefaultColorGroup(colors, "text", designerTabTextColors());
+            stripDefaultColorGroup(colors, "background", designerFaceColors());
+            stripDefaultColorGroup(colors, "border", designerBorderColors());
+        } else if (type == "label" || type == "numeric-up-down" || type == "combo-box") {
+            stripDefaultColorGroup(colors, "text", designerTextColors());
+        } else if (type == "check-box") {
+            stripDefaultColorGroup(colors, "text", designerTextColors());
+            stripDefaultColorGroup(colors, "border", designerBorderColors());
+        }
+        if (colors.empty()) node.erase("colors");
+    }
+    if (node.contains("children") && node["children"].is_array())
+        for (auto& child : node["children"]) stripDesignerDefaultColors(child);
+    if (node.contains("tabs") && node["tabs"].is_array())
+        for (auto& tab : node["tabs"])
+            if (tab.is_object() && tab.contains("page")) stripDesignerDefaultColors(tab["page"]);
+}
+
 void CanvasPane::styleControl(const std::string& toolboxId, Control ctl, ControlModel& model) {
-    const UIStateColor face{ UIColor{0xFA, 0xFA, 0xFA, 255}, UIColor{0xE8, 0xF0, 0xFE, 255},
-                             UIColor{0xD8, 0xD8, 0xD8, 255}, UIColor{0xF0, 0xF0, 0xF0, 255} };
-    const UIStateColor border{ UIColor{0xB0, 0xB0, 0xB0, 255}, kPropPanelBorderFocus,
-                               kPropPanelBorderFocus, UIColor{0xC0, 0xC0, 0xC0, 255} };
-    const UIStateColor text{ UIColor{0x33, 0x33, 0x33, 255}, UIColor{0x33, 0x33, 0x33, 255},
-                             UIColor{0x33, 0x33, 0x33, 255}, UIColor{0x99, 0x99, 0x99, 255} };
-    // 阴影色显式设置：引擎缺省纯白（ConstDef DEFAULT_TEXT_SHADOW_*），浅色面上不可见
-    const UIStateColor shadow{ UIColor{0, 0, 0, 90}, UIColor{0, 0, 0, 90},
-                               UIColor{0, 0, 0, 110}, UIColor{0, 0, 0, 40} };
+    const UIStateColor face = designerFaceColors();
+    const UIStateColor border = designerBorderColors();
+    const UIStateColor text = designerTextColors();
+    const UIStateColor shadow = designerShadowColors();
     if (toolboxId == "tBtn") {
         ctl.SetStateColor(PropertyNames::kBackground, face);
         ctl.SetStateColor(PropertyNames::kBorder, border);
@@ -666,8 +734,7 @@ void CanvasPane::styleControl(const std::string& toolboxId, Control ctl, Control
     } else if (toolboxId == "tTabs") {
         // TabControl：页签文字用**亮色四态**——引擎页签底为深色（硬编码，P0-90 前不可配），
         // 深字在深底上不可读（用户实测"黑底深字"）；背景/边框仍写模型（导出/P0-90 后生效）
-        const UIStateColor tabText{ UIColor{0xEB, 0xEB, 0xEB, 255}, UIColor{0xEB, 0xEB, 0xEB, 255},
-                                    UIColor{0xEB, 0xEB, 0xEB, 255}, UIColor{0x99, 0x99, 0x99, 255} };
+        const UIStateColor tabText = designerTabTextColors();
         ctl.SetStateColor(PropertyNames::kText, tabText);
         ctl.SetStateColor(PropertyNames::kBackground, face);
         ctl.SetStateColor(PropertyNames::kBorder, border);
@@ -6783,7 +6850,7 @@ static nlohmann::json modelPropsJson(const ControlModel& m, const nlohmann::json
 }
 
 // 模型树 → 引擎兼容布局 JSON（顶层 viewport + controls；保存 .csd 的 layout 段与导出共用）
-nlohmann::json CanvasPane::serializeLayoutJson() const {
+nlohmann::json CanvasPane::serializeLayoutJson(bool stripThemeDefaults) const {
     const nlohmann::json defs = m_schema ? (*m_schema)["$defs"] : nlohmann::json::object();
     nlohmann::json j;
     {
@@ -6849,6 +6916,9 @@ nlohmann::json CanvasPane::serializeLayoutJson() const {
         for (const auto& p : m_resourceProviders)
             rp.push_back({ { "name", p.first }, { "path", p.second } });
         j["resourceProviders"] = std::move(rp);
+    }
+    if (stripThemeDefaults && !m_theme.empty() && j.contains("controls")) {
+        for (auto& ctl : j["controls"]) stripDesignerDefaultColors(ctl);
     }
     return j;
 }
@@ -8019,7 +8089,7 @@ bool CanvasPane::validateEventBindings(std::string& badName) const {
 // 导出引擎兼容布局 JSON（F7.1：LayoutParser 可解析；N4 验收面）
 bool CanvasPane::ExportLayout(const std::string& path) {
     if (IsEditingComponent()) { setStatusHint(u8"组件编辑中：请先返回画布"); return false; }
-    const nlohmann::json j = serializeLayoutJson();
+    const nlohmann::json j = serializeLayoutJson(true);
     std::ofstream f(utf8Path(path), std::ios::binary);   // 宽字符路径
     if (!f) {
         setStatusHint(u8"导出失败：无法写入文件");
@@ -8216,7 +8286,7 @@ bool CanvasPane::exportProject(const std::string& dir, bool cpp) {
         return (bool)f;
     };
     // 源码类文件带 BOM；JSON/CMake/README 不带（解析器/工具链按无 BOM UTF-8 读取）
-    const bool ok = writeFile("layout.json", serializeLayoutJson().dump(2)) &&
+    const bool ok = writeFile("layout.json", serializeLayoutJson(true).dump(2)) &&
                     writeFile("events.h", kBom + buildEventsHeaderText()) &&
                     writeFile("events.c", kBom + buildEventsSourceText()) &&
                     writeFile("event_list.json", buildEventListText()) &&
@@ -11607,6 +11677,143 @@ void ThemeVariablesDialog::Close() {
 
 
 // ==================== 可视化主题管理器 ====================
+namespace {
+
+std::string themeTrim(const std::string& in) {
+    size_t a = 0, b = in.size();
+    while (a < b && std::isspace(static_cast<unsigned char>(in[a]))) ++a;
+    while (b > a && std::isspace(static_cast<unsigned char>(in[b - 1]))) --b;
+    return in.substr(a, b - a);
+}
+
+bool themeIdentChar(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+           (c >= '0' && c <= '9') || c == '_' || c == '-';
+}
+
+bool themeSelector(const std::string& input, bool allowState, std::string& err) {
+    const std::string s = themeTrim(input);
+    if (s.empty()) { err = u8"选择器不能为空"; return false; }
+    if (s == "*") return true;
+    size_t i = 0;
+    if (s[0] != '.' && s[0] != '#' && s[0] != ':') {
+        const size_t begin = i;
+        while (i < s.size() && themeIdentChar(s[i])) ++i;
+        if (i == begin) { err = u8"选择器类型名不合法"; return false; }
+    }
+    if (i < s.size() && s[i] == '.') {
+        ++i;
+        const size_t begin = i;
+        while (i < s.size() && themeIdentChar(s[i])) ++i;
+        if (i == begin) { err = u8"类名不能为空"; return false; }
+    }
+    if (i < s.size() && s[i] == '#') {
+        ++i;
+        const size_t begin = i;
+        while (i < s.size() && themeIdentChar(s[i])) ++i;
+        if (i == begin) { err = u8"ID 不能为空"; return false; }
+    }
+    if (allowState && i < s.size() && s[i] == ':') {
+        ++i;
+        const size_t begin = i;
+        while (i < s.size() && themeIdentChar(s[i])) ++i;
+        const std::string state = s.substr(begin, i - begin);
+        if (state != "hover" && state != "pressed" && state != "disabled" && state != "selected") {
+            err = u8"状态只能是 hover/pressed/disabled/selected";
+            return false;
+        }
+    }
+    if (i != s.size()) { err = u8"选择器含不支持的字符（空格/逗号/组合选择器）"; return false; }
+    if (i == 0) { err = u8"选择器不合法"; return false; }
+    return true;
+}
+
+bool themeQueryKey(const std::string& k) {
+    return k == "min-width" || k == "max-width" || k == "min-height" || k == "max-height" ||
+           k == "orientation" || k == "min-scale" || k == "max-scale";
+}
+
+bool themeNumberText(const std::string& input) {
+    const std::string s = themeTrim(input);
+    if (s.empty()) return false;
+    char* end = nullptr;
+    std::strtod(s.c_str(), &end);
+    if (!end || end == s.c_str()) return false;
+    while (std::isspace(static_cast<unsigned char>(*end))) ++end;
+    if (*end == 'p' && *(end + 1) == 'x') end += 2;
+    while (std::isspace(static_cast<unsigned char>(*end))) ++end;
+    return *end == 0;
+}
+
+bool themeQuery(const std::string& input, std::string& err) {
+    const std::string s = themeTrim(input);
+    if (s.empty()) { err = u8"查询不能为空"; return false; }
+    if (s[0] == '{') {
+        const nlohmann::json j = nlohmann::json::parse(s, nullptr, false);
+        if (j.is_discarded() || !j.is_object()) { err = u8"查询对象不是合法 JSON 对象"; return false; }
+        for (auto it = j.begin(); it != j.end(); ++it) {
+            if (!themeQueryKey(it.key())) { err = u8"查询不支持键 " + it.key(); return false; }
+            if (it.key() == "orientation") {
+                if (!it.value().is_string() ||
+                    (it.value().get<std::string>() != "portrait" &&
+                     it.value().get<std::string>() != "landscape")) {
+                    err = u8"orientation 只能是 portrait/landscape";
+                    return false;
+                }
+            } else if (it.value().is_number()) {
+                continue;
+            } else if (!it.value().is_string() || !themeNumberText(it.value().get<std::string>())) {
+                err = u8"查询键 " + it.key() + u8" 需要数值";
+                return false;
+            }
+        }
+        return true;
+    }
+    if (s.size() < 3 || s.front() != '(' || s.back() != ')') {
+        err = u8"查询格式应为 (键: 值) 或 JSON 对象";
+        return false;
+    }
+    const std::string body = themeTrim(s.substr(1, s.size() - 2));
+    const size_t colon = body.find(':');
+    if (colon == std::string::npos) { err = u8"查询缺少冒号"; return false; }
+    const std::string key = themeTrim(body.substr(0, colon));
+    const std::string value = themeTrim(body.substr(colon + 1));
+    if (!themeQueryKey(key)) { err = u8"查询不支持键 " + key; return false; }
+    if (key == "orientation") {
+        if (value != "portrait" && value != "landscape") {
+            err = u8"orientation 只能是 portrait/landscape";
+            return false;
+        }
+    } else if (!themeNumberText(value)) {
+        err = u8"查询值需要数字（可带 px）";
+        return false;
+    }
+    return true;
+}
+
+bool themeBoxShadowText(const std::string& input, std::string& err) {
+    const std::string s = themeTrim(input);
+    if (s.empty()) return true;
+    const nlohmann::json j = nlohmann::json::parse(s, nullptr, false);
+    if (j.is_discarded() || !j.is_object()) { err = u8"box-shadow 需要 JSON 对象"; return false; }
+    for (auto it = j.begin(); it != j.end(); ++it) {
+        const std::string& k = it.key();
+        if (k != "color" && k != "offset-x" && k != "offset-y" && k != "blur" && k != "spread") {
+            err = u8"box-shadow 不支持键 " + k;
+            return false;
+        }
+        if (k == "color") {
+            if (!it.value().is_string()) { err = u8"box-shadow.color 需要颜色字符串"; return false; }
+        } else if (!it.value().is_number()) {
+            err = u8"box-shadow." + k + u8" 需要数值";
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
 Control ThemeManagerDialog::MakeLabel(const std::string& text, float x, float y, float w) {
     Control c = m_ui->CreateLabel(text, 18.0f, x, y, w, 24);
     if (c.IsValid()) m_dlg.AddChild(c);
@@ -11618,6 +11825,19 @@ Control ThemeManagerDialog::MakeEdit(float x, float y, float w, const std::strin
     if (c.IsValid()) {
         c.SetInt(PropertyNames::kFontSize, 18);
         c.SetString(PropertyNames::kTextContent, value);
+        m_dlg.AddChild(c);
+    }
+    return c;
+}
+
+Control ThemeManagerDialog::MakeCombo(
+    float x, float y, float w,
+    const std::vector<std::pair<std::string, std::string>>& items) {
+    Control c = m_ui->CreateComboBox(x, y, w, 30);
+    if (c.IsValid()) {
+        c.SetBool(PropertyNames::kEditable, true);
+        c.SetInt(PropertyNames::kFontSize, 18);
+        for (const auto& it : items) m_ui->ComboBoxAddItem(c, it.first, it.second);
         m_dlg.AddChild(c);
     }
     return c;
@@ -11747,14 +11967,36 @@ void ThemeManagerDialog::EnsureCreated() {
     MakeLabel(u8"条件ID", 12, 48, 60);
     m_condId = MakeEdit(75, 48, 120);
     MakeLabel(u8"查询", 205, 48, 50);
-    m_condQuery = MakeEdit(255, 48, 380);
+    m_condQuery = MakeCombo(255, 48, 380, {
+        { u8"(max-width: 800px)", u8"(max-width: 800px)" },
+        { u8"(min-width: 1200px)", u8"(min-width: 1200px)" },
+        { u8"(orientation: portrait)", u8"(orientation: portrait)" },
+        { u8"{\"max-width\": 800, \"orientation\": \"portrait\"}", u8"{\"max-width\": 800, \"orientation\": \"portrait\"}" }
+    });
     MakeLabel(u8"容器", 645, 48, 50);
-    m_condContainer = MakeEdit(695, 48, 193);
+    m_condContainer = MakeCombo(695, 48, 193, {
+        { u8"panel", u8"panel" },
+        { u8".sidebar", u8".sidebar" },
+        { u8"panel.sidebar", u8"panel.sidebar" },
+        { u8"#sidePanel", u8"#sidePanel" }
+    });
     if (m_condId.IsValid()) m_condId.SetBool(PropertyNames::kEnabled, false);
     if (m_condQuery.IsValid()) m_condQuery.SetBool(PropertyNames::kEnabled, false);
     if (m_condContainer.IsValid()) m_condContainer.SetBool(PropertyNames::kEnabled, false);
     MakeLabel(u8"选择器", 12, 84, 80);
-    m_selector = MakeEdit(100, 84, 788);
+    m_selector = MakeCombo(100, 84, 788, {
+        { u8"button", u8"button" },
+        { u8"label", u8"label" },
+        { u8"panel", u8"panel" },
+        { u8".primary", u8".primary" },
+        { u8"button.primary", u8"button.primary" },
+        { u8"button.secondary", u8"button.secondary" },
+        { u8"button.danger", u8"button.danger" },
+        { u8"button.primary:hover", u8"button.primary:hover" },
+        { u8"panel.card", u8"panel.card" },
+        { u8"edit-box", u8"edit-box" },
+        { u8"*", u8"*" }
+    });
     MakeLabel(u8"背景色", 12, 120, 80);
     m_bg = colorInput(100, 120, 300, "#00000000", 0);
     MakeLabel(u8"文字色", 430, 120, 80);
@@ -11797,7 +12039,14 @@ void ThemeManagerDialog::EnsureCreated() {
         }
     }
     MakeLabel(u8"box-shadow", 12, 264, 100);
-    m_boxShadow = MakeEdit(120, 264, 768);
+    m_boxShadow = MakeCombo(120, 264, 768, {
+        { u8"{\"color\":\"#00000033\",\"offset-x\":0,\"offset-y\":4,\"blur\":12,\"spread\":0}",
+          u8"{\"color\":\"#00000033\",\"offset-x\":0,\"offset-y\":4,\"blur\":12,\"spread\":0}" },
+        { u8"{\"color\":\"#00000066\",\"offset-x\":0,\"offset-y\":6,\"blur\":16,\"spread\":0}",
+          u8"{\"color\":\"#00000066\",\"offset-x\":0,\"offset-y\":6,\"blur\":16,\"spread\":0}" },
+        { u8"{\"color\":\"#00000080\",\"offset-x\":0,\"offset-y\":10,\"blur\":24,\"spread\":0}",
+          u8"{\"color\":\"#00000080\",\"offset-x\":0,\"offset-y\":10,\"blur\":24,\"spread\":0}" }
+    });
     m_add = m_ui->CreateButton(u8"新增规则", 12, 300, 100, 30);
     m_del = m_ui->CreateButton(u8"删除规则", 122, 300, 100, 30);
     m_assign = m_ui->CreateButton(u8"类应用到选中", 232, 300, 130, 30);
@@ -11806,11 +12055,17 @@ void ThemeManagerDialog::EnsureCreated() {
         m_dlg.AddChild(m_add);
         m_add.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
             StoreRule();
+            if (!StoreCondition()) return;
+            std::string err;
+            std::string selector = m_selector.IsValid()
+                ? themeTrim(m_selector.GetString(PropertyNames::kTextContent)) : std::string();
+            if (selector.empty()) selector = ".new-rule";
+            if (!themeSelector(selector, true, err)) {
+                if (m_status.IsValid()) m_status.SetString(PropertyNames::kCaption, u8"选择器：" + err);
+                return;
+            }
             auto& styles = (*scope())["styles"];
             if (!styles.is_array()) styles = nlohmann::json::array();
-            std::string selector = m_selector.IsValid()
-                ? m_selector.GetString(PropertyNames::kTextContent) : std::string();
-            if (selector.empty()) selector = ".new-rule";
             styles.push_back({ { "selector", selector }, { "declarations", nlohmann::json::object() } });
             m_selected = static_cast<int>(styles.size()) - 1;
             RefreshRules();
@@ -11903,8 +12158,22 @@ void ThemeManagerDialog::EnsureCreated() {
     if (m_apply.IsValid()) {
         m_dlg.AddChild(m_apply);
         m_apply.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
-            StoreRule();
             std::string err;
+            if (m_selected >= 0) {
+                const std::string selector = m_selector.IsValid()
+                    ? themeTrim(m_selector.GetString(PropertyNames::kTextContent)) : std::string();
+                if (!themeSelector(selector, true, err)) {
+                    if (m_status.IsValid()) m_status.SetString(PropertyNames::kCaption, u8"选择器：" + err);
+                    return;
+                }
+                if (m_boxShadow.IsValid() &&
+                    !themeBoxShadowText(m_boxShadow.GetString(PropertyNames::kTextContent), err)) {
+                    if (m_status.IsValid()) m_status.SetString(PropertyNames::kCaption, err);
+                    return;
+                }
+            }
+            if (!StoreCondition()) return;
+            StoreRule();
             if (m_onApply && m_onApply(m_draft, err)) {
                 Close();
             } else if (m_status.IsValid()) {
@@ -11938,18 +12207,33 @@ void ThemeManagerDialog::Layout() {
     if (m_status.IsValid()) m_status.SetRect(310, H - 40, 390, 24);
 }
 
-void ThemeManagerDialog::StoreCondition() {
-    if (!m_ui) return;
-    if (m_variant.rfind("m:", 0) != 0 && m_variant.rfind("c:", 0) != 0) return;
-    nlohmann::json* sc = scope();
-    if (m_condId.IsValid()) (*sc)["id"] = m_condId.GetString(PropertyNames::kTextContent);
-    if (m_condQuery.IsValid()) {
-        const std::string text = m_condQuery.GetString(PropertyNames::kTextContent);
-        const nlohmann::json parsed = nlohmann::json::parse(text, nullptr, false);
-        (*sc)["query"] = parsed.is_object() ? parsed : nlohmann::json(text);
+bool ThemeManagerDialog::StoreCondition() {
+    if (!m_ui) return false;
+    if (m_variant.rfind("m:", 0) != 0 && m_variant.rfind("c:", 0) != 0) return true;
+    auto fail = [this](const std::string& message) {
+        if (m_status.IsValid()) m_status.SetString(PropertyNames::kCaption, message);
+        return false;
+    };
+    const bool isContainer = m_variant.rfind("c:", 0) == 0;
+    const std::string id = m_condId.IsValid()
+        ? themeTrim(m_condId.GetString(PropertyNames::kTextContent)) : std::string();
+    if (id.empty()) return fail(u8"条件 ID 不能为空");
+    const std::string query = m_condQuery.IsValid()
+        ? m_condQuery.GetString(PropertyNames::kTextContent) : std::string();
+    std::string err;
+    if (!themeQuery(query, err)) return fail(err);
+    std::string container;
+    if (isContainer) {
+        container = m_condContainer.IsValid()
+            ? themeTrim(m_condContainer.GetString(PropertyNames::kTextContent)) : std::string();
+        if (!themeSelector(container, false, err)) return fail(u8"容器选择器：" + err);
     }
-    if (m_variant.rfind("c:", 0) == 0 && m_condContainer.IsValid())
-        (*sc)["container"] = m_condContainer.GetString(PropertyNames::kTextContent);
+    nlohmann::json* sc = scope();
+    (*sc)["id"] = id;
+    const nlohmann::json parsed = nlohmann::json::parse(query, nullptr, false);
+    (*sc)["query"] = parsed.is_object() ? parsed : nlohmann::json(query);
+    if (isContainer) (*sc)["container"] = container;
+    return true;
 }
 
 void ThemeManagerDialog::LoadCondition() {
@@ -12077,14 +12361,24 @@ void ThemeManagerDialog::SelectRule(int index) {
 }
 
 void ThemeManagerDialog::StoreRule() {
-    StoreCondition();
+    if (!StoreCondition()) return;
     nlohmann::json* sc = scope();
     if (!m_ui || m_selected < 0 || !sc->contains("styles") ||
         !(*sc)["styles"].is_array() || m_selected >= static_cast<int>((*sc)["styles"].size()))
         return;
-    auto& rule = (*sc)["styles"][m_selected];
+    std::string err;
     const std::string selector = m_selector.IsValid()
-        ? m_selector.GetString(PropertyNames::kTextContent) : std::string();
+        ? themeTrim(m_selector.GetString(PropertyNames::kTextContent)) : std::string();
+    if (!themeSelector(selector, true, err)) {
+        if (m_status.IsValid()) m_status.SetString(PropertyNames::kCaption, u8"选择器：" + err);
+        return;
+    }
+    if (m_boxShadow.IsValid() &&
+        !themeBoxShadowText(m_boxShadow.GetString(PropertyNames::kTextContent), err)) {
+        if (m_status.IsValid()) m_status.SetString(PropertyNames::kCaption, err);
+        return;
+    }
+    auto& rule = (*sc)["styles"][m_selected];
     if (!selector.empty()) rule["selector"] = selector;
     if (!rule.contains("declarations") || !rule["declarations"].is_object())
         rule["declarations"] = nlohmann::json::object();
@@ -12412,6 +12706,31 @@ static void stripGhostJson(nlohmann::json& j) {
     }
 }
 
+bool CanvasPane::ApplyThemeFile(const std::string& path) {
+    if (!m_ui || m_previewMode || IsEditingComponent()) {
+        setStatusHint(u8"当前模式不能应用主题：请退出预览/组件编辑");
+        return false;
+    }
+    std::ifstream f(utf8Path(path), std::ios::binary);
+    if (!f) {
+        setStatusHint(u8"主题文件不存在：" + path);
+        return false;
+    }
+    std::string text((std::istreambuf_iterator<char>(f)),
+                     std::istreambuf_iterator<char>());
+    nlohmann::json j = nlohmann::json::parse(text, nullptr, false);
+    if (j.is_discarded() || !j.is_object()) {
+        setStatusHint(u8"主题文件不是合法 JSON 对象");
+        return false;
+    }
+    // 允许直接给主题对象，也允许从布局 JSON 的 theme 字段加载。
+    if (j.contains("theme") && j["theme"].is_object()) j = j["theme"];
+    m_theme = std::move(j);
+    commitUndo("theme");
+    setStatusHint(u8"主题已加载：" + path + u8"（预览/导出生效）");
+    return true;
+}
+
 void CanvasPane::ShowThemeDialog() {
     if (!m_ui || IsEditingComponent()) return;
     const std::string body = m_theme.empty() ? std::string(R"({"fonts":{},"colors":{}})") : m_theme.dump(2);
@@ -12440,6 +12759,7 @@ void CanvasPane::ShowThemeManagerDialog() {
         },
         [this](const std::string& cls) { return assignStyleClassToSelection(cls); });
 }
+
 
 
 std::string CanvasPane::assignStyleClassToSelection(const std::string& cls) {

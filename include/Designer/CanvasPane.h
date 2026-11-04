@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <utility>
 
 #include <nlohmann/json.hpp>
 
@@ -111,13 +112,15 @@ private:
     void RefreshRules();
     void RefreshVariants();
     void StoreRule();
-    void StoreCondition();
+    bool StoreCondition();
     void LoadCondition();
     void LoadRule();
     void SelectRule(int index);
     nlohmann::json* scope();
     Control MakeLabel(const std::string& text, float x, float y, float w);
     Control MakeEdit(float x, float y, float w, const std::string& value = "");
+    Control MakeCombo(float x, float y, float w,
+                      const std::vector<std::pair<std::string, std::string>>& items);
     UICornerstone::UICornerstone* m_ui = nullptr;
     nlohmann::json m_draft = nlohmann::json::object();
     ApplyFn m_onApply;
@@ -264,6 +267,7 @@ public:
     void ShowRawJsonDialog();   // F3.5：所选控件原始 JSON（查看/编辑/应用 ✗）
     void ShowThemeDialog();     // 项目顶层 theme JSON（高级；预览/导出生效）
     void ShowThemeManagerDialog();   // 可视化主题管理器（规则/类）
+    bool ApplyThemeFile(const std::string& path);   // 独立加载/应用主题文件（模板/用户文件）
     std::string assignStyleClassToSelection(const std::string& cls);
 
     void ShowCreateComponentDialog();   // 组件系统：选中控件创建组件（名称对话框 ✗）
@@ -418,7 +422,7 @@ public:
     void SetShareDir(const std::string& dir) { m_shareDir = dir; }   // 设计器 exe 目录（sdk 头/DLL/assets 分发源）
     bool ImportLayout(const std::string& path);     // 读引擎布局 JSON → 重建画布
     void NewProject();                              // 清空画布（新建）
-    nlohmann::json serializeLayoutJson() const;     // 模型树 → 引擎兼容布局 JSON（保存/导出共用）
+    nlohmann::json serializeLayoutJson(bool stripThemeDefaults = false) const;   // 模型树 → 引擎兼容布局 JSON；runtime=true 去除设计器默认显式样式
     bool buildFromLayoutJson(const nlohmann::json& layout, bool useViewportSize);  // 布局 JSON → 画布
     void clearCanvas();                             // 清空全部画布控件/模型/树节点
     const std::string& ProjectPath() const { return m_projectPath; }
