@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>6 工程与文件 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="05-project-files.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>6 工程与文件</h1>
+
+<h2>6.1 新建工程</h2>
+
+<p>选择 <span class="menu-path">文件 → 新建</span>。设计器会清空画布、组件定义、事件代码和主题，恢复默认画布尺寸，并清除当前工程路径。</p>
+
+<div class="warn">新建前如果有未保存修改，请先保存。当前版本不会自动提示保存。</div>
+
+<h2>6.2 打开工程</h2>
+
+<p>选择 <span class="menu-path">文件 → 打开</span>，在文件对话框中选择 <code>.csd</code> 工程。也可以：</p>
+
+<ul>
+  <li>把 <code>.csd</code> 或 <code>.json</code> 文件从资源管理器拖入设计器窗口。</li>
+  <li>从 <span class="menu-path">文件 → 最近文件</span> 选择最近工程。</li>
+  <li>启动时通过命令行把文件路径作为参数传入。</li>
+</ul>
+
+<p>打开成功后，窗口标题显示项目文件名，状态栏提示“已打开”；失败时保留当前工程并在状态栏或控制台给出错误。</p>
+
+<h2>6.3 保存与另存为</h2>
+
+<table>
+<tr><th>操作</th><th>菜单位置</th><th>说明</th></tr>
+<tr><td>保存</td><td>文件 → 保存</td><td>已有路径直接保存；无路径时弹出保存对话框</td></tr>
+<tr><td>另存为</td><td>文件 → 另存为</td><td>选择新路径，不影响原文件</td></tr>
+</table>
+
+<p>保存成功后未保存标记 <code>*</code> 消失；保存失败时先检查目标目录是否存在、文件是否被占用、路径是否过长。</p>
+
+<h2>6.4 最近文件</h2>
+
+<p><span class="menu-path">文件 → 最近文件</span> 最多保留 10 个项目，最近使用的排在最前。列表会压缩显示超长路径，但点击时仍使用完整路径。</p>
+
+<ul>
+  <li>不存在的路径会在启动或打开时从列表中移除。</li>
+  <li>最近文件保存在设计器 exe 同目录的 <code>designer_settings.json</code>。</li>
+  <li>列表为空时“最近文件”菜单项置灰。</li>
+</ul>
+
+<h2>6.5 导入和导出 JSON</h2>
+
+<table>
+<tr><th>操作</th><th>菜单</th><th>结果</th></tr>
+<tr><td>导入 JSON</td><td>文件 → 导入 JSON</td><td>用 JSON 布局替换当前画布内容，成为设计器中的工程</td></tr>
+<tr><td>导出 JSON</td><td>文件 → 导出 JSON</td><td>只导出运行布局，供 UICornerstone 加载</td></tr>
+</table>
+
+<p><code>.csd</code> 与导出 <code>.json</code> 的区别：<code>.csd</code> 还包含设计器元数据（组件、事件代码、配置等）；导出 JSON 主要是控件树、viewport 和运行时字段。</p>
+
+<div class="note">导入和导出走的是不同路径：导入用于接续编辑别人的布局；导出用于把当前工程交给运行时。需要保留设计器信息时不要用导出 JSON 代替保存。</div>
+
+<h2>6.6 拖入文件</h2>
+
+<ul>
+  <li>拖入 <code>.csd</code>：作为工程打开。</li>
+  <li>拖入 <code>.json</code>：作为布局导入。</li>
+  <li>其它扩展名：忽略，不改变当前工程。</li>
+</ul>
+
+<h2>6.7 命令行打开</h2>
+
+<p>可以把路径作为启动参数：</p>
+
+<pre><code>CornerstoneDesigner.exe "D:\Projects\Demo.csd"</code></pre>
+
+<p>命令行路径不经过文件对话框，适合长路径或从脚本启动设计器。路径无效时启动普通空白工程。</p>
+
+<h2>6.8 设计器设置</h2>
+
+<p><code>designer_settings.json</code> 位于 exe 同目录，当前记录：</p>
+
+<ul>
+  <li><code>lastFileDir</code>：文件对话框记忆目录</li>
+  <li><code>lastFolderDir</code>：目录对话框记忆目录</li>
+  <li><code>recentFiles</code>：最近文件列表</li>
+</ul>
+
+<p>文件损坏或缺失时设计器使用空设置启动，不会阻止打开工程。</p>
+
+<h2>6.9 工程文件里有什么</h2>
+
+<table>
+<tr><th>字段</th><th>内容</th></tr>
+<tr><td>layout.controls</td><td>控件树、位置、尺寸、属性、事件</td></tr>
+<tr><td>layout.components</td><td>组件定义与模板</td></tr>
+<tr><td>layout.viewport</td><td>画布尺寸、标题、背景</td></tr>
+<tr><td>layout.theme</td><td>项目主题（可选）</td></tr>
+<tr><td>metadata</td><td>事件代码、handler includes、画布元数据</td></tr>
+<tr><td>version</td><td>工程格式版本</td></tr>
+</table>
+
+<div class="chapter-nav">
+  <a href="04-concepts.html">← 上一章：5 核心概念</a>
+  <a href="06-toolbox.html">下一章：7 工具箱与放置 →</a>
+</div>
+
+</div>
+</body>
+</html>

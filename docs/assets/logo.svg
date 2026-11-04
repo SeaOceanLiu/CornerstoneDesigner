@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="CornerstoneDesigner">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4a90d9"/>
+      <stop offset="1" stop-color="#2d6cad"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="24" fill="#1b1f27" stroke="#4a90d9" stroke-width="4"/>
+  <path d="M38 40h42c9 0 16 7 16 16v4H62v28H38z" fill="url(#g)"/>
+  <path d="M62 60h34v28H78c-9 0-16-7-16-16z" fill="#dce5f2" opacity=".92"/>
+  <path d="M70 52h20v20H70z" fill="#1b1f27" opacity=".35"/>
+</svg>

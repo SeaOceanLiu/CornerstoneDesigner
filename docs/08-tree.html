@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>9 控件树 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="08-tree.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>9 控件树</h1>
+
+<p>控件树位于左侧工具箱的“控件树”页签，按父子关系显示画布上的所有控件。它是复杂布局中定位、重排和调整层级的主要工具。</p>
+
+<h2>9.1 基本结构</h2>
+
+<ul>
+  <li>根节点显示画布（Bench）及其 ID，例如“画布 canvas”。</li>
+  <li>根节点下的每个节点对应画布上的一个控件。</li>
+  <li>容器节点可以展开，显示其子控件。</li>
+  <li>同级节点越靠下，绘制层级越靠前。</li>
+</ul>
+
+<h2>9.2 联动选择</h2>
+
+<ul>
+  <li>在控件树单击节点：画布选中对应控件，属性面板同步。</li>
+  <li>在画布选中控件：控件树自动定位并高亮对应节点。</li>
+  <li>单击根节点“画布 …”：选中 Bench，属性面板显示画布属性。</li>
+</ul>
+
+<p>这种“画布 ↔ 控件树 ↔ 属性面板”的联动可以避免在重叠控件中误选。</p>
+
+<h2>9.3 重命名控件 ID</h2>
+
+<p>ID 在属性面板中修改：选中控件后，在“行为”或组件属性区域找到“控件 id”输入框，回车或移开焦点提交。</p>
+
+<ul>
+  <li>ID 用于事件绑定、代码生成和控件查找，修改后相关引用会同步更新。</li>
+  <li>如果 ID 冲突，设计器会提示或自动追加编号。</li>
+  <li>如果事件代码中引用了旧 ID，设计器会询问是否同步修改代码。</li>
+</ul>
+
+<h2>9.4 右键菜单</h2>
+
+<table>
+<tr><th>菜单项</th><th>作用</th></tr>
+<tr><td>删除</td><td>删除节点及其子树</td></tr>
+<tr><td>上移</td><td>在同级中向前移动一个位置</td></tr>
+<tr><td>下移</td><td>在同级中向后移动一个位置</td></tr>
+<tr><td>移到画布根</td><td>把节点从当前父容器移到根级</td></tr>
+<tr><td>编辑组件…</td><td>当节点是组件实例时进入组件编辑模式</td></tr>
+</table>
+
+<p>右键只会作用于实际命中的节点；点击空白区域不会弹出菜单。</p>
+
+<h2>9.5 拖拽调整结构</h2>
+
+<ol class="steps">
+  <li>按住树节点拖动。</li>
+  <li>拖到目标节点的上方/下方：调整同级顺序。</li>
+  <li>拖到目标容器节点内部：改变父子关系。</li>
+  <li>松开后，控件树、画布和属性面板同步刷新。</li>
+</ol>
+
+<div class="warn">拖拽会改变真实父子关系，可能影响布局坐标。容器移动后子控件相对容器的坐标由设计器换算；如结果不符合预期，立即按 <span class="kbd">Ctrl</span>+<span class="kbd">Z</span> 撤销。</div>
+
+<h2>9.6 树序与绘制顺序</h2>
+
+<p>控件树同级的顺序就是绘制顺序：越靠下的节点越晚绘制，显示在更前面。当前版本通过右键“上移/下移/移到画布根”调整，不使用“编辑”菜单中的置前/置后预留项。</p>
+
+<h2>9.7 TabControl 节点</h2>
+
+<p>TabControl 的每个页是一个 Panel 节点。选中页节点或点击画布中的当前页，属性面板会显示该页属性；隐藏页不参与画布命中，但仍可在控件树中看到。</p>
+
+<div class="tip">重叠控件很多时，先看控件树层级，再在画布上单击；比反复点击重叠区域更快。</div>
+
+<div class="chapter-nav">
+  <a href="07-canvas.html">← 上一章：8 画布编辑</a>
+  <a href="09-properties.html">下一章：10 属性面板 →</a>
+</div>
+
+</div>
+</body>
+</html>

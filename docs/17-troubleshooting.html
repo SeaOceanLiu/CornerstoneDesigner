@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>18 故障排查与 FAQ - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="17-troubleshooting.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>18 故障排查与 FAQ</h1>
+
+<p>遇到问题时按“现象 → 可能原因 → 处理”排查。设计器会在控制台输出日志；开发构建下终端窗口中的日志是首要线索。</p>
+
+<h2>18.1 程序无法启动</h2>
+
+<table>
+<tr><th>现象</th><th>可能原因</th><th>处理</th></tr>
+<tr><td>缺 DLL / 0xc000007b</td><td>运行依赖未与 exe 同目录</td><td>确认 UICornerstone、UIBackend_sdl3、SDL3 运行库与 assets 已拷贝</td></tr>
+<tr><td>窗口黑屏/无内容</td><td>后端或资源初始化失败</td><td>查看控制台错误；确认使用 SDL3 构建</td></tr>
+<tr><td>启动后立即退出</td><td>主布局 main_layout.json 缺失或非法</td><td>确认 exe 同目录有 main_layout.json；恢复默认布局</td></tr>
+</table>
+
+<h2>18.2 布局加载失败</h2>
+
+<ul>
+  <li>JSON 语法错误：用原始 JSON 或外部编辑器检查括号、逗号、引号。</li>
+  <li>控件类型不存在：确认 UICornerstone 版本与设计器匹配。</li>
+  <li>资源路径错误：通常不会阻止 LoadLayout，但资源显示为空。</li>
+  <li>工程版本不兼容：尝试从备份恢复，或在新版本中重新导入 JSON。</li>
+</ul>
+
+<h2>18.3 画布点不中 / 拖不动</h2>
+
+<ol class="steps">
+  <li>检查预览窗口是否在最前并抢走焦点；关闭/切回主窗口。</li>
+  <li>检查是否处于预览模式或组件编辑模式；退出后再操作。</li>
+  <li>检查控件是否在隐藏 Tab 页或 visible=false 的容器内。</li>
+  <li>检查控件是否被其他控件完全覆盖；从控件树选中。</li>
+  <li>检查是否有模态对话框打开；先关闭对话框。</li>
+</ol>
+
+<h2>18.4 字体或图片不显示</h2>
+
+<ul>
+  <li>确认资源提供者名称和路径正确。</li>
+  <li>确认资源文件存在且扩展名正确。</li>
+  <li>在预览中查看；设计画布可能不加载全部资源。</li>
+  <li>字体名称必须是 UICornerstone 支持的字体枚举名或已加载资源。</li>
+  <li>检查导出目录中是否包含资源和 provider 映射。</li>
+</ul>
+
+<h2>18.5 事件不生效</h2>
+
+<ol class="steps">
+  <li>确认事件面板中确实有绑定，handler 名称合法且无冲突。</li>
+  <li>确认预览/导出工程中的控件 ID 与绑定一致。</li>
+  <li>确认事件类型是控件实际支持的事件（见附录 C）。</li>
+  <li>导出后检查 <code>events.c</code> 是否实现了函数体，而不是空骨架。</li>
+  <li>查看运行时控制台是否有未注册动作/回调错误。</li>
+</ol>
+
+<h2>18.6 主题不生效</h2>
+
+<ul>
+  <li>设计画布主要显示显式样式；请在预览/导出中查看主题。</li>
+  <li>确认控件已分配类，选择器拼写正确。</li>
+  <li>确认控件没有显式设置同名属性（显式优先）。</li>
+  <li>确认规则在正确作用域：基主题、变体、媒体、容器。</li>
+  <li>确认媒体/容器条件命中。</li>
+  <li>用“主题 JSON…”检查结构。</li>
+</ul>
+
+<h2>18.7 设计器主题不生效</h2>
+
+<ul>
+  <li>确认修改的是 exe 同目录的 <code>designer_theme.json</code>，不是源码目录里的文件。</li>
+  <li>修改后选择 <span class="menu-path">视图 → 重新加载设计器主题</span>。</li>
+  <li>查看控制台 <code>[Theme]</code> 日志：文件缺失、JSON 非法或 ApplyTheme 失败都会打印。</li>
+  <li>设计器主题只影响设计器 UI，不影响项目画布/预览。</li>
+</ul>
+
+<h2>18.8 最近文件/路径问题</h2>
+
+<ul>
+  <li>最近文件失效：打开时会自动移除；检查文件是否被移动/删除。</li>
+  <li>超长路径：设计器内部使用长路径兼容处理；仍建议避免过深目录。</li>
+  <li>文件对话框打不开：确认系统对话框可用，目标目录存在。</li>
+</ul>
+
+<h2>18.9 导出失败</h2>
+
+<ul>
+  <li>事件命名冲突或非法：先修正事件面板。</li>
+  <li>目标目录不可写：换一个空目录。</li>
+  <li>组件编辑中：先返回画布再导出。</li>
+  <li>资源缺失：导出仍可能成功，但运行会缺资源。</li>
+</ul>
+
+<h2>18.10 如何提供有效反馈</h2>
+
+<p>报告问题时请附：</p>
+
+<ul>
+  <li>复现步骤（从新建/打开哪个工程开始）。</li>
+  <li>设计器控制台日志（尤其是错误和最后几行）。</li>
+  <li>能复现的最小 <code>.csd</code> 或布局 JSON。</li>
+  <li>截图（画布、属性/事件面板、错误提示）。</li>
+  <li>设计器与 UICornerstone 的版本/构建时间。</li>
+</ul>
+
+<div class="chapter-nav">
+  <a href="16-shortcuts.html">← 上一章：17 快捷键与效率</a>
+  <a href="18-tutorials.html">下一章：19 实战教程 →</a>
+</div>
+
+</div>
+</body>
+</html>

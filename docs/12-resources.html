@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>13 资源管理 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="12-resources.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>13 资源管理</h1>
+
+<p>资源面板用于管理项目依赖的图片、字体、动画等资源。资源通过“名称 → 目录”的提供者映射，布局中使用相对资源路径，避免把绝对路径写死。</p>
+
+<h2>13.1 打开资源面板</h2>
+
+<p>左侧工具箱切换到“资源”页签。面板上方是资源提供者列表，下方是“插入”“修改”“删除”操作按钮。</p>
+
+<p>列表通常显示两列：</p>
+
+<ul>
+  <li><strong>名称</strong>：布局和属性中引用资源时使用的提供者名，例如 <code>ui</code>。</li>
+  <li><strong>路径</strong>：该提供者对应的磁盘目录。</li>
+</ul>
+
+<h2>13.2 插入资源提供者</h2>
+
+<ol class="steps">
+  <li>点击“插入”。</li>
+  <li>在名称输入框中输入唯一名称，例如 <code>demo</code>。</li>
+  <li>点击“选择目录…”或“选择文件…”选择资源所在位置。</li>
+  <li>确认后，提供者出现在列表中。</li>
+  <li>在控件属性中使用 <code>provider:demo/xxx.png</code> 这样的路径引用资源。</li>
+</ol>
+
+<div class="warn">名称必须在工程内唯一。重复名称会导致资源查找不确定；设计器会拒绝或提示。</div>
+
+<h2>13.3 修改与删除</h2>
+
+<table>
+<tr><th>操作</th><th>说明</th></tr>
+<tr><td>修改</td><td>选中列表行后点击，修改名称或路径</td></tr>
+<tr><td>删除</td><td>移除提供者；已引用该资源的控件可能显示缺失</td></tr>
+</table>
+
+<p>删除前请确认没有布局或组件仍在引用该提供者。资源提供者不会把文件复制到工程里，只保存路径。</p>
+
+<h2>13.4 路径规则</h2>
+
+<ul>
+  <li>资源路径应尽量使用相对路径，避免绝对路径。</li>
+  <li><code>provider:名称/相对路径</code> 指向提供者目录下的文件。</li>
+  <li>图片、字体、动画 JSONC 等资源的相对路径解析规则由 UICornerstone 运行时统一处理。</li>
+  <li>导出工程时，设计器会把需要的资源与路径写入导出包；请以导出结果为准检查。</li>
+</ul>
+
+<h2>13.5 图片和字体</h2>
+
+<ul>
+  <li>Image 控件通过图片属性选择资源；属性面板通常提供资源选择或文本输入。</li>
+  <li>字体通过字体名称或字体资源属性设置。</li>
+  <li>资源缺失时，控件可能显示为空、占位图形或回退字体。</li>
+</ul>
+
+<h2>13.6 动画资源</h2>
+
+<p>Animation 控件使用 LuotiAni JSONC 文件。把动画目录加入资源提供者后，在动画路径属性中填写 <code>provider:名称/动画.jsonc</code>。预览和导出会按运行时资源规则加载。</p>
+
+<h2>13.7 资源排查</h2>
+
+<ol class="steps">
+  <li>确认提供者名称和布局引用完全一致（区分大小写）。</li>
+  <li>确认提供者目录中确实存在该文件。</li>
+  <li>确认路径分隔符和相对路径正确。</li>
+  <li>在预览中查看；设计画布可能不加载全部资源。</li>
+  <li>如果只在导出工程中失败，检查导出目录中的资源分布。</li>
+</ol>
+
+<div class="chapter-nav">
+  <a href="11-preview.html">← 上一章：12 预览</a>
+  <a href="13-components.html">下一章：14 组件系统 →</a>
+</div>
+
+</div>
+</body>
+</html>

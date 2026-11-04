@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2 设计器概览 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="01-overview.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>2 设计器概览</h1>
+
+<p>CornerstoneDesigner 把 UICornerstone 的 JSON 布局编辑变成一个可视化流程：你不需要手写 JSON，也不需要记住控件属性名。设计器自身也是 UICornerstone 应用（Dogfooding），所以你看到的界面与导出后的界面使用同一套控件体系。</p>
+
+<h2>2.1 它能做什么</h2>
+
+<div class="feature-grid">
+  <div class="feature-card"><h4>可视化布局</h4><p>从工具箱放置控件，在画布上拖动、缩放、对齐和分布。</p></div>
+  <div class="feature-card"><h4>属性编辑</h4><p>布局、外观、行为三类属性；支持多选批量编辑。</p></div>
+  <div class="feature-card"><h4>事件绑定</h4><p>选择事件类型、生成 handler 名称并导出事件代码。</p></div>
+  <div class="feature-card"><h4>组件复用</h4><p>把一组控件做成组件模板，通过 props 生成多个实例。</p></div>
+  <div class="feature-card"><h4>主题换肤</h4><p>变量、规则、类、变体、媒体条件；预览与导出一致。</p></div>
+  <div class="feature-card"><h4>预览与导出</h4><p>独立窗口预览，导出 JSON、C/C++ 工程和项目报告。</p></div>
+</div>
+
+<h2>2.2 三种工作状态</h2>
+
+<table>
+<tr><th>状态</th><th>用途</th><th>如何进入</th></tr>
+<tr><td><strong>设计状态</strong></td><td>放置控件、编辑属性、查看网格与选中框</td><td>默认状态</td></tr>
+<tr><td><strong>组件编辑</strong></td><td>编辑组件模板与 props 声明</td><td>编辑 → 编辑组件…，或双击组件实例</td></tr>
+<tr><td><strong>预览状态</strong></td><td>按最终运行时效果显示当前布局</td><td>视图 → 预览模式、<span class="kbd">F5</span> 或画布工具栏“预览”</td></tr>
+</table>
+
+<p>设计状态中的网格、选中框、控制点和状态预览不会写入工程，也不会出现在导出的运行界面里。</p>
+
+<h2>2.3 典型工作流</h2>
+
+<ol class="steps">
+  <li><strong>新建或打开工程</strong>：得到一个可编辑的画布。</li>
+  <li><strong>放置控件</strong>：从左侧工具箱拖入或双击控件。</li>
+  <li><strong>调整布局</strong>：拖动位置、拖动控制点改尺寸，使用网格/吸附/对齐。</li>
+  <li><strong>编辑属性</strong>：在右侧属性面板设置文本、颜色、字体、可见性等。</li>
+  <li><strong>绑定事件</strong>：在事件页签填写事件与 handler。</li>
+  <li><strong>组件化</strong>（可选）：把重复结构做成组件。</li>
+  <li><strong>主题</strong>（可选）：用规则和类统一视觉。</li>
+  <li><strong>预览</strong>：确认交互与最终效果。</li>
+  <li><strong>保存</strong>：保存为 <code>.csd</code> 工程，保留设计器元数据。</li>
+  <li><strong>导出</strong>：导出 JSON 布局或可编译 C/C++ 工程。</li>
+</ol>
+
+<h2>2.4 文件类型</h2>
+
+<table>
+<tr><th>文件</th><th>说明</th><th>是否包含设计器信息</th></tr>
+<tr><td><code>*.csd</code></td><td>设计器工程文件，包含布局、组件、事件代码、主题与元数据</td><td>是</td></tr>
+<tr><td><code>*.json</code></td><td>UICornerstone 布局文件，用于导入或导出运行布局</td><td>否（只保留布局与 theme 等运行时字段）</td></tr>
+<tr><td><code>designer_settings.json</code></td><td>设计器自身设置：最近文件、对话框记忆目录</td><td>仅设计器使用</td></tr>
+<tr><td><code>designer_theme.json</code></td><td>设计器自身 UI 主题，与项目主题分离</td><td>否</td></tr>
+</table>
+
+<h2>2.5 启动前准备</h2>
+
+<ul>
+  <li>可执行文件旁应有 <code>main_layout.json</code>、<code>assets/</code>、<code>schema/</code> 和运行库 DLL；开发构建会自动拷贝。</li>
+  <li>设计器当前使用 SDL3 后端；请确认 <code>UICornerstone.dll</code>、<code>UIBackend_sdl3.dll</code> 与 SDL3 运行库同批、同目录。</li>
+  <li>从源码构建请参考 <code>design/guidelines/build.md</code>；构建输出在 <code>build/sdl3/Debug</code> 或 <code>build/sdl3/Release</code>。</li>
+  <li>首次启动没有工程时显示空白画布，可直接新建工程。</li>
+</ul>
+
+<h2>2.6 与设计文档的关系</h2>
+
+<ul>
+  <li><strong>本手册</strong>：面向操作，告诉你每一步点哪里、看到什么、失败时先检查什么。</li>
+  <li><strong><code>design/</code></strong>：面向实现，解释需求、数据结构、模块边界和关键决策。</li>
+  <li><strong>UICornerstone 文档</strong>：说明控件属性、事件和主题语法的底层语义；本手册只讲设计器中的用法。</li>
+</ul>
+
+<div class="tip">如果你是第一次使用，请不要先读附录。直接按 <a href="02-quick-start.html">快速开始</a> 完成一遍，再按需查后面的章节。</div>
+
+<div class="chapter-nav">
+  <a href="index.html">← 上一章：1 手册首页</a>
+  <a href="02-quick-start.html">下一章：3 快速开始 →</a>
+</div>
+
+</div>
+</body>
+</html>

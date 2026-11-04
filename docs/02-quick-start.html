@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3 快速开始 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="02-quick-start.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>3 快速开始</h1>
+
+<p>这一章用一个最小示例完成完整流程：新建工程 → 放置按钮 → 修改属性 → 绑定事件 → 预览 → 保存 → 导出。全程约 10 分钟。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/02-workspace.png" alt="设计器中的画布、属性面板与组件">
+  <div class="cap">图 3-1 设计状态：画布、工具箱和属性面板同时可见</div>
+</div>
+
+<h2>3.1 新建工程</h2>
+
+<ol class="steps">
+  <li>选择 <span class="menu-path">文件 → 新建</span>。</li>
+  <li>画布恢复为空白，标题栏显示“未命名 — CornerstoneDesigner”。</li>
+  <li>右侧状态栏显示“放置目标：画布根”，表示接下来放置的控件会成为画布根级控件。</li>
+</ol>
+
+<h2>3.2 放置一个按钮</h2>
+
+<ol class="steps">
+  <li>在左侧工具箱找到“基础控件 → 按钮 Button”。</li>
+  <li>双击“按钮 Button”，或把它拖到画布上。</li>
+  <li>按钮出现在画布上并自动被选中；右侧属性面板显示这个按钮的属性。</li>
+  <li>如果位置不理想，直接拖动按钮本体移动；拖动八个控制点调整大小。</li>
+</ol>
+
+<div class="tip">放置时状态栏会显示当前放置目标。若目标是某个 Panel 或 Tab 页，控件会成为它的子控件；若要放到画布根，先点击画布空白处或根节点。</div>
+
+<h2>3.3 修改属性</h2>
+
+<ol class="steps">
+  <li>保持按钮选中，在右侧“属性”页签查看“布局”和“外观”。</li>
+  <li>把 X、Y 改成合适的位置；把“宽”“高”改成需要的大小。</li>
+  <li>在“文本”中输入按钮标题，例如“保存”。</li>
+  <li>在“颜色”中修改背景色或文字色；颜色以 <code>#RRGGBBAA</code> 显示。</li>
+  <li>继续在“行为”区域修改该控件支持的其他属性。</li>
+</ol>
+
+<p>属性修改会实时写回画布。连续编辑同一属性会合并为一次撤销记录；需要撤销时使用 <span class="kbd">Ctrl</span>+<span class="kbd">Z</span>。</p>
+
+<h2>3.4 绑定事件</h2>
+
+<ol class="steps">
+  <li>保持按钮选中，点击右侧的“事件”页签。</li>
+  <li>在“事件”下拉框选择事件类型，例如按钮的点击事件。</li>
+  <li>在 handler 输入框填写函数名，例如 <code>onSaveClick</code>；也可以点击“建议命名”生成一个。</li>
+  <li>点击“添加绑定”。</li>
+  <li>下方“已绑定”列表出现一行：控件、事件、handler 和操作按钮。</li>
+</ol>
+
+<div class="warn">handler 名称必须是合法的 C/C++ 标识符，并尽量保持唯一。冲突或非法名称会在事件面板中提示，并阻止导出。</div>
+
+<h2>3.5 预览</h2>
+
+<ol class="steps">
+  <li>选择 <span class="menu-path">视图 → 预览模式</span>，或按 <span class="kbd">F5</span>。</li>
+  <li>设计器打开一个独立的预览窗口，按运行时效果显示当前布局。</li>
+  <li>在预览窗口中操作控件；它使用独立的 UICornerstone 实例，不会改动设计器画布。</li>
+  <li>再次按 <span class="kbd">F5</span> 或关闭预览窗口退出预览。</li>
+</ol>
+
+<div class="shot">
+  <img src="assets/screenshots/06-preview.png" alt="预览效果示例">
+  <div class="cap">图 3-2 预览显示最终布局与控件效果（示例项目）</div>
+</div>
+
+<h2>3.6 保存工程</h2>
+
+<ol class="steps">
+  <li>选择 <span class="menu-path">文件 → 保存</span>。</li>
+  <li>第一次保存会弹出文件对话框；选择目录并输入文件名，扩展名为 <code>.csd</code>。</li>
+  <li>保存成功后窗口标题显示项目文件名，未保存标记 <code>*</code> 消失。</li>
+  <li>以后再次保存会直接写入当前文件；需要另存时使用 <span class="menu-path">文件 → 另存为</span>。</li>
+</ol>
+
+<div class="note">最近打开的项目会出现在 <span class="menu-path">文件 → 最近文件</span> 中，最多 10 个；失效路径会在打开时自动移除。</div>
+
+<h2>3.7 导出</h2>
+
+<table>
+<tr><th>导出方式</th><th>菜单</th><th>产物</th></tr>
+<tr><td>布局 JSON</td><td>文件 → 导出 JSON</td><td>UICornerstone 可直接加载的布局文件</td></tr>
+<tr><td>C 工程</td><td>文件 → 导出为可编译C项目</td><td>裸 C ABI 宿主、事件代码、资源与构建脚本</td></tr>
+<tr><td>C++ 工程</td><td>文件 → 导出为可编译C++项目</td><td>C++ Binding 宿主、binding 包、事件代码与构建脚本</td></tr>
+<tr><td>项目报告</td><td>文件 → 导出项目报告</td><td><code>report.md</code> + 布局截图</td></tr>
+</table>
+
+<ol class="steps">
+  <li>选择 <span class="menu-path">文件 → 导出为可编译C++项目</span>。</li>
+  <li>选择空目录；设计器生成宿主工程与运行依赖。</li>
+  <li>按导出目录中的构建脚本编译并运行，验证界面与事件。</li>
+</ol>
+
+<h2>3.8 完成检查</h2>
+
+<ul>
+  <li>画布中的按钮位置、大小、文本与预期一致。</li>
+  <li>事件页签能看到刚才的绑定，handler 名称无冲突。</li>
+  <li>预览窗口显示同样的布局。</li>
+  <li>保存后重新打开 <code>.csd</code>，控件与绑定仍然存在。</li>
+  <li>导出 JSON 能被 UICornerstone 加载。</li>
+</ul>
+
+<div class="tip">如果某一步结果不对，先看右下角状态栏和设计器控制台日志；再查 <a href="17-troubleshooting.html">故障排查</a>。</div>
+
+<div class="chapter-nav">
+  <a href="01-overview.html">← 上一章：2 设计器概览</a>
+  <a href="03-interface.html">下一章：4 界面总览 →</a>
+</div>
+
+</div>
+</body>
+</html>

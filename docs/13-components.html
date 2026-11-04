@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>14 组件系统 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="13-components.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>14 组件系统</h1>
+
+<p>组件把一组可复用控件封装成模板。模板只定义一次，实例可以有自己的属性值和事件绑定，适合做卡片、工具栏项、登录表单等重复结构。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/04-component-edit.png" alt="组件编辑模式">
+  <div class="cap">图 14-1 组件编辑模式：画布上方出现组件编辑条</div>
+</div>
+
+<h2>14.1 创建组件</h2>
+
+<ol class="steps">
+  <li>在画布或控件树中选中一个控件（通常是一个 Panel 或一组控件的根）。</li>
+  <li>选择 <span class="menu-path">编辑 → 由选中控件创建组件…</span>。</li>
+  <li>输入组件名称；名称是工具箱中的组件类型名。</li>
+  <li>确认后，设计器创建组件定义，并在工具箱“组件”分组中显示。</li>
+  <li>从工具箱拖入组件名，放置组件实例。</li>
+</ol>
+
+<p>组件模板的根必须是控件；如果选中的是可容纳子控件的控件，模板会包含它的子树。非容器控件也可以创建组件；模板根会自动包一层透明 Panel，保证组件模板根始终是可容纳子控件的容器。</p>
+
+<h2>14.2 组件编辑模式</h2>
+
+<p>进入方式：</p>
+
+<ul>
+  <li>选中组件实例，选择 <span class="menu-path">编辑 → 编辑组件…</span>。</li>
+  <li>在控件树右键组件实例，选择“编辑组件…”。</li>
+  <li>在工具箱的组件分组右键组件名，选择编辑。</li>
+</ul>
+
+<p>进入后画布上方出现“组件编辑: 名称”，右侧有“组件属性…”和“返回画布”按钮。此时编辑的是模板，不是某个实例。</p>
+
+<div class="warn">组件编辑模式中不要保存/打开其他工程；先点击“返回画布”，让设计器应用模板修改。</div>
+
+<h2>14.3 组件属性声明</h2>
+
+<ol class="steps">
+  <li>在组件编辑条点击“组件属性…”。</li>
+  <li>用 JSON 声明 props，例如：</li>
+</ol>
+
+<pre><code>{
+  "label": { "type": "string", "default": "按钮" },
+  "size":  { "type": "number", "default": 18 },
+  "primary": { "type": "bool", "default": true },
+  "bgColor": { "type": "string", "default": "#4A90D9FF" }
+}</code></pre>
+
+<ul>
+  <li><code>type</code> 支持 string / number / bool。</li>
+  <li><code>default</code> 是实例未赋值时的默认值。</li>
+  <li>声明后，模板控件可用 <code>{{propName}}</code> 引用属性。</li>
+</ul>
+
+<p>模板中的文本、数字、布尔和颜色槽可以使用 <code>{{...}}</code> 占位符；实例 props 会在展开时替换。</p>
+
+<h2>14.4 实例属性</h2>
+
+<ol class="steps">
+  <li>返回画布，选中组件实例。</li>
+  <li>右侧属性面板的“行为”区域显示组件 props 表单。</li>
+  <li>修改字符串/数字/布尔值，画布立即更新。</li>
+  <li>颜色 prop 可直接取色或输入十六进制。</li>
+</ol>
+
+<p>实例属性只保存在实例节点上，不修改组件模板。多个实例可以有不同的 props。</p>
+
+<h2>14.5 组件实例事件</h2>
+
+<p>组件模板中控件的事件使用 <code>_comp_</code> 前缀命名。实例事件面板会列出这些键，允许把实例事件绑定到宿主 handler。</p>
+
+<ul>
+  <li>模板侧：定义“这个组件可以向外发出哪些事件”。</li>
+  <li>实例侧：决定当前实例的事件由哪个函数处理。</li>
+  <li>导出时生成实例的宿主 handler，不生成 <code>_comp_</code> 占位。</li>
+</ul>
+
+<p>事件的完整用法见 <a href="10-events.html#_comp_">事件面板</a>。</p>
+
+<h2>14.6 嵌套与删除</h2>
+
+<ul>
+  <li>组件模板中可以放置其他组件实例，形成嵌套。</li>
+  <li>删除组件定义前，设计器会检查是否被其他组件模板引用；被引用时拒绝删除并提示嵌入者。</li>
+  <li>删除组件会删除定义及其全部实例；操作可撤销。</li>
+  <li>删除实例不会删除组件定义。</li>
+</ul>
+
+<h2>14.7 组件与预览、导出</h2>
+
+<ul>
+  <li>预览会展开组件模板，显示实例 props 替换后的最终内容。</li>
+  <li>导出的 JSON/工程保留 <code>components</code> 区与实例节点，由 UICornerstone 展开。</li>
+  <li>组件模板中的资源路径、主题类和事件会随导出保留。</li>
+</ul>
+
+<h2>14.8 常见问题</h2>
+
+<table>
+<tr><th>现象</th><th>原因</th><th>处理</th></tr>
+<tr><td>实例属性修改无效</td><td>模板没有引用该 prop</td><td>在模板控件属性中使用 <code>{{prop}}</code></td></tr>
+<tr><td>组件编辑后画布没变化</td><td>没有返回画布/应用模板</td><td>点击“返回画布”</td></tr>
+<tr><td>无法删除组件</td><td>被其他组件模板嵌入</td><td>先移除嵌入引用</td></tr>
+<tr><td>实例事件列表为空</td><td>模板没有 <code>_comp_</code> 事件</td><td>在模板控件上绑定 <code>_comp_</code> 事件</td></tr>
+</table>
+
+<div class="chapter-nav">
+  <a href="12-resources.html">← 上一章：13 资源管理</a>
+  <a href="14-theme.html">下一章：15 主题系统 →</a>
+</div>
+
+</div>
+</body>
+</html>

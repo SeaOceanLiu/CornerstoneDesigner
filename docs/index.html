@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="index.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<div class="hero">
+  <div class="hero-logo"><img src="assets/logo.svg" alt="CornerstoneDesigner"></div>
+  <h1 class="hero-title"><span class="vt">CornerstoneDesigner</span><span class="tt">用户手册</span></h1>
+  <div class="sub">基于 UICornerstone 的可视化 UI 设计器 —— 从控件摆放、属性编辑到主题与导出</div>
+  <div class="badges">
+    <span class="badge">C++17</span>
+    <span class="badge">UICornerstone</span>
+    <span class="badge">JSON 布局</span>
+    <span class="badge">27 种控件</span>
+    <span class="badge">组件 / 事件 / 主题</span>
+    <span class="badge">SDL3</span>
+  </div>
+</div>
+
+<h1>1 使用手册</h1>
+
+<p><strong>CornerstoneDesigner</strong> 是一个可视化 UI 设计器：在画布上放置控件、编辑属性、绑定事件、组织组件和主题，然后通过预览确认效果，最终导出 UICornerstone 可用的 JSON 布局或可编译的 C / C++ 工程。</p>
+
+<p>本手册讲“<strong>怎么用</strong>”。功能为什么这样设计、内部模块如何实现，请阅读仓库 <code>design/</code> 下的设计文档。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/01-main-annotated.png" alt="CornerstoneDesigner 主界面">
+  <div class="cap">图 1-1 主界面：启动后的默认状态</div>
+</div>
+
+<div class="legend">
+  <div><span class="n">1</span><strong>菜单栏</strong>：文件、编辑、视图、帮助</div>
+  <div><span class="n">2</span><strong>工具箱</strong>：工具箱 / 控件树 / 资源三个页签</div>
+  <div><span class="n">3</span><strong>画布工具栏</strong>：缩放、画布尺寸、网格、吸附、状态、对齐、预览</div>
+  <div><span class="n">4</span><strong>画布</strong>：放置、选择、移动、缩放控件</div>
+  <div><span class="n">5</span><strong>属性面板</strong>：编辑当前选中控件</div>
+  <div><span class="n">6</span><strong>事件页签</strong>：绑定事件、查看已绑定事件</div>
+  <div><span class="n">7</span><strong>状态栏</strong>：放置目标、坐标、选中状态、画布信息</div>
+</div>
+
+<h2>1.1 推荐阅读路线</h2>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <h4>第一次使用</h4>
+    <p>先读 <a href="02-quick-start.html">快速开始</a>，用 10 分钟做一个小界面；再读 <a href="03-interface.html">界面总览</a>。</p>
+  </div>
+  <div class="feature-card">
+    <h4>日常设计</h4>
+    <p>重点读 <a href="06-toolbox.html">工具箱</a>、<a href="07-canvas.html">画布编辑</a>、<a href="09-properties.html">属性面板</a> 与 <a href="10-events.html">事件面板</a>。</p>
+  </div>
+  <div class="feature-card">
+    <h4>进阶能力</h4>
+    <p>组件看 <a href="13-components.html">组件系统</a>，换肤看 <a href="14-theme.html">主题系统</a>，交付看 <a href="15-export.html">导出与集成</a>。</p>
+  </div>
+</div>
+
+<h2>1.2 手册目录</h2>
+
+<div class="toc">
+  <div class="toc-sec">
+    <h3>开始使用</h3>
+    <ul>
+      <li><a href="01-overview.html">2 设计器概览</a></li>
+      <li><a href="02-quick-start.html">3 快速开始</a></li>
+      <li><a href="03-interface.html">4 界面总览</a></li>
+      <li><a href="04-concepts.html">5 核心概念</a></li>
+    </ul>
+  </div>
+  <div class="toc-sec">
+    <h3>设计界面</h3>
+    <ul>
+      <li><a href="05-project-files.html">6 工程与文件</a></li>
+      <li><a href="06-toolbox.html">7 工具箱与放置</a></li>
+      <li><a href="07-canvas.html">8 画布编辑</a></li>
+      <li><a href="08-tree.html">9 控件树</a></li>
+      <li><a href="09-properties.html">10 属性面板</a></li>
+      <li><a href="10-events.html">11 事件面板</a></li>
+    </ul>
+  </div>
+  <div class="toc-sec">
+    <h3>预览与复用</h3>
+    <ul>
+      <li><a href="11-preview.html">12 预览</a></li>
+      <li><a href="12-resources.html">13 资源管理</a></li>
+      <li><a href="13-components.html">14 组件系统</a></li>
+    </ul>
+  </div>
+  <div class="toc-sec">
+    <h3>主题与交付</h3>
+    <ul>
+      <li><a href="14-theme.html">15 主题系统</a></li>
+      <li><a href="15-export.html">16 导出与集成</a></li>
+      <li><a href="16-shortcuts.html">17 快捷键与效率</a></li>
+      <li><a href="17-troubleshooting.html">18 故障排查与 FAQ</a></li>
+      <li><a href="18-tutorials.html">19 实战教程</a></li>
+    </ul>
+  </div>
+  <div class="toc-sec">
+    <h3>附录</h3>
+    <ul>
+      <li><a href="appendix-a-controls.html">A 控件参考</a></li>
+      <li><a href="appendix-b-properties.html">B 属性速查</a></li>
+      <li><a href="appendix-c-events.html">C 事件速查</a></li>
+      <li><a href="appendix-d-theme.html">D 主题语法参考</a></li>
+      <li><a href="appendix-e-files.html">E 文件格式</a></li>
+      <li><a href="appendix-f-glossary.html">F 术语表</a></li>
+      <li><a href="appendix-g-status.html">G 当前限制与功能状态</a></li>
+      <li><a href="appendix-h-code.html">H 代码中访问控件</a></li>
+    </ul>
+  </div>
+</div>
+
+<h2>1.3 文档约定</h2>
+
+<ul>
+  <li>菜单路径写成“<span class="menu-path">文件 → 打开</span>”；工具栏按钮和页签使用界面上的中文名称。</li>
+  <li><span class="kbd">Ctrl</span> + 单击表示按住 Ctrl 再单击；<span class="kbd">Delete</span> 表示单键。</li>
+  <li><strong>提示</strong>（蓝色）是建议，<strong>注意</strong>（橙色）是可能影响结果的操作，<strong>限制</strong>（红色）表示当前版本不支持。</li>
+  <li>截图来自当前开发版；界面配色受“设计器自身 UI 主题”影响，功能位置不变。</li>
+</ul>
+
+<div class="note">本手册对应 <code>docs/</code> 目录，可以直接作为 GitHub Pages 站点发布；构建与源码说明见 <code>design/guidelines/build.md</code>。当前版本的能力边界见 <a href="appendix-g-status.html">附录 G</a>。</div>
+
+<div class="chapter-nav">
+  <span></span>
+  <a href="01-overview.html">下一章：2 设计器概览 →</a>
+</div>
+
+</div>
+</body>
+</html>

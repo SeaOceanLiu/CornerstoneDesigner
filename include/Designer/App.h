@@ -36,6 +36,7 @@ private:
     void syncRootToWindow();            // 检测窗口尺寸变化 → root SetRect 触发布局重排
     void loadSettings();                // 启动：读 designer_settings.json（对话框记忆目录）
     void saveSettings() const;          // 变更即写（对话框选择后）
+    bool applyDesignerTheme();          // 设计器自身 UI 主题（designer_theme.json）
     void setupCanvas();                 // canvasArea → CanvasPane（子视口 + 网格覆盖层）
     void setupTreeContextMenu();        // P0-105：控件树右键菜单（删除/上移/下移/移到根 ✗）
     Control m_treeMenu;                 // P0-105：控件树上下文菜单（持久复用 ✗）

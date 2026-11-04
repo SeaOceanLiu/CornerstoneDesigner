@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>5 核心概念 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="04-concepts.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>5 核心概念</h1>
+
+<p>理解下面几个概念，后面的操作会容易很多。</p>
+
+<h2>5.1 工程、布局与控件树</h2>
+
+<ul>
+  <li><strong>工程（Project）</strong>：设计器保存的 <code>.csd</code> 文件，包含布局、组件、事件代码、主题和元数据。</li>
+  <li><strong>布局（Layout）</strong>：控件树 + 画布尺寸 + 运行时主题。导出 JSON 时主要导出这一部分。</li>
+  <li><strong>控件树</strong>：控件之间的父子关系。控件树决定布局容器的嵌套关系，也决定绘制顺序。</li>
+</ul>
+
+<h2>5.2 控件、ID 与坐标</h2>
+
+<p>每个控件都有类型、ID、位置、大小和属性。ID 用于代码引用、事件绑定和查找控件。</p>
+
+<ul>
+  <li>ID 在同一布局中应唯一；重复时设计器会自动追加编号或提示。</li>
+  <li>X、Y 是控件相对父容器的坐标；宽、高是控件尺寸。</li>
+  <li>根级控件的父容器是画布（Bench）。</li>
+  <li>容器控件（Panel、TabControl 页、WinFrame 内容区等）有自己的内容区，子控件相对内容区定位。</li>
+</ul>
+
+<h2>5.3 显式属性与主题属性</h2>
+
+<p>控件最终外观来自两类来源：</p>
+
+<ol>
+  <li><strong>显式属性</strong>：你在属性面板、JSON 或代码中直接设置的值。</li>
+  <li><strong>主题属性</strong>：项目主题按选择器匹配后计算出的值。</li>
+</ol>
+
+<p><strong>显式属性优先于主题</strong>。如果某个控件已经显式设置了颜色，主题规则不会覆盖它；如果希望主题生效，请清除该控件的显式覆盖或改用类/主题统一管理。</p>
+
+<div class="note">当前版本的设计画布以显式样式和选中状态为主；项目主题主要在预览、报告截图和导出运行界面中体现。主题规则本身不会改变控件矩形。</div>
+
+<h2>5.4 组件与实例</h2>
+
+<ul>
+  <li><strong>组件定义</strong>：一棵可复用模板，包含若干控件，可声明 props。</li>
+  <li><strong>组件实例</strong>：在设计器中放置的组件节点，保存自己的 props 值和事件绑定。</li>
+  <li><strong>模板</strong>：组件内部的控件结构；编辑组件时修改的是模板。</li>
+  <li><strong>幽灵展开</strong>：设计器在画布上展开实例的模板以便查看，幽灵控件不保存、不参与选择。</li>
+</ul>
+
+<h2>5.5 事件与 handler</h2>
+
+<p>事件由“控件 + 事件类型 + handler 函数名”组成。设计器负责收集绑定并生成 C/C++ 事件代码；运行时由 UICornerstone 在事件发生时调用对应 handler。</p>
+
+<p>组件模板中的事件使用 <code>_comp_</code> 前缀，实例层再把它们映射到宿主 handler，这是组件复用的关键机制。</p>
+
+<h2>5.6 资源提供者</h2>
+
+<p>资源提供者把“资源名”映射到磁盘目录。布局中的图片、字体、动画通过 <code>provider:名称/相对路径</code> 引用资源，而不是写死绝对路径。这样工程迁移或导出时更容易复用。</p>
+
+<h2>5.7 主题、类、变体与条件</h2>
+
+<table>
+<tr><th>概念</th><th>说明</th></tr>
+<tr><td>变量</td><td><code>--name</code> 名称与值，规则中用 <code>var(--name)</code> 引用</td></tr>
+<tr><td>规则</td><td><code>selector + declarations</code>，例如 <code>button.primary</code></td></tr>
+<tr><td>类</td><td>给控件打的标签，例如 <code>primary</code>，供 <code>.primary</code> 选择器匹配</td></tr>
+<tr><td>变体</td><td>在基础主题之上叠加的命名样式，例如 <code>dark</code></td></tr>
+<tr><td>媒体条件</td><td>根据视口宽高/方向/缩放匹配的规则</td></tr>
+<tr><td>容器条件</td><td>根据某个祖先容器的尺寸匹配的规则</td></tr>
+</table>
+
+<h2>5.8 撤销与未保存状态</h2>
+
+<p>可撤销的编辑会进入撤销栈。连续修改同一属性可能合并为一步，避免撤销时逐个字符回退。窗口标题中的 <code>*</code> 表示当前工程有未保存修改。</p>
+
+<div class="warn">关闭窗口前请确认已保存。当前版本没有自动保存恢复流程；请不要把 <code>.csd</code> 只留在内存中。</div>
+
+<div class="chapter-nav">
+  <a href="03-interface.html">← 上一章：4 界面总览</a>
+  <a href="05-project-files.html">下一章：6 工程与文件 →</a>
+</div>
+
+</div>
+</body>
+</html>

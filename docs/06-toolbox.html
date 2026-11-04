@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>7 工具箱与控件放置 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="06-toolbox.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>7 工具箱与控件放置</h1>
+
+<p>工具箱列出当前设计器可放置的全部控件，并按用途分组。控件名称同时显示中文和英文，搜索框支持按名称快速过滤。</p>
+
+<h2>7.1 控件分类</h2>
+
+<table>
+<tr><th>分组</th><th>控件</th></tr>
+<tr><td>基础控件</td><td>按钮 Button、标签 Label、图片 Image、复选框 CheckBox、输入框 EditBox、多行文本 TextArea、进度条 ProgressBar、滑块 Slider、滚动条 ScrollBar、图形 Shape</td></tr>
+<tr><td>容器控件</td><td>面板 Panel、窗口 WinFrame、分割条 Splitter、页签 TabControl</td></tr>
+<tr><td>列表/树控件</td><td>下拉框 ComboBox、列表 ListView、树 TreeView</td></tr>
+<tr><td>高级控件</td><td>数字框 NumericUpDown、取色器 ColorPicker、菜单 MenuBar、状态栏 StatusBar、动画 Animation、弹窗 Dialog、右键菜单 ContextMenu、弹层 Popup、确认框 ConfirmPopup</td></tr>
+<tr><td>组件</td><td>工程中已创建的组件定义，以组件名显示</td></tr>
+</table>
+
+<p>具体控件属性与用途见 <a href="appendix-a-controls.html">附录 A</a>。</p>
+
+<h2>7.2 搜索控件</h2>
+
+<p>在工具箱顶部输入关键词，例如 <code>button</code>、<code>列表</code>、<code>页签</code>。匹配的节点会展开并高亮；点击搜索结果可直接定位。</p>
+
+<h2>7.3 双击放置</h2>
+
+<ol class="steps">
+  <li>在工具箱中双击一个控件。</li>
+  <li>控件被放到当前放置目标中，默认尺寸由控件类型决定。</li>
+  <li>新控件自动选中，右侧属性面板切换到该控件。</li>
+</ol>
+
+<p>如果当前放置目标是某个容器，控件会成为该容器的子控件；如果目标是画布根，控件成为根级控件。</p>
+
+<h2>7.4 拖拽放置</h2>
+
+<ol class="steps">
+  <li>按住工具箱中的控件，拖到画布。</li>
+  <li>拖动时画布显示落点预览和放置目标。</li>
+  <li>在目标位置松开鼠标，控件按落点位置放置。</li>
+  <li>放置后仍可拖动控件微调位置。</li>
+</ol>
+
+<div class="warn">放置前先确认状态栏的“放置目标”。在 TabControl 中，只有当前页的内容区可以接收子控件；隐藏页不会成为落点。</div>
+
+<h2>7.5 放置目标与容器</h2>
+
+<table>
+<tr><th>目标</th><th>结果</th></tr>
+<tr><td>画布根</td><td>控件成为画布直接子级</td></tr>
+<tr><td>Panel 内容区</td><td>控件成为 Panel 子级，坐标相对内容区</td></tr>
+<tr><td>TabControl 当前页</td><td>控件成为该页 Panel 的子级</td></tr>
+<tr><td>WinFrame 客户端区</td><td>控件成为 WinFrame 内容区子级</td></tr>
+<tr><td>组件实例</td><td>组件实例是整体；通常不在实例内部直接添加控件，应编辑组件模板</td></tr>
+</table>
+
+<h2>7.6 组件分组</h2>
+
+<p>工程中创建过组件后，工具箱底部出现“组件”分组。双击或拖拽组件名会放置一个组件实例；实例的属性由组件 props 决定，具体见 <a href="13-components.html">组件系统</a>。</p>
+
+<h2>7.7 放置失败</h2>
+
+<ul>
+  <li>落点在画布外：控件不会放置，状态栏可能没有变化。</li>
+  <li>落点在不可接收子控件的控件上：控件会落到最近的容器或画布根。</li>
+  <li>当前处于组件编辑模式：只能编辑模板，放置行为按模板容器执行。</li>
+  <li>当前处于预览模式：设计放置被禁用。</li>
+</ul>
+
+<div class="tip">放置后马上按 <span class="kbd">Ctrl</span>+<span class="kbd">Z</span> 可以撤销；如果只是位置不对，直接拖动比撤销更快。</div>
+
+<div class="chapter-nav">
+  <a href="05-project-files.html">← 上一章：6 工程与文件</a>
+  <a href="07-canvas.html">下一章：8 画布编辑 →</a>
+</div>
+
+</div>
+</body>
+</html>

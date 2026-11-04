@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>11 事件面板 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="10-events.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>11 事件面板</h1>
+
+<p>事件面板把一个控件事件绑定到一个 C/C++ 函数名。导出时，设计器会把这些绑定写成事件代码和函数骨架。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/03-event-panel.png" alt="事件面板与已绑定列表">
+  <div class="cap">图 11-1 事件页签：上方是新增绑定，下方是已绑定事件</div>
+</div>
+
+<h2>11.1 绑定一个事件</h2>
+
+<ol class="steps">
+  <li>在画布或控件树选中目标控件。</li>
+  <li>点击右侧“事件”页签。</li>
+  <li>在“事件”下拉框选择事件类型，例如按钮的 <code>onClick</code>。</li>
+  <li>在 handler 输入框填写函数名，例如 <code>onSaveClick</code>。</li>
+  <li>点击“建议命名”可生成一个基于控件 ID 和事件名的函数名。</li>
+  <li>点击“添加绑定”，绑定出现在“已绑定”列表。</li>
+</ol>
+
+<h2>11.2 已绑定列表</h2>
+
+<table>
+<tr><th>列</th><th>说明</th></tr>
+<tr><td>控件</td><td>绑定所属控件的 ID</td></tr>
+<tr><td>事件</td><td>事件类型</td></tr>
+<tr><td>handler</td><td>导出代码中的函数名</td></tr>
+<tr><td>操作</td><td>“代码”编辑函数体，“删除”移除绑定</td></tr>
+</table>
+
+<p>列表行是只读输入框，内容过长时可以横向滚动或选中复制。</p>
+
+<h2>11.3 编写 handler 代码</h2>
+
+<ol class="steps">
+  <li>在已绑定行点击“代码”。</li>
+  <li>在编辑窗中编写包含文件与函数体；函数签名由设计器生成。</li>
+  <li>应用后代码随工程保存，并在导出 C/C++ 工程时写入事件文件。</li>
+</ol>
+
+<p>不同事件的参数由运行时决定；设计器生成签名骨架，你只需要填写函数体。</p>
+
+<h2>11.4 命名和冲突</h2>
+
+<ul>
+  <li>handler 必须是合法的 C/C++ 标识符。</li>
+  <li>同一工程中多个绑定使用同一个 handler 时，可能是共享函数，也可能是冲突；设计器会在列表中提示。</li>
+  <li>非法名称或冲突可能导致导出被阻止。</li>
+  <li>修改控件 ID 时，如果代码中引用了旧 ID，设计器会询问是否同步替换。</li>
+</ul>
+
+<div class="warn">不要使用 C/C++ 关键字、空格、横线或以数字开头的名称。建议使用“控件名 + 动作”的 PascalCase 形式。</div>
+
+<h2>11.5 组件事件 _comp_</h2>
+
+<p>组件模板内部控件的事件名使用 <code>_comp_</code> 前缀。切换到组件实例时，事件面板会扫描模板中的 <code>_comp_</code> 键，允许把实例事件绑定到宿主 handler。</p>
+
+<ul>
+  <li>模板事件：定义组件内部哪些动作可以被外部接收。</li>
+  <li>实例事件：给当前实例指定实际 handler。</li>
+  <li>导出时只生成实例侧的宿主 handler，不生成模板内部的 <code>_comp_</code> 占位。</li>
+</ul>
+
+<p>详见 <a href="13-components.html">组件系统</a>。</p>
+
+<h2>11.6 事件与导出的关系</h2>
+
+<table>
+<tr><th>操作</th><th>结果</th></tr>
+<tr><td>添加/删除绑定</td><td>修改当前工程的绑定集合</td></tr>
+<tr><td>编辑 handler 代码</td><td>保存函数体与包含文件</td></tr>
+<tr><td>导出 JSON</td><td>布局中保留事件字段，不生成 C/C++ 代码</td></tr>
+<tr><td>导出 C/C++ 工程</td><td>生成事件头文件、实现骨架/已编辑代码、事件清单</td></tr>
+</table>
+
+<p>事件类型和参数的完整列表见 <a href="appendix-c-events.html">附录 C</a>，底层语义见 UICornerstone 文档。</p>
+
+<div class="chapter-nav">
+  <a href="09-properties.html">← 上一章：10 属性面板</a>
+  <a href="11-preview.html">下一章：12 预览 →</a>
+</div>
+
+</div>
+</body>
+</html>

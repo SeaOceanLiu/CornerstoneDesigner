@@ -417,6 +417,7 @@ bool App::init() {
     }
     // F5.4：最近文件菜单回填 + 窗口标题（项目名 + 未保存 *）
     refreshRecentMenu();
+    applyDesignerTheme();   // 设计器 UI 主题（独立于项目 theme；缺失时降级）
     updateWindowTitle();
     return true;
 }
@@ -482,6 +483,31 @@ static std::string compactPathForMenu(const std::string& p) {
         return "\xE2\x80\xA6" + p.substr(i);   // "…" + 尾段
     }
     return "\xE2\x80\xA6" + p.substr(start);
+}
+
+// 设计器自身 UI 主题：与项目 theme 分离，避免影响用户布局/预览。
+// 文件缺失/非法时仅诊断，不阻塞启动；菜单“视图→重新加载设计器主题”可热重载。
+bool App::applyDesignerTheme() {
+    if (!m_ui) return false;
+    const std::string path = exeRelative("designer_theme.json");
+    std::ifstream f(std::filesystem::u8path(path), std::ios::binary);
+    if (!f) {
+        std::printf("[Theme] designer theme not found: %s\n", path.c_str());
+        return false;
+    }
+    const std::string text((std::istreambuf_iterator<char>(f)),
+                           std::istreambuf_iterator<char>());
+    const nlohmann::json j = nlohmann::json::parse(text, nullptr, false);
+    if (j.is_discarded() || !j.is_object()) {
+        std::printf("[Theme] designer theme invalid JSON: %s\n", path.c_str());
+        return false;
+    }
+    if (!m_ui->ApplyTheme(text)) {
+        std::printf("[Theme] ApplyTheme failed: %s\n", m_ui->GetLastError().c_str());
+        return false;
+    }
+    std::printf("[Theme] designer UI theme applied: %s\n", path.c_str());
+    return true;
 }
 
 bool App::loadSkeleton() {
@@ -667,13 +693,13 @@ void App::registerActions() {
         "onMenuImportJson", "onMenuExportJson", "onMenuExportCode", "onMenuExportCpp",
         "onMenuExportReport", "onMenuExit",
         "onMenuUndo", "onMenuRedo", "onMenuCopy", "onMenuPaste", "onMenuDelete",
-        "onMenuEditJson", "onMenuCreateComponent", "onMenuEditComponent",
+        "onMenuEditJson", "onMenuTheme", "onMenuThemeJson", "onMenuCreateComponent", "onMenuEditComponent",
         "onMenuInstanceProps", "onMenuDeleteComponent",
         "onMenuFront", "onMenuBack", "onMenuMoveUp", "onMenuMoveDown",
         "onMenuZoom25", "onMenuZoom50", "onMenuZoom75", "onMenuZoom100",
         "onMenuZoom150", "onMenuZoom200",
         "onMenuToggleGrid", "onMenuToggleSnap", "onMenuPreview",
-        "onMenuAbout",
+        "onMenuReloadDesignerTheme", "onMenuAbout",
     };
     // Win32 原生文件对话框（03 §13.2 薄层；无 MFC——宽字符 → UTF-8 路径）。
     // 记忆目录：打开/保存共用 m_lastFileDir（初始定位 + 选择后回写 settings）
@@ -801,6 +827,8 @@ void App::registerActions() {
                 m_reportPendingDir = rdir;
                 m_reportPendingDelay = 2;                // 等预览渲染两帧后泵内捕获
             }));
+        } else if (std::string(name) == "onMenuReloadDesignerTheme") {
+            m_ui->RegisterAction(name, guard([this](Control) { applyDesignerTheme(); }));
         } else if (std::string(name) == "onMenuAbout") {
             m_ui->RegisterAction(name, guard([this](Control) {
                 std::printf("[App] CornerstoneDesigner v0.1 (stage 1 skeleton)\n");
@@ -826,6 +854,14 @@ void App::registerActions() {
         } else if (std::string(name) == "onMenuCreateComponent") {
             m_ui->RegisterAction(name, guard([this](Control) {
                 if (m_canvas) m_canvas->ShowCreateComponentDialog();   // 组件系统：选中控件 → 组件
+            }));
+        } else if (std::string(name) == "onMenuTheme") {
+            m_ui->RegisterAction(name, guard([this](Control) {
+                if (m_canvas) m_canvas->ShowThemeManagerDialog();
+            }));
+        } else if (std::string(name) == "onMenuThemeJson") {
+            m_ui->RegisterAction(name, guard([this](Control) {
+                if (m_canvas) m_canvas->ShowThemeDialog();
             }));
         } else if (std::string(name) == "onMenuEditJson") {
             m_ui->RegisterAction(name, guard([this](Control) {
@@ -1526,8 +1562,9 @@ int App::run(int autoSeconds) {
     bool autoMode = autoSeconds > 0;
     if (autoMode) {
         // auto=3（预览冒烟）需更多帧完成像素校验（Present 前捕获额外一帧）
+        // auto=2/3 需容纳新引擎 Debug 启动 + 自测/预览；仍由帧末 deadline 收尾
         deadline = std::chrono::steady_clock::now() +
-                   std::chrono::seconds(autoSeconds == 3 ? 8 : autoSeconds);
+                   std::chrono::seconds((autoSeconds == 2 || autoSeconds == 3) ? 8 : autoSeconds);
         std::printf("[App] auto=%d seconds\n", autoSeconds);
     }
 

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>17 快捷键与效率 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="16-shortcuts.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>17 快捷键与效率</h1>
+
+<h2>17.1 文件和编辑</h2>
+
+<table>
+<tr><th>快捷键</th><th>动作</th><th>说明</th></tr>
+<tr><td><span class="kbd">Ctrl</span>+<span class="kbd">N</span></td><td>新建（菜单标注）</td><td>当前版本以菜单点击为准</td></tr>
+<tr><td><span class="kbd">Ctrl</span>+<span class="kbd">O</span></td><td>打开（菜单标注）</td><td>当前版本以菜单点击为准</td></tr>
+<tr><td><span class="kbd">Ctrl</span>+<span class="kbd">S</span></td><td>保存（菜单标注）</td><td>当前版本以菜单点击为准</td></tr>
+<tr><td><span class="kbd">Ctrl</span>+<span class="kbd">Z</span></td><td>撤销</td><td>跨属性/布局操作</td></tr>
+<tr><td><span class="kbd">Ctrl</span>+<span class="kbd">Y</span></td><td>重做</td><td></td></tr>
+<tr><td><span class="kbd">Ctrl</span>+<span class="kbd">J</span></td><td>原始 JSON</td><td>选中控件=该控件；未选中=整布局</td></tr>
+<tr><td><span class="kbd">Delete</span></td><td>删除选中控件</td><td>删除子树，可撤销</td></tr>
+</table>
+
+<h2>17.2 画布</h2>
+
+<table>
+<tr><th>操作</th><th>动作</th></tr>
+<tr><td>鼠标滚轮</td><td>缩放画布</td></tr>
+<tr><td>中键拖动</td><td>平移画布</td></tr>
+<tr><td>空格 + 拖动</td><td>平移画布</td></tr>
+<tr><td><span class="kbd">Ctrl</span> + 单击控件</td><td>加入/移出多选</td></tr>
+<tr><td>空白拖拽</td><td>框选根级控件</td></tr>
+<tr><td><span class="kbd">Ctrl</span> + 空白拖拽</td><td>并入式框选</td></tr>
+<tr><td>拖动控制点</td><td>调整大小</td></tr>
+</table>
+
+<h2>17.3 预览</h2>
+
+<table>
+<tr><th>快捷键</th><th>动作</th></tr>
+<tr><td><span class="kbd">F5</span></td><td>打开/关闭预览窗口</td></tr>
+<tr><td><span class="kbd">Esc</span></td><td>关闭部分编辑窗/取消输入（以当前窗口为准）</td></tr>
+</table>
+
+<h2>17.4 菜单动作对照</h2>
+
+<table>
+<tr><th>动作</th><th>菜单路径</th></tr>
+<tr><td>主题管理器</td><td>编辑 → 主题…</td></tr>
+<tr><td>主题 JSON</td><td>编辑 → 主题 JSON…</td></tr>
+<tr><td>原始 JSON</td><td>编辑 → 原始 JSON…</td></tr>
+<tr><td>创建组件</td><td>编辑 → 由选中控件创建组件…</td></tr>
+<tr><td>编辑组件</td><td>编辑 → 编辑组件…</td></tr>
+<tr><td>组件实例属性</td><td>编辑 → 组件实例属性…</td></tr>
+<tr><td>删除组件</td><td>编辑 → 删除组件…</td></tr>
+<tr><td>预览</td><td>视图 → 预览模式</td></tr>
+<tr><td>重新加载设计器主题</td><td>视图 → 重新加载设计器主题</td></tr>
+</table>
+
+<h2>17.5 当前未实现的快捷键</h2>
+
+<p>“编辑”菜单中的复制、粘贴、置前、置后是预留入口，当前版本没有对应行为。菜单中显示的 Ctrl+N/O/S 等文件快捷键当前也以菜单点击为准，不保证全局键盘触发。层级调整请使用控件树右键菜单。状态见 <a href="appendix-g-status.html">附录 G</a>。</p>
+
+<h2>17.6 效率建议</h2>
+
+<ul>
+  <li>重叠控件多时，通过控件树选中，避免在画布反复试探。</li>
+  <li>重复结构先做成组件，再改实例 props。</li>
+  <li>颜色和间距先做成主题变量，避免逐控件修改。</li>
+  <li>复杂布局用 Panel 分组，再对组内控件多选对齐。</li>
+  <li>改大结构前先保存，必要时用撤销回退。</li>
+</ul>
+
+<div class="chapter-nav">
+  <a href="15-export.html">← 上一章：16 导出与集成</a>
+  <a href="17-troubleshooting.html">下一章：18 故障排查与 FAQ →</a>
+</div>
+
+</div>
+</body>
+</html>

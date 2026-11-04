@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>19 实战教程 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="18-tutorials.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>19 实战教程</h1>
+
+<p>下面的教程把前面的功能串起来。建议按顺序做一遍，遇到不熟悉的字段再回查对应章节。</p>
+
+<h2>19.1 教程 A：登录表单</h2>
+
+<p><strong>目标</strong>：做一个包含标题、用户名、密码和登录按钮的界面。</p>
+
+<ol class="steps">
+  <li>新建工程，画布选择 1280×800。</li>
+  <li>放置一个 Panel 作为卡片，调整到画布中央，设置背景色和圆角。</li>
+  <li>在 Panel 内放置 Label 作为标题，文本设为“登录”。</li>
+  <li>放置两个 EditBox，分别作为用户名和密码输入框；在属性面板设置文本占位/内容。</li>
+  <li>放置 Button，文本设为“登录”。</li>
+  <li>多选标题、输入框和按钮，使用“水平居中”对齐。</li>
+  <li>选中按钮，事件页签添加点击事件，handler 命名为 <code>onLoginClick</code>。</li>
+  <li>预览，确认布局；保存工程。</li>
+</ol>
+
+<div class="tip">输入框和按钮的宽度可以用“等宽”对齐，再用“水平分布”调整垂直间距。</div>
+
+<h2>19.2 教程 B：列表与资源</h2>
+
+<p><strong>目标</strong>：使用 ListView 展示数据，并引用一张图片资源。</p>
+
+<ol class="steps">
+  <li>新建工程，放置 ListView。</li>
+  <li>在属性/行为中配置列或行数据；如果使用资源，先在资源页签插入 provider。</li>
+  <li>放置 Image，把图片属性设置为 <code>provider:名称/图片.png</code>。</li>
+  <li>在事件页签给 ListView 绑定选择/点击事件。</li>
+  <li>预览，确认列表和图片都能显示。</li>
+  <li>导出 JSON，检查 layout 中保留了 provider 映射。</li>
+</ol>
+
+<h2>19.3 教程 C：组件复用</h2>
+
+<p><strong>目标</strong>：做一个按钮组件，通过 props 改变文本和颜色。</p>
+
+<ol class="steps">
+  <li>放置一个 Button，设置基本样式。</li>
+  <li>选中按钮，编辑 → 由选中控件创建组件…，命名为 <code>ActionButton</code>。</li>
+  <li>进入组件编辑，打开“组件属性…”，声明：</li>
+</ol>
+
+<pre><code>{
+  "label": { "type": "string", "default": "操作" },
+  "bg": { "type": "string", "default": "#4A90D9FF" }
+}</code></pre>
+
+<ol class="steps">
+  <li>在模板按钮的文本中使用 <code>{{label}}</code>，背景色使用 <code>{{bg}}</code>。</li>
+  <li>返回画布，从工具箱“组件”分组拖入两个实例。</li>
+  <li>分别修改实例的 label/bg，画布应显示不同文本和颜色。</li>
+  <li>给实例绑定事件，检查事件面板的 <code>_comp_</code> 键。</li>
+</ol>
+
+<h2>19.4 教程 D：主题换肤</h2>
+
+<p><strong>目标</strong>：用变量和类给按钮换主色，并添加悬停状态。</p>
+
+<ol class="steps">
+  <li>打开主题管理器，点击“变量…”，添加 <code>--primary = #4A90D9FF</code>。</li>
+  <li>新增规则：选择器 <code>button.primary</code>，背景色填 <code>var(--primary)</code>，文字色白色，圆角 6。</li>
+  <li>新增规则：选择器 <code>button.primary:hover</code>，背景色改为更亮的蓝色。</li>
+  <li>在画布选中按钮，类名填 <code>primary</code>，点击“类应用到选中”。</li>
+  <li>预览，悬停按钮查看颜色变化。</li>
+  <li>新增变体 <code>dark</code>，在变体作用域中覆盖背景色，再预览切换效果。</li>
+  <li>新增媒体条件，在窄窗口下调整字号或内边距。</li>
+</ol>
+
+<div class="warn">主题规则不要和控件显式颜色打架。若按钮已在属性面板显式设色，主题不会覆盖它；请清除显式颜色或改用主题统一管理。</div>
+
+<h2>19.5 教程 E：导出并运行 C++ 工程</h2>
+
+<ol class="steps">
+  <li>完成布局和事件绑定，预览通过。</li>
+  <li>保存 <code>.csd</code>。</li>
+  <li>选择 <span class="menu-path">文件 → 导出为可编译C++项目</span>，选择空目录。</li>
+  <li>打开导出目录的 <code>README.md</code>，按说明配置构建。</li>
+  <li>修改 <code>events.c</code> 中生成的 handler 函数体，加入业务逻辑。</li>
+  <li>编译运行，确认界面和事件与设计器预览一致。</li>
+</ol>
+
+<h2>19.6 教程检查表</h2>
+
+<table>
+<tr><th>检查项</th><th>通过标准</th></tr>
+<tr><td>布局</td><td>控件位置、尺寸、层级符合设计</td></tr>
+<tr><td>属性</td><td>文本、颜色、可见/启用状态正确</td></tr>
+<tr><td>事件</td><td>绑定存在、handler 合法、导出代码有实现</td></tr>
+<tr><td>组件</td><td>实例 props 生效，模板修改可复用</td></tr>
+<tr><td>主题</td><td>预览中规则生效，显式覆盖符合预期</td></tr>
+<tr><td>导出</td><td>工程可编译，运行时与预览一致</td></tr>
+</table>
+
+<div class="chapter-nav">
+  <a href="17-troubleshooting.html">← 上一章：18 故障排查与 FAQ</a>
+  <a href="appendix-a-controls.html">下一章：附录 A 控件参考 →</a>
+</div>
+
+</div>
+</body>
+</html>

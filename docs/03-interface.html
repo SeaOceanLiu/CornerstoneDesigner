@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>4 界面总览 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="03-interface.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>4 界面总览</h1>
+
+<p>设计器主窗口分为菜单栏、左侧工具箱、中央画布、右侧属性/事件面板和底部状态栏。窗口可以调整大小，左侧和右侧面板宽度可以通过分隔条改变。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/01-main-annotated.png" alt="主界面区域标注">
+  <div class="cap">图 4-1 主界面五大区域</div>
+</div>
+
+<h2>4.1 菜单栏</h2>
+
+<table>
+<tr><th>菜单</th><th>主要用途</th><th>详见</th></tr>
+<tr><td>文件(F)</td><td>新建、打开、保存、导入/导出、最近文件、退出</td><td><a href="05-project-files.html">工程与文件</a>、<a href="15-export.html">导出</a></td></tr>
+<tr><td>编辑(E)</td><td>撤销/重做、复制/粘贴入口、删除、层级、原始 JSON、主题、组件管理</td><td><a href="07-canvas.html">画布编辑</a>、<a href="13-components.html">组件</a>、<a href="14-theme.html">主题</a></td></tr>
+<tr><td>视图(V)</td><td>缩放档位、网格、对齐、预览模式、重新加载设计器主题</td><td><a href="07-canvas.html">画布编辑</a></td></tr>
+<tr><td>帮助(H)</td><td>关于与版本信息</td><td>本页</td></tr>
+</table>
+
+<p>菜单项中的快捷键显示在右侧，例如 <span class="kbd">Ctrl</span>+<span class="kbd">S</span>。当前版本部分编辑菜单项仍是预留入口，具体状态见 <a href="appendix-g-status.html">附录 G</a>。</p>
+
+<h2>4.2 左侧工具箱</h2>
+
+<p>左侧有三个页签：</p>
+
+<ul>
+  <li><strong>工具箱</strong>：按基础控件、容器控件、列表/树控件、高级控件和组件分组列出可放置控件。</li>
+  <li><strong>控件树</strong>：显示当前布局的父子结构，是复杂界面中定位控件的主要入口。</li>
+  <li><strong>资源</strong>：管理项目的资源提供者（图片、字体、动画等）。</li>
+</ul>
+
+<p>工具箱顶部有搜索框，输入控件名称或英文名可以快速定位。双击控件或拖到画布即可放置。</p>
+
+<h2>4.3 画布工具栏</h2>
+
+<table>
+<tr><th>控件</th><th>作用</th></tr>
+<tr><td>缩放下拉 / <code>−</code> / <code>100%</code> / <code>+</code></td><td>切换画布显示比例，范围 25%–200%</td></tr>
+<tr><td>画布尺寸下拉</td><td>选择 1024×768、1280×800、1440×900、1920×1080 或“自定义…”</td></tr>
+<tr><td>网格</td><td>显示/隐藏纸面网格</td></tr>
+<tr><td>网格单元格</td><td>选择 10/20/25/40/50/100/200 的网格间距</td></tr>
+<tr><td>网格吸附</td><td>拖动控件时吸附到网格</td></tr>
+<tr><td>控件吸附</td><td>拖动控件时吸附到其他控件边缘/中心</td></tr>
+<tr><td>状态下拉</td><td>设计期强制控件显示为跟随、常态、悬停、按下或禁用</td></tr>
+<tr><td>对齐下拉</td><td>对多选控件执行对齐/等宽/等高/分布</td></tr>
+<tr><td>预览</td><td>打开/关闭预览窗口</td></tr>
+</table>
+
+<h2>4.4 画布</h2>
+
+<p>画布中央的浅色区域是“纸面”，代表最终界面尺寸；纸面外的灰色区域是设计器工作区。画布可以缩放和平移：</p>
+
+<ul>
+  <li>鼠标滚轮缩放画布。</li>
+  <li>按住中键拖动，或按住空格再拖动，平移画布。</li>
+  <li>滚动条在纸面超出视口时出现。</li>
+</ul>
+
+<p>选中控件后会出现蓝色选中框和八个控制点。多选时，次级控件显示橙色框；拖动任一选中控件会整体移动。</p>
+
+<h2>4.5 右侧属性 / 事件面板</h2>
+
+<ul>
+  <li><strong>属性</strong>：布局、外观、行为，以及组件实例的动态属性。</li>
+  <li><strong>事件</strong>：事件绑定表单和“已绑定”列表。</li>
+</ul>
+
+<p>未选中控件时，属性面板显示画布（Bench）的属性，例如画布尺寸、标题、缩放模式与背景色。</p>
+
+<h2>4.6 状态栏</h2>
+
+<p>底部状态栏从左到右显示：</p>
+
+<ul>
+  <li>当前操作提示（放置目标、保存/打开结果、错误提示）。</li>
+  <li>鼠标在设计画布中的逻辑坐标。</li>
+  <li>选中状态（未选中控件 / 已选中数量）。</li>
+  <li>缩放比例、画布尺寸、控件数量、网格状态。</li>
+</ul>
+
+<div class="tip">放置控件前先看状态栏第一段“放置目标”。它会告诉你控件将落到画布根、某个容器还是某个 Tab 页。</div>
+
+<h2>4.7 对话框与浮层</h2>
+
+<p>设计器使用两类浮层：</p>
+
+<ul>
+  <li><strong>模态对话框</strong>：例如选择文件、画布尺寸、组件属性。打开时请先完成或取消，否则会阻止继续操作。</li>
+  <li><strong>非模态编辑窗</strong>：例如原始 JSON、主题 JSON、事件代码。应用成功后关闭，失败时窗口保持并显示错误。</li>
+</ul>
+
+<p>按 <span class="kbd">Esc</span> 通常会取消当前输入；具体行为以对话框底部按钮为准。</p>
+
+<div class="chapter-nav">
+  <a href="02-quick-start.html">← 上一章：3 快速开始</a>
+  <a href="04-concepts.html">下一章：5 核心概念 →</a>
+</div>
+
+</div>
+</body>
+</html>

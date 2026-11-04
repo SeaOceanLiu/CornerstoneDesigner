@@ -72,6 +72,74 @@ private:
     std::string m_lastBody;   // 光标跟随启发式：上次正文（末尾追加/退格 → 滚到底 ✗）
 };
 
+class ThemeVariablesDialog {
+public:
+    using ApplyFn = std::function<bool(const nlohmann::json&, std::string&)>;
+    void Open(UICornerstone::UICornerstone* ui, const nlohmann::json& vars, ApplyFn onApply);
+    bool IsOpen() const;
+    void Close();
+private:
+    void EnsureCreated();
+    void Layout();
+    void Refresh();
+    void StoreVar();
+    void LoadVar();
+    UICornerstone::UICornerstone* m_ui = nullptr;
+    nlohmann::json m_vars = nlohmann::json::object();
+    ApplyFn m_onApply;
+    Control m_dlg, m_list, m_name, m_value, m_status;
+    Control m_add, m_del, m_apply, m_cancel;
+    int m_selected = -1;
+    int m_rows = 0;
+    std::string m_loadedName;
+    bool m_loading = false;
+};
+
+class ThemeManagerDialog {
+public:
+    using ApplyFn = std::function<bool(const nlohmann::json&, std::string&)>;
+    using AssignClassFn = std::function<std::string(const std::string&)>;
+    void Open(UICornerstone::UICornerstone* ui, const nlohmann::json& theme,
+              ApplyFn onApply, AssignClassFn onAssignClass);
+    bool IsOpen() const;
+    void Close();
+    Control DialogHandle() const { return m_dlg; }
+    Control RuleListHandle() const { return m_ruleList; }
+private:
+    void EnsureCreated();
+    void Layout();
+    void RefreshRules();
+    void RefreshVariants();
+    void StoreRule();
+    void StoreCondition();
+    void LoadCondition();
+    void LoadRule();
+    void SelectRule(int index);
+    nlohmann::json* scope();
+    Control MakeLabel(const std::string& text, float x, float y, float w);
+    Control MakeEdit(float x, float y, float w, const std::string& value = "");
+    UICornerstone::UICornerstone* m_ui = nullptr;
+    nlohmann::json m_draft = nlohmann::json::object();
+    ApplyFn m_onApply;
+    AssignClassFn m_onAssignClass;
+    Control m_dlg, m_ruleList, m_selector, m_status;
+    Control m_bg, m_text, m_border, m_textShadow;
+    Control m_font, m_fontSize, m_radius, m_boxShadow;
+    Control m_padL, m_padT, m_padR, m_padB;
+    Control m_add, m_del, m_assign, m_varsBtn, m_apply, m_cancel;
+    Control m_variantCombo, m_variantName, m_variantAdd, m_variantDel;
+    Control m_scopeAddMedia, m_scopeAddContainer;
+    Control m_condId, m_condQuery, m_condContainer;
+    ThemeVariablesDialog m_varsDlg;
+    bool m_colorSet[4] = { false, false, false, false };
+    std::vector<std::string> m_fonts;
+    std::vector<std::string> m_scopeKeys;
+    std::string m_variant;
+    int m_selected = -1;
+    int m_ruleRows = 0;
+    bool m_loading = false;
+};
+
 class CanvasPane {
 public:
     CanvasPane();
@@ -194,6 +262,10 @@ public:
     void SetStatePreview(int mode);   // P0-114：设计态状态预览（0=跟随 1=常态 2=悬停 3=按下 4=禁用 ✗）
     void SetStatePreviewUiCallback(std::function<void(int)> fn) { m_statePreviewUiFn = std::move(fn); }
     void ShowRawJsonDialog();   // F3.5：所选控件原始 JSON（查看/编辑/应用 ✗）
+    void ShowThemeDialog();     // 项目顶层 theme JSON（高级；预览/导出生效）
+    void ShowThemeManagerDialog();   // 可视化主题管理器（规则/类）
+    std::string assignStyleClassToSelection(const std::string& cls);
+
     void ShowCreateComponentDialog();   // 组件系统：选中控件创建组件（名称对话框 ✗）
     void EditSelectedComponent();   // C2：编辑选中组件实例（进入模板编辑 ✗）
     bool EnterComponentEdit(const std::string& name);
@@ -467,7 +539,10 @@ private:
     void showTabDeleteConfirm(const std::string& tabsId, const std::string& pendingText,
                               const std::string& msg);
     Control m_tabDeleteDlg;                                  // 删除页确认对话框（懒建复用）
-    TextEditorDialog m_jsonEditor;                           // F3.5：原始 JSON 编辑窗（共享基类）
+    TextEditorDialog m_jsonEditor;
+    TextEditorDialog m_themeEditor;                           // 项目 theme JSON 编辑窗（共享基类）
+    ThemeManagerDialog m_themeMgr;
+
     TextEditorDialog m_codeEditor;                           // F4.6：事件代码编辑窗（共享基类）
     Control m_tabDeleteLabel;
     std::string m_pendingTabsId;                             // 待确认的 tabs 编辑（id/文本）
@@ -596,6 +671,7 @@ private:
     std::string m_handlerIncludes;        // F4.6：events.c 头文件包含（随工程保存 ✗）
     std::map<std::string, std::string> m_handlerBodies;   // F4.6：handler 函数体（随工程保存 ✗）
     nlohmann::json m_components = nlohmann::json::object();   // 组件系统：定义（引擎 components 区 ✗）
+    nlohmann::json m_theme = nlohmann::json::object();        // 项目顶层 theme（fonts/colors）
     Control m_compDlg, m_compDlgName;                          // 创建组件对话框（懒建复用）
     Control m_exprDlg, m_exprEdit, m_exprLabel;                // 表达式对话框（颜色/属性共用，懒建复用）
     std::string m_exprTarget, m_exprProp, m_exprGrp, m_exprState;

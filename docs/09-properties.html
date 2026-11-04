@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>10 属性面板 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="09-properties.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>10 属性面板</h1>
+
+<p>右侧属性面板编辑当前选中控件的属性。面板按用途分为布局、外观、行为三组，事件单独放在“事件”页签。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/02-workspace.png" alt="属性面板">
+  <div class="cap">图 10-1 选中组件实例时的属性面板</div>
+</div>
+
+<h2>10.1 未选中控件时</h2>
+
+<p>未选中控件时，属性面板显示画布（Bench）属性：画布 ID、窗口标题、缩放模式、背景色等。这些属性对应运行时的 viewport 配置。</p>
+
+<h2>10.2 布局</h2>
+
+<table>
+<tr><th>字段</th><th>说明</th></tr>
+<tr><td>X / Y</td><td>控件相对父容器的位置</td></tr>
+<tr><td>宽 / 高</td><td>控件尺寸</td></tr>
+<tr><td>锚点</td><td>控件相对父容器的锚定方式，例如 top-left</td></tr>
+</table>
+
+<p>数值输入支持直接键入和上下微调。修改后立即写回画布；连续修改同一字段会在撤销栈中合并。</p>
+
+<h2>10.3 外观</h2>
+
+<table>
+<tr><th>字段</th><th>说明</th></tr>
+<tr><td>文本</td><td>Label/Button 等控件的显示文本</td></tr>
+<tr><td>颜色</td><td>控件的主要颜色；打开取色器选择或输入颜色值</td></tr>
+<tr><td>可见</td><td>控件是否参与显示和命中</td></tr>
+<tr><td>启用</td><td>控件是否响应交互</td></tr>
+</table>
+
+<p>颜色使用 <code>#RRGGBBAA</code> 格式；支持直接输入十六进制色值。取色器可以拾取屏幕颜色，也可以在右侧输入 RGBA 数值。</p>
+
+<h2>10.4 行为与动态属性</h2>
+
+<p>“行为”区域根据控件类型和 schema 显示不同字段，例如：</p>
+
+<ul>
+  <li>控件 ID（代码引用）</li>
+  <li>字体名称、字号</li>
+  <li>可拖动、可放置、可重排</li>
+  <li>选中状态、方向、进度、范围等控件专有属性</li>
+</ul>
+
+<p>字段来源是 UICornerstone schema；当 schema 更新时，属性面板会提供新的可用属性。未知字段会保留在原始 JSON 中，不会因为面板暂不支持而丢失。</p>
+
+<h2>10.5 多选编辑</h2>
+
+<ul>
+  <li>选中多个控件后，固定区显示选择集包围盒的位置和尺寸。</li>
+  <li>动态区只显示所有选中控件共有的属性；修改会批量写入。</li>
+  <li>值不一致时字段显示为空或提示，输入新值后统一覆盖。</li>
+  <li>多选属性修改同样进入撤销栈。</li>
+</ul>
+
+<h2>10.6 组件实例属性</h2>
+
+<p>选中组件实例时，行为区域显示组件声明过的 props：字符串、数字、布尔、颜色。修改后实例立即更新，模板不变。</p>
+
+<ul>
+  <li>字符串/数字/布尔 prop 可直接在表单中编辑。</li>
+  <li>颜色 prop 使用取色器或十六进制输入。</li>
+  <li>模板中的 <code>{{prop}}</code> 占位符会被实例值替换。</li>
+</ul>
+
+<p>更完整的组件说明见 <a href="13-components.html">组件系统</a>。</p>
+
+<h2>10.7 重置与滚动</h2>
+
+<ul>
+  <li>“重置默认值”只重置当前选中控件的属性，不是删除控件。</li>
+  <li>属性条目较多时，面板内容区可滚动；滚动时不改变选择。</li>
+  <li>面板宽度可以通过左侧分隔条调整。</li>
+</ul>
+
+<h2>10.8 属性没有生效？</h2>
+
+<ol class="steps">
+  <li>确认选中的是目标控件，而不是它的父容器。</li>
+  <li>查看该属性是否被项目主题规则覆盖；显式属性优先，但主题可能改变其他未显式设置的通道。</li>
+  <li>对组件实例，确认属性是实例 prop 还是模板内部控件的属性。</li>
+  <li>如果字段被禁用，通常表示该控件类型不支持此属性，或当前处于组件编辑/预览状态。</li>
+</ol>
+
+<div class="chapter-nav">
+  <a href="08-tree.html">← 上一章：9 控件树</a>
+  <a href="10-events.html">下一章：11 事件面板 →</a>
+</div>
+
+</div>
+</body>
+</html>

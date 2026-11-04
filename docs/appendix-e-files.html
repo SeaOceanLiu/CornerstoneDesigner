@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>附录 E 文件格式 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="appendix-e-files.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>附录 E 文件格式</h1>
+
+<h2>E.1 <code>.csd</code> 工程</h2>
+
+<pre><code>{
+  "app": "CornerstoneDesigner",
+  "version": 1,
+  "layout": {
+    "controls": [ ... ],
+    "components": { ... },
+    "viewport": { "id": "canvas", "width": 1280, "height": 800, "background": "#FFFFFFFF" },
+    "theme": { ... }
+  },
+  "metadata": {
+    "canvas": { ... },
+    "handlers": { "onClick": "..." },
+    "handlerIncludes": "#include &lt;stdio.h&gt;"
+  }
+}</code></pre>
+
+<table>
+<tr><th>字段</th><th>说明</th></tr>
+<tr><td><code>app</code></td><td>固定为 CornerstoneDesigner</td></tr>
+<tr><td><code>version</code></td><td>工程格式版本</td></tr>
+<tr><td><code>layout.controls</code></td><td>控件树（含 id/type/rect/属性/events）</td></tr>
+<tr><td><code>layout.components</code></td><td>组件定义与模板</td></tr>
+<tr><td><code>layout.viewport</code></td><td>画布尺寸、ID、背景</td></tr>
+<tr><td><code>layout.theme</code></td><td>项目主题（可选）</td></tr>
+<tr><td><code>metadata</code></td><td>设计器专用：事件代码、包含文件、画布元数据</td></tr>
+</table>
+
+<h2>E.2 导出 JSON</h2>
+
+<p>导出 JSON 是 UICornerstone 运行布局，不包含设计器 <code>metadata</code>。常含 <code>controls</code>、<code>viewport</code>、<code>theme</code>、<code>components</code>、<code>resourceProviders</code>。</p>
+
+<h2>E.3 C 工程</h2>
+
+<pre><code>导出目录/
+  main.c
+  layout.json
+  events.h
+  events.c
+  event_list.json
+  CMakeLists.txt
+  README.md
+  assets/           # 构建后拷贝的运行资源
+</code></pre>
+
+<h2>E.4 C++ 工程</h2>
+
+<pre><code>导出目录/
+  main.cpp
+  layout.json
+  events.h
+  events.c
+  event_list.json
+  CMakeLists.txt
+  README.md
+  binding/          # C++ Binding 包
+  assets/
+</code></pre>
+
+<h2>E.5 设计器设置</h2>
+
+<p><code>designer_settings.json</code>（exe 同目录）：</p>
+
+<pre><code>{
+  "lastFileDir": "D:/Projects",
+  "lastFolderDir": "D:/Exports",
+  "recentFiles": ["D:/Projects/Demo.csd"]
+}</code></pre>
+
+<h2>E.6 设计器 UI 主题</h2>
+
+<p><code>designer_theme.json</code>（exe 同目录）：主题对象，结构同项目主题，但不属于任何工程。源码位置为 <code>layouts/designer_theme.json</code>，构建时复制到输出目录。</p>
+
+<h2>E.7 资源提供者</h2>
+
+<p>布局中通常以如下形式出现：</p>
+
+<pre><code>"resourceProviders": {
+  "demo": "D:/Projects/Demo/assets"
+}</code></pre>
+
+<p>控件引用 <code>provider:demo/icon.png</code>。设计器资源面板负责维护名称与目录映射。</p>
+
+<h2>E.8 编码与换行</h2>
+
+<ul>
+  <li>源代码 <code>.h/.cpp</code>：UTF-8 with BOM。</li>
+  <li>JSON/HTML/CMake/README：UTF-8。</li>
+  <li>导出源代码带 BOM；JSON 与构建文件不带 BOM。</li>
+</ul>
+
+<div class="chapter-nav">
+  <a href="appendix-d-theme.html">← 附录 D 主题语法参考</a>
+  <a href="appendix-f-glossary.html">下一章：附录 F 术语表 →</a>
+</div>
+
+</div>
+</body>
+</html>

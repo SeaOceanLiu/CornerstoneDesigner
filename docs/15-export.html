@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>16 导出与集成 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="15-export.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>16 导出与集成</h1>
+
+<p>导出把设计器中的工程转成运行时可用的产物。不同导出方式适合不同阶段：先导出 JSON 给现有宿主，或直接导出可编译 C/C++ 工程做完整验证。</p>
+
+<h2>16.1 导出方式一览</h2>
+
+<table>
+<tr><th>方式</th><th>菜单</th><th>典型用途</th></tr>
+<tr><td>保存工程</td><td>文件 → 保存 / 另存为</td><td>继续用设计器编辑，保留组件/事件/主题</td></tr>
+<tr><td>导出 JSON</td><td>文件 → 导出 JSON</td><td>交给已有 UICornerstone 宿主加载</td></tr>
+<tr><td>导出 C 工程</td><td>文件 → 导出为可编译C项目</td><td>裸 C ABI 宿主，最小依赖</td></tr>
+<tr><td>导出 C++ 工程</td><td>文件 → 导出为可编译C++项目</td><td>C++ Binding 宿主，带 binding 包</td></tr>
+<tr><td>导出报告</td><td>文件 → 导出项目报告</td><td>项目说明、控件/事件清单、布局截图</td></tr>
+</table>
+
+<h2>16.2 导出 JSON</h2>
+
+<ol class="steps">
+  <li>选择 <span class="menu-path">文件 → 导出 JSON</span>。</li>
+  <li>选择目标文件和目录。</li>
+  <li>导出的 JSON 包含控件树、viewport、theme（如果有）、组件定义和事件字段。</li>
+  <li>把它交给 UICornerstone 宿主，在运行时通过 <code>LoadLayout</code> 加载。</li>
+</ol>
+
+<div class="note">导出 JSON 不包含设计器专用的元数据（例如 handler 代码编辑内容），需要事件代码时请使用 C/C++ 工程导出。</div>
+
+<h2>16.3 导出 C 工程</h2>
+
+<p>选择 <span class="menu-path">文件 → 导出为可编译C项目</span>，然后选择空目录。设计器生成 C11 宿主工程，典型文件：</p>
+
+<table>
+<tr><th>文件</th><th>作用</th></tr>
+<tr><td><code>main.c</code></td><td>加载 DLL、创建实例、加载 layout.json、注册事件、帧循环</td></tr>
+<tr><td><code>layout.json</code></td><td>运行时布局</td></tr>
+<tr><td><code>events.h</code></td><td>事件函数声明</td></tr>
+<tr><td><code>events.c</code></td><td>事件函数骨架/已编辑实现</td></tr>
+<tr><td><code>event_list.json</code></td><td>机器可读的事件清单</td></tr>
+<tr><td><code>CMakeLists.txt</code></td><td>构建脚本，自动拷贝运行依赖</td></tr>
+<tr><td><code>README.md</code></td><td>导出工程的使用说明</td></tr>
+</table>
+
+<h2>16.4 导出 C++ 工程</h2>
+
+<p>选择 <span class="menu-path">文件 → 导出为可编译C++项目</span>。与 C 工程类似，但宿主是 C++ Binding，并包含 <code>binding/</code> 包。典型文件：</p>
+
+<ul>
+  <li><code>main.cpp</code>：C++ Binding 宿主。</li>
+  <li><code>events.h</code> / <code>events.c</code>：事件声明与实现骨架。</li>
+  <li><code>layout.json</code> / <code>event_list.json</code>。</li>
+  <li><code>CMakeLists.txt</code>、<code>README.md</code>、<code>binding/</code>。</li>
+</ul>
+
+<h2>16.5 编译和运行导出工程</h2>
+
+<ol class="steps">
+  <li>进入导出目录，阅读 <code>README.md</code>。</li>
+  <li>确保 CMake 与 Visual Studio C++ 工具链可用。</li>
+  <li>按 README 中的命令配置和构建。</li>
+  <li>构建后，运行依赖（DLL/layout/assets）会被拷贝到可执行文件旁。</li>
+  <li>运行程序验证布局与事件。</li>
+</ol>
+
+<p>导出工程按“exe 同目录/工作目录”解析 DLL、<code>layout.json</code> 和 <code>assets</code>；从任意目录启动时请确保工作目录正确。</p>
+
+<h2>16.6 资源和 provider</h2>
+
+<p>布局中的 <code>provider:名称/路径</code> 引用会随 layout.json 的 <code>resourceProviders</code> 块保留。导出时请把对应资源目录一并交给宿主，或在导出目录中补齐资源。资源缺失不会使设计器崩溃，但运行界面可能缺图/缺字体。</p>
+
+<h2>16.7 导出项目报告</h2>
+
+<p>选择 <span class="menu-path">文件 → 导出项目报告</span>，选择输出目录。报告包含：</p>
+
+<ul>
+  <li><code>report.md</code>：工程文件、画布尺寸、控件清单/分布、事件绑定、资源等信息。</li>
+  <li><code>screenshot.png</code>：优先从预览实例捕获的 1:1 布局截图。</li>
+</ul>
+
+<p>报告适合评审、交付说明和问题复现。截图不包含设计器网格与选中框。</p>
+
+<h2>16.8 导出前检查</h2>
+
+<ul>
+  <li>事件 handler 名称合法、无冲突。</li>
+  <li>组件模板和 props 已应用，实例显示正确。</li>
+  <li>资源路径有效，预览能正常显示。</li>
+  <li>项目主题已在预览中验证。</li>
+  <li>导出目录为空或允许覆盖。</li>
+</ul>
+
+<div class="warn">导出工程中的 <code>events.c</code>、<code>layout.json</code> 等文件由设计器生成。需要长期修改业务逻辑时，建议在导出工程中维护；再次导出可能覆盖这些文件。</div>
+
+<div class="tip">需要在代码里按控件 ID 读取数据、设置属性或绑定回调查看 <a href="appendix-h-code.html">附录 H 代码中访问控件</a>，其中包含 C++ Binding、C ABI、SetCallback 与 RegisterAction 的完整示例。</div>
+
+<div class="chapter-nav">
+  <a href="14-theme.html">← 上一章：15 主题系统</a>
+  <a href="16-shortcuts.html">下一章：17 快捷键与效率 →</a>
+</div>
+
+</div>
+</body>
+</html>

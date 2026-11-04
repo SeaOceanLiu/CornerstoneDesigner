@@ -190,6 +190,18 @@
                                     }
                                 },
                                 {
+                                    "caption": "主题…",
+                                    "events": {
+                                        "onClick": "onMenuTheme"
+                                    }
+                                },
+                                {
+                                    "caption": "主题 JSON…",
+                                    "events": {
+                                        "onClick": "onMenuThemeJson"
+                                    }
+                                },
+                                {
                                     "type": "separator"
                                 },
                                 {
@@ -285,6 +297,15 @@
                                     "shortcut": "F5",
                                     "events": {
                                         "onClick": "onMenuPreview"
+                                    }
+                                },
+                                {
+                                    "type": "separator"
+                                },
+                                {
+                                    "caption": "重新加载设计器主题",
+                                    "events": {
+                                        "onClick": "onMenuReloadDesignerTheme"
                                     }
                                 }
                             ]

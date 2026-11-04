@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>附录 D 主题语法参考 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="appendix-d-theme.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>附录 D 主题语法参考</h1>
+
+<p>项目主题是 CSS-like 对象。本附录给出设计器当前支持的主要语法；完整实现以 UICornerstone 当前版本为准。</p>
+
+<h2>D.1 顶层结构</h2>
+
+<pre><code>{
+  "variables": {},
+  "styles": [],
+  "variants": {},
+  "media": [],
+  "containerQueries": [],
+  "fonts": {},
+  "colors": {}
+}</code></pre>
+
+<ul>
+  <li><code>fonts</code> / <code>colors</code> 是旧主题语法，仍兼容。</li>
+  <li>新规则与旧主题可同时存在；显式属性始终优先。</li>
+  <li><code>styles</code> 是基础规则；<code>variants</code>、<code>media</code>、<code>containerQueries</code> 按层序叠加。</li>
+</ul>
+
+<h2>D.2 规则</h2>
+
+<pre><code>{
+  "selector": "button.primary:hover",
+  "declarations": {
+    "background": "var(--accent)",
+    "text-color": "#FFFFFFFF",
+    "border-radius": 8
+  }
+}</code></pre>
+
+<p>V1 不支持后代/子选择器、属性选择器、逗号分组和 <code>!important</code>。复杂选择器请拆成多条规则。</p>
+
+<h2>D.3 选择器</h2>
+
+<table>
+<tr><th>形式</th><th>示例</th></tr>
+<tr><td>类型</td><td><code>button</code>、<code>label</code>、<code>panel</code></td></tr>
+<tr><td>类</td><td><code>.primary</code>、<code>button.primary</code></td></tr>
+<tr><td>ID</td><td><code>#saveBtn</code></td></tr>
+<tr><td>复合</td><td><code>button.primary#saveBtn</code></td></tr>
+<tr><td>状态</td><td><code>button.primary:hover</code></td></tr>
+<tr><td>通配</td><td><code>*</code></td></tr>
+</table>
+
+<p>状态支持 <code>:hover</code>、<code>:pressed</code>、<code>:disabled</code>、<code>:selected</code>。<code>:selected</code> 当前近似 pressed 通道。</p>
+
+<h2>D.4 声明</h2>
+
+<table>
+<tr><th>声明</th><th>值</th><th>说明</th></tr>
+<tr><td><code>background</code></td><td>颜色</td><td>背景色</td></tr>
+<tr><td><code>text-color</code></td><td>颜色</td><td>文字色</td></tr>
+<tr><td><code>border-color</code></td><td>颜色</td><td>边框色</td></tr>
+<tr><td><code>text-shadow</code></td><td>颜色</td><td>文字阴影</td></tr>
+<tr><td><code>shadow-offset-x</code> / <code>shadow-offset-y</code></td><td>数值</td><td>文字阴影偏移</td></tr>
+<tr><td><code>font-family</code></td><td>字体名</td><td>字体</td></tr>
+<tr><td><code>font-size</code></td><td>数值</td><td>字号</td></tr>
+<tr><td><code>font-style</code></td><td>normal/bold/italic/underline/strikethrough</td><td>字体样式</td></tr>
+<tr><td><code>border-radius</code></td><td>数值</td><td>圆角</td></tr>
+<tr><td><code>padding</code></td><td>数字 / “v h” / “t r b l”</td><td>内容内边距</td></tr>
+<tr><td><code>content-padding</code></td><td>对象/字符串</td><td>通用内容内边距</td></tr>
+<tr><td><code>box-shadow</code></td><td>对象</td><td>盒阴影</td></tr>
+<tr><td>控件专有键</td><td>颜色/数值/字符串</td><td>落到控件属性通道</td></tr>
+</table>
+
+<h2>D.5 颜色和值</h2>
+
+<ul>
+  <li><code>#RRGGBB</code>、<code>#RRGGBBAA</code>。</li>
+  <li><code>rgb(r,g,b)</code>、<code>rgba(r,g,b,a)</code>。</li>
+  <li>常用颜色名。</li>
+  <li>数值可写数字或数字字符串。</li>
+  <li><code>var(--name)</code> 引用变量，支持多级引用。</li>
+</ul>
+
+<h2>D.6 变量</h2>
+
+<pre><code>"variables": {
+  "--bg": "#10141C",
+  "--accent": "#2D7FF9",
+  "--text": "#F5F8FF"
+}</code></pre>
+
+<p>规则示例：<code>"background": "var(--bg)"</code>。未知变量回退；循环引用停止解析。</p>
+
+<h2>D.7 变体</h2>
+
+<pre><code>"variants": {
+  "dark": {
+    "variables": { "--bg": "#0B0F16" },
+    "styles": [
+      { "selector": "panel.root", "declarations": { "background": "var(--bg)" } }
+    ]
+  }
+}</code></pre>
+
+<p>层序：基础普通 → 基础媒体 → 基础容器 → 变体普通 → 变体媒体 → 变体容器。</p>
+
+<h2>D.8 媒体条件</h2>
+
+<pre><code>"media": [
+  {
+    "id": "compact",
+    "query": "(max-width: 800px)",
+    "variables": { "--gap": 8 },
+    "styles": [
+      { "selector": "button", "declarations": { "padding": "4 8" } }
+    ]
+  }
+]</code></pre>
+
+<p>查询可以写字符串或对象，例如 <code>{"max-width": 800, "orientation": "portrait"}</code>。支持 min/max width/height、orientation 和缩放范围。</p>
+
+<h2>D.9 容器条件</h2>
+
+<pre><code>"containerQueries": [
+  {
+    "id": "narrow",
+    "container": "panel.sidebar",
+    "query": "(max-width: 280px)",
+    "styles": []
+  }
+]</code></pre>
+
+<p><code>container</code> 是简单祖先选择器；匹配最近祖先的 contentRect。容器查询层序在媒体之后、变体之前。</p>
+
+<h2>D.10 优先级</h2>
+
+<ol>
+  <li>显式属性（JSON/属性面板/公开 Set*）。</li>
+  <li>ID 选择器。</li>
+  <li>类选择器。</li>
+  <li>类型选择器。</li>
+  <li>同权重按规则顺序，后者覆盖。</li>
+  <li>状态规则优先于同选择器的无状态规则。</li>
+</ol>
+
+<h2>D.11 示例主题</h2>
+
+<pre><code>{
+  "variables": {
+    "--bg": "#10141C", "--card": "#1A2130",
+    "--line": "#2B3648", "--text": "#F5F8FF", "--accent": "#2D7FF9"
+  },
+  "styles": [
+    { "selector": "panel.root", "declarations": { "background": "var(--bg)" } },
+    { "selector": "panel.card", "declarations": {
+        "background": "var(--card)", "border-color": "var(--line)",
+        "border-radius": 14 } },
+    { "selector": "button.primary", "declarations": {
+        "background": "var(--accent)", "text-color": "#FFFFFFFF",
+        "padding": "8 16", "border-radius": 8 } },
+    { "selector": "button.primary:hover", "declarations": {
+        "background": "#4A90D9" } }
+  ]
+}</code></pre>
+
+<div class="chapter-nav">
+  <a href="appendix-c-events.html">← 附录 C 事件速查</a>
+  <a href="appendix-e-files.html">下一章：附录 E 文件格式 →</a>
+</div>
+
+</div>
+</body>
+</html>

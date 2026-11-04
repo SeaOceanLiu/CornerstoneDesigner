@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>附录 G 当前限制与功能状态 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="appendix-g-status.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>附录 G 当前限制与功能状态</h1>
+
+<p>本附录按当前开发版核对，帮助读者区分“能用”“部分可用”和“预留未实现”。功能会随版本变化，以实际界面和构建为准。</p>
+
+<h2>G.1 功能状态总表</h2>
+
+<table>
+<tr><th>功能</th><th>状态</th><th>说明</th></tr>
+<tr><td>工程新建/打开/保存/另存为</td><td class="status-ok">可用</td><td>.csd 保存完整工程信息</td></tr>
+<tr><td>最近文件</td><td class="status-ok">可用</td><td>最多 10 个，失效路径自动清理</td></tr>
+<tr><td>导入/导出 JSON</td><td class="status-ok">可用</td><td>导入替换布局；导出运行布局</td></tr>
+<tr><td>导出 C/C++ 工程</td><td class="status-ok">可用</td><td>生成宿主、事件代码、脚本和依赖</td></tr>
+<tr><td>导出项目报告</td><td class="status-ok">可用</td><td>report.md + 截图</td></tr>
+<tr><td>工具箱放置（双击/拖拽）</td><td class="status-ok">可用</td><td>含搜索与组件分组</td></tr>
+<tr><td>画布选择/移动/缩放</td><td class="status-ok">可用</td><td>含多选与框选</td></tr>
+<tr><td>网格/吸附/对齐/分布</td><td class="status-ok">可用</td><td>对齐下拉 10 种命令</td></tr>
+<tr><td>状态预览</td><td class="status-ok">可用</td><td>设计期强制四态</td></tr>
+<tr><td>撤销/重做</td><td class="status-ok">可用</td><td>Ctrl+Z / Ctrl+Y</td></tr>
+<tr><td>控件树拖拽重排/换父</td><td class="status-ok">可用</td><td>右键上移/下移/移到根</td></tr>
+<tr><td>属性面板单/多选编辑</td><td class="status-ok">可用</td><td>schema 驱动动态字段</td></tr>
+<tr><td>事件绑定/代码编辑</td><td class="status-ok">可用</td><td>事件面板 + handler 编辑</td></tr>
+<tr><td>组件创建/编辑/实例 props</td><td class="status-ok">可用</td><td>含颜色表达式与 _comp_ 事件</td></tr>
+<tr><td>项目主题管理器</td><td class="status-part">可用/部分</td><td>规则、变量、变体、媒体、容器；部分条件需 JSON 高级编辑</td></tr>
+<tr><td>设计器自身 UI 主题</td><td class="status-ok">可用</td><td>designer_theme.json + 视图菜单重载</td></tr>
+<tr><td>预览窗口</td><td class="status-ok">可用</td><td>独立实例，F5</td></tr>
+<tr><td>资源提供者管理</td><td class="status-ok">可用</td><td>名称/路径增删改</td></tr>
+</table>
+
+<h2>G.2 明确限制</h2>
+
+<h3>编辑菜单预留项</h3>
+
+<p>当前版本以下菜单项是预留入口，尚未实现实际行为：</p>
+
+<ul>
+  <li>编辑 → 复制</li>
+  <li>编辑 → 粘贴</li>
+  <li>编辑 → 置前</li>
+  <li>编辑 → 置后</li>
+  <li>编辑 → 上移 / 下移（请使用控件树右键上移/下移）</li>
+</ul>
+
+<p>删除请用 <span class="kbd">Delete</span> 或编辑 → 删除；层级调整请使用控件树右键菜单。</p>
+
+<h3>主题显示范围</h3>
+
+<ul>
+  <li>设计画布主要显示显式样式和设计态，项目主题的完整效果以预览/导出为准。</li>
+  <li>可视化主题管理器覆盖常用字段；复杂选择器、变体内的媒体/容器结构请使用“主题 JSON…”。</li>
+  <li>主题规则不改变控件矩形；padding 影响内容区，不影响外框尺寸。</li>
+</ul>
+
+<h3>自动保存</h3>
+
+<p>当前版本没有自动保存恢复流程。请主动保存 <code>.csd</code>，不要在关闭前只保留内存修改。</p>
+
+<h3>其他</h3>
+
+<ul>
+  <li>设计器当前以 SDL3 后端为验证目标。</li>
+  <li>部分控件（Dialog/Popup/HandleControl 等）主要用于运行时或辅助用途，设计态可能只显示占位。</li>
+  <li>颜色状态规则中 <code>:selected</code> 近似使用 pressed 通道。</li>
+  <li>不支持 CSS 后代/子选择器、属性选择器、逗号分组、<code>!important</code> 和 <code>opacity</code>。</li>
+</ul>
+
+<h2>G.3 状态标记含义</h2>
+
+<table>
+<tr><th>标记</th><th>含义</th></tr>
+<tr><td><span class="status-ok">可用</span></td><td>常规操作可使用，已有预览/导出路径</td></tr>
+<tr><td><span class="status-part">部分</span></td><td>基础能力可用，但高级场景需要 JSON 或存在限制</td></tr>
+<tr><td><span class="status-no">未实现</span></td><td>界面可能有入口，但当前版本没有实际行为</td></tr>
+</table>
+
+<div class="note">如果你依赖某个限制项完成工作，请把使用场景和最小复现工程反馈给维护者；手册会在功能落地后同步更新。</div>
+
+<div class="chapter-nav">
+  <a href="appendix-f-glossary.html">← 附录 F 术语表</a>
+  <a href="appendix-h-code.html">下一章：附录 H 代码中访问控件 →</a>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>附录 C 事件速查 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="appendix-c-events.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>附录 C 事件速查</h1>
+
+<p>事件键名来自 UICornerstone 声明式布局。设计器事件面板会根据控件类型过滤可用事件；完整列表以当前引擎版本为准。</p>
+
+<h2>C.1 事件键名与控件</h2>
+
+<table>
+<tr><th>事件键</th><th>适用控件</th><th>说明</th></tr>
+<tr><td><code>onClick</code></td><td>Button、可点击 Label、菜单项</td><td>点击</td></tr>
+<tr><td><code>onCheckChanged</code></td><td>CheckBox</td><td>勾选状态变化</td></tr>
+<tr><td><code>onTextChanged</code></td><td>EditBox、TextArea</td><td>文本变化</td></tr>
+<tr><td><code>onEnter</code></td><td>EditBox、TextArea</td><td>回车</td></tr>
+<tr><td><code>onValueChanged</code></td><td>ProgressBar、Slider、NumericUpDown</td><td>数值变化</td></tr>
+<tr><td><code>onSelectionChanged</code></td><td>ComboBox、ListView</td><td>选中项变化</td></tr>
+<tr><td><code>onColumnSort</code></td><td>ListView</td><td>列排序</td></tr>
+<tr><td><code>onCellEditBegin</code></td><td>ListView</td><td>单元格开始编辑</td></tr>
+<tr><td><code>onCellEdited</code></td><td>ListView</td><td>单元格提交编辑</td></tr>
+<tr><td><code>onCellEditCancel</code></td><td>ListView</td><td>取消单元格编辑</td></tr>
+<tr><td><code>onSelect</code></td><td>TreeView</td><td>节点选中</td></tr>
+<tr><td><code>onNodeEditBegin</code></td><td>TreeView</td><td>节点开始编辑</td></tr>
+<tr><td><code>onNodeEdited</code></td><td>TreeView</td><td>节点提交编辑</td></tr>
+<tr><td><code>onNodeEditCancel</code></td><td>TreeView</td><td>取消节点编辑</td></tr>
+<tr><td><code>onTabChange</code></td><td>TabControl</td><td>页签切换</td></tr>
+<tr><td><code>onSplitterMoved</code></td><td>Splitter</td><td>分割条移动</td></tr>
+<tr><td><code>onPositionChanged</code></td><td>ScrollBar</td><td>滚动位置变化</td></tr>
+<tr><td><code>onColorChanged</code></td><td>ColorPicker</td><td>颜色提交</td></tr>
+<tr><td><code>onExpressionChanged</code></td><td>ColorPicker</td><td>颜色表达式提交</td></tr>
+<tr><td><code>onConfirm</code> / <code>onCancel</code> / <code>onClose</code></td><td>Dialog、WinFrame</td><td>确认/取消/关闭</td></tr>
+<tr><td><code>onClick</code>（items）</td><td>MenuBar / ContextMenu / StatusBar</td><td>菜单项点击</td></tr>
+</table>
+
+<h2>C.2 组件事件</h2>
+
+<p>组件模板内部的事件键需要加 <code>_comp_</code> 前缀，例如 <code>_comp_onClick</code>。实例层事件面板会列出模板声明的键，并把实例绑定映射到宿主 handler。</p>
+
+<pre><code>模板按钮事件：
+  events: { "onClick": "_comp_confirm" }
+
+实例事件：
+  events: { "_comp_confirm": "onDialogConfirm" }</code></pre>
+
+<p>导出时生成 <code>onDialogConfirm</code>，不会生成 <code>_comp_confirm</code> 的函数体。</p>
+
+<h2>C.3 handler 命名规则</h2>
+
+<ul>
+  <li>合法 C/C++ 标识符：字母/下划线开头，只含字母、数字、下划线。</li>
+  <li>不能使用 C/C++ 关键字。</li>
+  <li>建议使用 PascalCase，例如 <code>onLoginClick</code>、<code>onListSelectionChanged</code>。</li>
+  <li>同一 handler 被多个控件复用时，确认这是有意的共享逻辑。</li>
+</ul>
+
+<h2>C.4 事件不触发的检查顺序</h2>
+
+<ol class="steps">
+  <li>控件是否处于 enabled 状态。</li>
+  <li>事件类型是否被该控件支持。</li>
+  <li>绑定是否在正确的控件上（组件实例 vs 模板控件）。</li>
+  <li>预览/导出工程中是否注册了 handler。</li>
+  <li>导出 <code>events.c</code> 中函数体是否为空骨架。</li>
+  <li>运行时控制台是否报告未注册 action 或加载失败。</li>
+</ol>
+
+<div class="chapter-nav">
+  <a href="appendix-b-properties.html">← 附录 B 属性速查</a>
+  <a href="appendix-d-theme.html">下一章：附录 D 主题语法参考 →</a>
+</div>
+
+</div>
+</body>
+</html>

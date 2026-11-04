@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>8 画布编辑 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="07-canvas.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>8 画布编辑</h1>
+
+<p>画布是设计器的主工作区。所有位置、大小、层级和对齐操作都在这里完成。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/02-workspace.png" alt="画布与属性面板">
+  <div class="cap">图 8-1 画布中选中控件后的状态</div>
+</div>
+
+<h2>8.1 选择控件</h2>
+
+<table>
+<tr><th>操作</th><th>结果</th></tr>
+<tr><td>单击控件</td><td>选中该控件，显示蓝色选中框和八个控制点</td></tr>
+<tr><td><span class="kbd">Ctrl</span> + 单击</td><td>加入/移出当前选择集；多选时次级控件显示橙色框</td></tr>
+<tr><td>在空白处拖拽</td><td>框选与矩形相交的根级控件</td></tr>
+<tr><td><span class="kbd">Ctrl</span> + 空白拖拽</td><td>并入式框选，保留已有选择</td></tr>
+<tr><td>在容器内容区拖拽</td><td>只框选该容器的子控件</td></tr>
+<tr><td>单击容器内容区</td><td>选中容器本身（不启动子控件框选）</td></tr>
+</table>
+
+<p>框选移动距离小于阈值时按空白单击处理，用于清空选择。TabControl 的页签点击会切换到该页；隐藏页不参与命中。</p>
+
+<h2>8.2 移动控件</h2>
+
+<ul>
+  <li>按住控件本体拖动；选中多个时整体移动。</li>
+  <li>启用“控件吸附”后，控件边缘和中心会吸附到其他控件；橙色参考线显示对齐位置。</li>
+  <li>启用“网格吸附”后，位置吸附到当前网格间距。</li>
+</ul>
+
+<h2>8.3 调整大小</h2>
+
+<p>选中控件后拖动八个控制点：</p>
+
+<ul>
+  <li>四角：同时改变宽高。</li>
+  <li>四边：只改变一个方向。</li>
+  <li>拖动时按网格/控件吸附规则微调。</li>
+</ul>
+
+<p>尺寸不能为负；极小的拖动会保持原尺寸。Tab 页 Panel 等特殊容器不允许直接缩放，需通过父 TabControl 调整。</p>
+
+<h2>8.4 缩放与平移画布</h2>
+
+<ul>
+  <li>工具栏缩放下拉：25%、50%、75%、100%、150%、200%。</li>
+  <li><code>−</code> / <code>+</code>：按档位缩放；<code>100%</code>：恢复 1:1。</li>
+  <li>鼠标滚轮：连续缩放。</li>
+  <li>中键拖动或空格 + 拖动：平移。</li>
+  <li>纸面超出视口时，底部/右侧滚动条出现。</li>
+</ul>
+
+<p>缩放只影响设计器显示，不改变控件坐标和导出布局。</p>
+
+<h2>8.5 网格与吸附</h2>
+
+<table>
+<tr><th>选项</th><th>作用</th></tr>
+<tr><td>网格</td><td>显示纸面网格</td></tr>
+<tr><td>网格单元格</td><td>网格间距，10/20/25/40/50/100/200</td></tr>
+<tr><td>网格吸附</td><td>拖动/缩放时对齐网格</td></tr>
+<tr><td>控件吸附</td><td>对齐其他控件的左/中/右、上/中/下</td></tr>
+</table>
+
+<p>参考线颜色为橙色，只在拖动期间显示，不写入工程。</p>
+
+<h2>8.6 对齐与分布</h2>
+
+<p>选中至少两个控件后，画布工具栏的“对齐”下拉可用。命令立即执行，并作为一个独立撤销步：</p>
+
+<table>
+<tr><th>命令</th><th>结果</th></tr>
+<tr><td>左对齐 / 水平居中 / 右对齐</td><td>按选择集包围盒对齐 X 方向</td></tr>
+<tr><td>顶对齐 / 垂直居中 / 底对齐</td><td>按选择集包围盒对齐 Y 方向</td></tr>
+<tr><td>等宽 / 等高</td><td>以主选控件（最后选中）的宽/高为基准</td></tr>
+<tr><td>水平分布 / 垂直分布</td><td>按左/上缘排序，首末不动，中间等间距</td></tr>
+</table>
+
+<h2>8.7 状态预览</h2>
+
+<p>工具栏“状态”下拉用于设计期查看控件的不同状态：</p>
+
+<ul>
+  <li>跟随：按当前鼠标交互状态显示。</li>
+  <li>常态 / 悬停 / 按下 / 禁用：强制选中控件显示为该状态。</li>
+</ul>
+
+<p>状态预览只影响设计器显示，不写入属性、不进入导出。切换选中或进入预览模式会自动恢复。</p>
+
+<h2>8.8 画布尺寸</h2>
+
+<p>工具栏画布尺寸下拉提供 1024×768、1280×800、1440×900、1920×1080 和“自定义…”。选择“自定义…”打开宽高输入对话框。画布尺寸是最终运行窗口的基准尺寸；改变后网格、状态栏和报告截图尺寸同步更新。</p>
+
+<h2>8.9 层级与顺序</h2>
+
+<p>控件树中越靠下的同级节点越靠前绘制。调整层级使用控件树的右键菜单：</p>
+
+<ul>
+  <li>上移 / 下移：在同级内前后移动。</li>
+  <li>移到画布根：把控件从当前父容器移到根级。</li>
+</ul>
+
+<div class="warn">当前版本“编辑”菜单中的复制、粘贴、置前、置后是预留入口，尚未实现；请用控件树右键的上移/下移/移到根来调整层级。详见 <a href="appendix-g-status.html">附录 G</a>。</div>
+
+<h2>8.10 删除与撤销</h2>
+
+<ul>
+  <li><span class="kbd">Delete</span> 或编辑 → 删除：删除选中控件及其子树。</li>
+  <li><span class="kbd">Ctrl</span>+<span class="kbd">Z</span>：撤销。</li>
+  <li><span class="kbd">Ctrl</span>+<span class="kbd">Y</span>：重做。</li>
+</ul>
+
+<p>删除、放置、移动、缩放、属性修改和组件操作都会进入撤销栈；预览/设计模式切换通常不进入撤销栈。</p>
+
+<div class="chapter-nav">
+  <a href="06-toolbox.html">← 上一章：7 工具箱与放置</a>
+  <a href="08-tree.html">下一章：9 控件树 →</a>
+</div>
+
+</div>
+</body>
+</html>

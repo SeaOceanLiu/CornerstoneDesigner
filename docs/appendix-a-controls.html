@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>附录 A 控件参考 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="appendix-a-controls.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>附录 A 控件参考</h1>
+
+<p>本附录按工具箱分组列出控件用途。控件属性以 UICornerstone schema 和属性面板实际显示为准；不同版本的可用字段可能增加。</p>
+
+<h2>A.1 基础控件</h2>
+
+<table>
+<tr><th>控件</th><th>用途</th><th>常用属性/注意</th></tr>
+<tr><td>按钮 Button</td><td>触发操作</td><td>文本、颜色、字体、点击事件</td></tr>
+<tr><td>标签 Label</td><td>显示静态文本</td><td>文本、字号、颜色、文本对齐</td></tr>
+<tr><td>图片 Image</td><td>显示图片</td><td>图片资源/provider、缩放方式</td></tr>
+<tr><td>复选框 CheckBox</td><td>布尔选择</td><td>勾选状态、文本、三态（如支持）</td></tr>
+<tr><td>输入框 EditBox</td><td>单行文本输入</td><td>文本、占位、字体、输入事件</td></tr>
+<tr><td>多行文本 TextArea</td><td>多行文本输入</td><td>文本、换行、滚动</td></tr>
+<tr><td>进度条 ProgressBar</td><td>显示进度</td><td>进度值、颜色</td></tr>
+<tr><td>滑块 Slider</td><td>连续数值选择</td><td>范围、当前值、方向</td></tr>
+<tr><td>滚动条 ScrollBar</td><td>滚动区域</td><td>方向、范围、滚动值</td></tr>
+<tr><td>图形 Shape</td><td>绘制基础图形</td><td>图形类型、颜色、线宽</td></tr>
+</table>
+
+<h2>A.2 容器控件</h2>
+
+<table>
+<tr><th>控件</th><th>用途</th><th>注意</th></tr>
+<tr><td>面板 Panel</td><td>分组、布局容器</td><td>可容纳子控件；内容区受 padding 影响</td></tr>
+<tr><td>窗口 WinFrame</td><td>带标题栏的窗口容器</td><td>子控件挂到客户端内容区</td></tr>
+<tr><td>分割条 Splitter</td><td>左右/上下分栏</td><td>用 first/second-linked 关联面板</td></tr>
+<tr><td>页签 TabControl</td><td>多页切换</td><td>每页是 Panel；页签可切换/重排</td></tr>
+</table>
+
+<h2>A.3 列表/树控件</h2>
+
+<table>
+<tr><th>控件</th><th>用途</th><th>注意</th></tr>
+<tr><td>下拉框 ComboBox</td><td>从候选项选择一个</td><td>items、selected-index、选择事件</td></tr>
+<tr><td>列表 ListView</td><td>多行多列列表</td><td>列定义、行数据、选择/点击事件；支持单元格编辑</td></tr>
+<tr><td>树 TreeView</td><td>层级数据</td><td>节点、展开/选择；支持节点编辑</td></tr>
+</table>
+
+<h2>A.4 高级控件</h2>
+
+<table>
+<tr><th>控件</th><th>用途</th><th>注意</th></tr>
+<tr><td>数字框 NumericUpDown</td><td>数值输入/微调</td><td>范围、步长、当前值</td></tr>
+<tr><td>取色器 ColorPicker</td><td>颜色选择</td><td>颜色值、弹出面板、表达式支持（模板）</td></tr>
+<tr><td>菜单 MenuBar</td><td>顶部菜单</td><td>menus 数组、菜单项事件</td></tr>
+<tr><td>状态栏 StatusBar</td><td>底部状态信息</td><td>items 数组、对齐、颜色</td></tr>
+<tr><td>动画 Animation</td><td>播放 LuotiAni 动画</td><td>jsonc 路径、播放/循环</td></tr>
+<tr><td>弹窗 Dialog</td><td>模态/非模态对话框</td><td>确认/取消文本，通常运行时创建</td></tr>
+<tr><td>右键菜单 ContextMenu</td><td>上下文菜单</td><td>菜单项与点击事件</td></tr>
+<tr><td>弹层 Popup</td><td>浮层内容</td><td>可见性、叠放层级</td></tr>
+<tr><td>确认框 ConfirmPopup</td><td>确认/取消浮层</td><td>确认、取消回调</td></tr>
+</table>
+
+<h2>A.5 非可视化/辅助控件</h2>
+
+<p>HandleControl 等辅助控件通常由引擎或设计器内部使用，不建议在普通业务界面中直接放置。部分控件只在运行时创建（例如动态 Dialog），在设计器中放置时可能只显示占位。</p>
+
+<h2>A.6 放置建议</h2>
+
+<ul>
+  <li>需要随窗口拉伸的区域用 Panel + 布局/anchor，而不是写死尺寸。</li>
+  <li>重复结构用组件，不要在画布复制多份后手工同步。</li>
+  <li>复杂表单先用 Panel 分组，再对组内控件使用对齐/分布。</li>
+  <li>列表/树的列和节点数据较多时，优先用属性面板或原始 JSON 批量编辑。</li>
+</ul>
+
+<div class="chapter-nav">
+  <a href="18-tutorials.html">← 上一章：19 实战教程</a>
+  <a href="appendix-b-properties.html">下一章：附录 B 属性速查 →</a>
+</div>
+
+</div>
+</body>
+</html>

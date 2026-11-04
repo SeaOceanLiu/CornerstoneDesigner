@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>15 主题系统 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="14-theme.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>15 主题系统</h1>
+
+<p>主题用于统一控件外观：颜色、字体、圆角、间距、阴影，以及窗口变窄、容器变小、切换深色模式时的变化。它解决的是“同一个样式要改很多控件”的问题。</p>
+
+<div class="note">本章讲的是<strong>项目主题</strong>：它保存在工程里，作用于<strong>预览和导出的运行界面</strong>。设计器自身界面的颜色由另一份 <code>designer_theme.json</code> 控制，见 15.14。</div>
+
+<div class="shot">
+  <img src="assets/screenshots/05-theme-manager.png" alt="主题管理器">
+  <div class="cap">图 15-1 主题管理器：上方是作用域/条件/规则表单，下方是规则列表</div>
+</div>
+
+<h2>15.1 先理解：主题能帮你做什么</h2>
+
+<p>假设画布上有 20 个按钮，都使用主色。没有主题时，主色从蓝色改成绿色，需要逐个选中按钮、逐个改颜色。使用主题后：</p>
+
+<ol>
+  <li>定义一个变量 <code>--primary</code>，或者一条规则 <code>button.primary</code>；</li>
+  <li>给 20 个按钮都加上 <code>primary</code> 类；</li>
+  <li>以后只需要改规则的背景色，20 个按钮一起变化。</li>
+</ol>
+
+<p>主题不改变控件的位置和大小，只改变样式属性。布局仍然由画布上的位置、尺寸、容器和对齐决定。</p>
+
+<div class="tip">如果只是想改一个控件的颜色，直接使用属性面板更快；当同一套样式要复用到多个控件时，再使用主题。</div>
+
+<h2>15.2 六个核心概念</h2>
+
+<table>
+<tr><th>概念</th><th>通俗含义</th><th>例子</th></tr>
+<tr><td><strong>变量</strong></td><td>给一个值起名字，后面反复使用</td><td><code>--primary = #4A90D9</code></td></tr>
+<tr><td><strong>选择器</strong></td><td>这条规则作用到哪些控件</td><td><code>button.primary</code></td></tr>
+<tr><td><strong>声明</strong></td><td>具体要改什么属性、改成什么值</td><td><code>background: #4A90D9</code></td></tr>
+<tr><td><strong>规则</strong></td><td>“选择器 + 一组声明”</td><td><code>button.primary { background: ... }</code></td></tr>
+<tr><td><strong>类（class）</strong></td><td>给控件贴的标签，供选择器匹配</td><td>按钮的 <code>classes = ["primary"]</code></td></tr>
+<tr><td><strong>作用域</strong></td><td>规则放在哪一层：基础、变体、媒体或容器</td><td>基主题 / dark / 窄窗口 / 侧栏</td></tr>
+</table>
+
+<p>另外两个概念是：</p>
+
+<ul>
+  <li><strong>变体</strong>：在基础主题之上叠加的一套命名样式，例如 <code>dark</code>。切换变体时，基础规则仍然保留，变体规则覆盖同名属性。</li>
+  <li><strong>条件</strong>：媒体条件（窗口宽度/高度/方向）或容器条件（某个祖先容器的尺寸）满足时，额外叠加规则。</li>
+</ul>
+
+<h2>15.3 第一次使用主题：给按钮换色</h2>
+
+<p>下面按顺序做一遍。完成后你会得到：基主题、类、按钮规则、悬停规则，并能在预览中看到效果。</p>
+
+<ol class="steps">
+  <li><strong>新建工程</strong>，从工具箱放置一个 Button，文本改成“保存”。</li>
+  <li><strong>选中按钮</strong>，点击右侧“事件”旁边的“属性”，确认没有手动改过它的背景色。显式属性会覆盖主题。</li>
+  <li>打开 <span class="menu-path">编辑 → 主题…</span>。</li>
+  <li>在“作用域”保持“基主题”。</li>
+  <li>在“选择器”输入 <code>button.primary</code>。</li>
+  <li>“背景色”填 <code>#2D7FF9FF</code>，“文字色”填 <code>#FFFFFFFF</code>。</li>
+  <li>“边框色”填 <code>#4A90D9FF</code>，“文字阴影”填 <code>#00000066</code>。</li>
+  <li>“字体”下拉选择 <code>harmonyos-sans-sc-regular</code>；“字号”填 <code>16</code>；“圆角”填 <code>8</code>。</li>
+  <li>“内边距(上/右/下/左)”填 <code>8</code>、<code>16</code>、<code>8</code>、<code>16</code>。</li>
+  <li>“box-shadow”填下面这个 JSON 对象：<br><code>{"color":"#00000066","offset-x":0,"offset-y":6,"blur":16,"spread":0}</code></li>
+  <li>点击“新增规则”。下方规则列表出现 <code>button.primary</code>，声明数为 9。</li>
+  <li><strong>保持按钮在画布中被选中</strong>，回到主题管理器，点击“类应用到选中”。按钮会获得 <code>primary</code> 类。</li>
+  <li>再新增一条规则：选择器 <code>button.primary:hover</code>，背景色改成更亮的 <code>#4A90D9FF</code>，点击“新增规则”。</li>
+  <li>点击“应用”关闭管理器，按 <span class="kbd">F5</span> 打开预览，把鼠标移到按钮上。</li>
+</ol>
+
+<p>此时你应该看到：按钮常态是蓝色，悬停变亮。回到画布后，按钮本身的位置、大小、文本都不变，只是外观来自主题。</p>
+
+<div class="warn"><strong>修改已有规则时不要点“新增规则”。</strong>先在上方规则列表选中该规则，修改字段，然后点“应用”（或切换到别的规则/作用域让修改保存）。“新增规则”会创建一条新规则，容易产生重复。</div>
+
+<h3>15.3.1 全部设置项填写完成</h3>
+
+<p>下面是完成上述步骤后的主题管理器。可以看到选择器、背景色、文字色、边框色、文字阴影、字体、字号、圆角、四边内边距和 box-shadow 都已经有值；下方规则列表同时保留了常态和悬停规则。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/theme-manager-filled.png" alt="填写完成的主题管理器">
+  <div class="cap">图 15-2 全部设置项填写完成：button.primary 规则（9 条声明）与规则列表</div>
+</div>
+
+<h3>15.3.2 套用前后的效果对比</h3>
+
+<div class="grid2">
+  <div class="shot">
+    <img src="assets/screenshots/theme-before.png" alt="未套用主题的效果">
+    <div class="cap">套用前：控件只有默认外观，主/次/危险按钮没有区分</div>
+  </div>
+  <div class="shot">
+    <img src="assets/screenshots/theme-after.png" alt="套用主题后的效果">
+    <div class="cap">套用后：卡片、主按钮、次按钮、危险按钮和输入框都应用了主题</div>
+  </div>
+</div>
+
+<p>这两张图来自同一个布局，只差“有没有项目主题”。按钮的位置、大小、文字没有改变，改变的是背景、文字、边框、圆角和内边距。</p>
+
+<h2>15.4 主题管理器逐项说明</h2>
+
+<h3>作用域</h3>
+
+<table>
+<tr><th>选项</th><th>含义</th><th>什么时候用</th></tr>
+<tr><td>基主题</td><td>所有控件默认使用的规则</td><td>普通颜色、字体、圆角、主按钮</td></tr>
+<tr><td>变体: 名称</td><td>叠加在基主题之上的命名样式</td><td>深色模式、品牌主题、紧凑模式</td></tr>
+<tr><td>媒体: 名称</td><td>窗口尺寸/方向满足时叠加</td><td>窗口变窄、横屏/竖屏切换</td></tr>
+<tr><td>容器: 名称</td><td>某个祖先容器尺寸满足时叠加</td><td>侧栏变窄后隐藏文字、缩小按钮</td></tr>
+</table>
+
+<h3>条件字段</h3>
+
+<table>
+<tr><th>作用域</th><th>条件ID</th><th>查询</th><th>容器</th></tr>
+<tr><td>基主题</td><td>禁用</td><td>禁用</td><td>禁用</td></tr>
+<tr><td>变体</td><td>禁用</td><td>禁用</td><td>禁用</td></tr>
+<tr><td>媒体</td><td><code>compact</code></td><td><code>(max-width: 800px)</code> 或 <code>{"max-width": 800}</code></td><td>禁用</td></tr>
+<tr><td>容器</td><td><code>narrow</code></td><td><code>{"max-width": 280}</code></td><td><code>panel.sidebar</code></td></tr>
+</table>
+
+<div class="note"><strong>条件 ID 不是固定枚举。</strong>它只是给条件起一个可读名称，<code>compact</code>、<code>narrow</code> 只是示例；你也可以写 <code>mobile</code>、<code>tablet</code>、<code>side_small</code>。真正决定条件是否命中的是“查询”和“容器”，不是 ID。建议同一工程内保持唯一，方便在作用域下拉和 <code>GetActiveMedia()</code> 结果中辨认。</div>
+
+<p>“条件ID”“查询”“容器”只在作用域是媒体或容器时启用：</p>
+
+<ul>
+  <li><strong>条件ID</strong>：给条件起名，方便识别；可以是 <code>compact</code>、<code>mobile</code> 等任意名称，不是固定选项。</li>
+  <li><strong>查询</strong>：条件表达式，例如 <code>(max-width: 800px)</code>。</li>
+  <li><strong>容器</strong>：只用于容器条件，写祖先选择器，例如 <code>panel.sidebar</code>。</li>
+</ul>
+
+<h3>新增作用域</h3>
+
+<table>
+<tr><th>目标</th><th>操作</th><th>新增后发生什么</th></tr>
+<tr><td>变体</td><td>在“新增变体”左侧输入名称，点击“新增变体”</td><td>创建空变体并切换作用域；基主题规则继续生效</td></tr>
+<tr><td>媒体条件</td><td>点击“+媒体”</td><td>创建默认媒体条件并切换；条件ID/查询启用</td></tr>
+<tr><td>容器条件</td><td>点击“+容器”</td><td>创建默认容器条件并切换；条件ID/查询/容器启用</td></tr>
+<tr><td>删除</td><td>选中对应作用域，点击“删除作用域”</td><td>删除该变体/条件及其规则；基主题不能删除</td></tr>
+</table>
+
+<h3>哪些可以随便命名，哪些必须按规则写</h3>
+
+<p>主题里同时存在“名字”和“语法”。名字是给人和日志看的，可以自己起；选择器、声明、查询是语法，必须按固定格式写；枚举项只能从给定值中选择。</p>
+
+<table>
+<tr><th>字段/内容</th><th>能否随意命名</th><th>规则与建议</th></tr>
+<tr><td>条件 ID（媒体/容器）</td><td class="status-ok">可以</td><td>任意可读名称；不是固定枚举。<code>compact</code>/<code>narrow</code> 只是示例；建议唯一，使用英文、数字、下划线。</td></tr>
+<tr><td>变体名</td><td class="status-ok">可以</td><td>非空、不能重复；用于运行时 <code>SetThemeVariant("dark")</code>，建议使用英文/数字/下划线。</td></tr>
+<tr><td>类名（class）</td><td class="status-ok">可以</td><td>建议只用字母、数字、<code>_</code>、<code>-</code>；一个控件可加多个类，选择器里写 <code>.primary</code>。</td></tr>
+<tr><td>控件 ID</td><td class="status-ok">可以，但应唯一</td><td>供事件、代码和 <code>FindControl</code> 引用；建议英文/数字/下划线，不要空格。</td></tr>
+<tr><td>变量名</td><td class="status-part">部分自由</td><td>变量编辑器会自动补 <code>--</code>；建议 <code>--primary</code>、<code>--surface</code>。引用时写 <code>var(--primary)</code>。</td></tr>
+<tr><td>选择器</td><td class="status-no">不能随意</td><td>只能写类型、类、ID、状态和简单组合；不支持空格后代、逗号、属性选择器、<code>!important</code>。</td></tr>
+<tr><td>媒体/容器查询</td><td class="status-no">不能随意</td><td>使用固定键：<code>min-width</code>/<code>max-width</code>/<code>min-height</code>/<code>max-height</code>/<code>orientation</code>/<code>min-scale</code>/<code>max-scale</code>；值写数字或字符串。</td></tr>
+<tr><td>容器字段</td><td class="status-no">不能随意</td><td>只能写简单的祖先选择器：类型、类、ID 或组合，例如 <code>panel.sidebar</code>；不能写后代选择器。</td></tr>
+<tr><td>声明键</td><td class="status-no">不能随意</td><td>使用文档支持的键：<code>background</code>、<code>text-color</code>、<code>font-size</code>、<code>border-radius</code>、<code>content-padding</code>、<code>box-shadow</code> 等；控件专有键以 schema 为准。</td></tr>
+<tr><td>字体名称</td><td class="status-part">从列表选择</td><td>使用主题管理器字体下拉中的名称，或引擎支持的字体枚举名；不是任意字体文件路径。</td></tr>
+<tr><td>字体样式</td><td class="status-part">固定枚举</td><td><code>normal</code> / <code>bold</code> / <code>italic</code> / <code>underline</code> / <code>strikethrough</code>。</td></tr>
+<tr><td>颜色值</td><td class="status-part">固定格式</td><td><code>#RRGGBB</code>、<code>#RRGGBBAA</code>、<code>rgb()</code>、<code>rgba()</code> 或颜色名。</td></tr>
+<tr><td>box-shadow 字段名</td><td class="status-no">固定</td><td><code>color</code>、<code>offset-x</code>、<code>offset-y</code>、<code>blur</code>、<code>spread</code>；值必须是 JSON 对象。</td></tr>
+<tr><td>作用域下拉</td><td class="status-part">只能选现有项</td><td>基主题、已有变体、已有媒体条件、已有容器条件；不能手写未知作用域。</td></tr>
+</table>
+
+<div class="tip">简单记：<strong>名字可以自己起，语法不能自己编，枚举只能从清单里选。</strong>条件 ID、变体名、类名、控件 ID 是名字；选择器、查询、声明和容器字段是语法。</div>
+
+<h3>选择器与属性表单</h3>
+
+<table>
+<tr><th>控件</th><th>含义</th></tr>
+<tr><td>选择器</td><td>规则匹配的控件，见 15.5</td></tr>
+<tr><td>背景色 / 文字色 / 边框色 / 文字阴影</td><td>规则的颜色声明；当前表单编辑的是常态值</td></tr>
+<tr><td>字体 / 字号 / 圆角</td><td>字体名、字号 px、圆角 px</td></tr>
+<tr><td>内边距(上/右/下/左)</td><td>控件内容区的内边距，写入 <code>content-padding</code></td></tr>
+<tr><td>box-shadow</td><td>需要填写 JSON 对象，见 15.6.4</td></tr>
+</table>
+
+<h3>按钮</h3>
+
+<table>
+<tr><th>按钮</th><th>作用</th></tr>
+<tr><td>新增规则</td><td>把当前选择器和属性保存为一条新规则</td></tr>
+<tr><td>删除规则</td><td>删除规则列表中选中的规则</td></tr>
+<tr><td>类应用到选中</td><td>从当前选择器的 <code>.类名</code> 提取类，追加到画布选中控件</td></tr>
+<tr><td>变量…</td><td>打开变量编辑器，定义/删除变量</td></tr>
+<tr><td>新增变体</td><td>创建命名变体并切换到该作用域</td></tr>
+<tr><td>删除作用域</td><td>删除当前变体/媒体/容器；基主题不能删</td></tr>
+<tr><td>+媒体 / +容器</td><td>在基主题下创建默认条件</td></tr>
+<tr><td>应用 / 取消</td><td>应用并关闭 / 放弃本次草稿</td></tr>
+</table>
+
+<h2>15.5 选择器：主题作用到谁</h2>
+
+<p>选择器语法是 CSS 的一个很小子集。先掌握下面几种就够了：</p>
+
+<table>
+<tr><th>写法</th><th>匹配</th><th>适合</th></tr>
+<tr><td><code>button</code></td><td>所有按钮</td><td>统一按钮基础样式</td></tr>
+<tr><td><code>.primary</code></td><td>所有带 <code>primary</code> 类的控件</td><td>跨控件复用同一种标签</td></tr>
+<tr><td><code>button.primary</code></td><td>同时是按钮且带 <code>primary</code> 类</td><td>主按钮</td></tr>
+<tr><td><code>#saveBtn</code></td><td>ID 为 <code>saveBtn</code> 的控件</td><td>只改一个特定控件</td></tr>
+<tr><td><code>button.primary:hover</code></td><td>主按钮在悬停状态</td><td>悬停变色</td></tr>
+<tr><td><code>label.title</code></td><td>带 <code>title</code> 类的标签</td><td>标题字体</td></tr>
+<tr><td><code>*</code></td><td>所有参与主题的控件</td><td>谨慎使用，影响范围最大</td></tr>
+</table>
+
+<h3>优先级</h3>
+
+<ol>
+  <li><strong>ID</strong> 选择器 <code>#saveBtn</code></li>
+  <li><strong>类</strong> 选择器 <code>.primary</code></li>
+  <li><strong>类型</strong> 选择器 <code>button</code></li>
+  <li>同权重按规则添加顺序，后面的覆盖前面的</li>
+</ol>
+
+<p>如果同一个控件同时命中多条规则，按优先级和顺序层叠；但<strong>属性面板里显式设置的值永远高于主题</strong>。</p>
+
+<h3>常见错误</h3>
+
+<ul>
+  <li>写 <code>button .primary</code>（中间有空格）：V1 不支持后代选择器。应写 <code>button.primary</code>。</li>
+  <li>选择器写 <code>.primary</code> 但控件没有 <code>primary</code> 类：不会匹配。先分配类。</li>
+  <li>把悬停规则写成 <code>button.primary:hover</code> 但字段里改的是常态背景色：检查规则列表选中的是不是悬停规则。</li>
+  <li>使用逗号 <code>button, label</code>、属性选择器或 <code>!important</code>：当前版本不支持，拆成多条规则。</li>
+</ul>
+
+<h2>15.6 声明：具体改什么</h2>
+
+<h3>15.6.1 颜色和状态</h3>
+
+<p>颜色写法支持 <code>#RRGGBB</code>、<code>#RRGGBBAA</code>、<code>rgb(...)</code>、<code>rgba(...)</code> 和常用颜色名。设计器取色器通常写出 8 位十六进制。</p>
+
+<table>
+<tr><th>声明</th><th>作用</th></tr>
+<tr><td><code>background</code></td><td>背景色</td></tr>
+<tr><td><code>text-color</code></td><td>文字色</td></tr>
+<tr><td><code>border-color</code></td><td>边框色</td></tr>
+<tr><td><code>text-shadow</code></td><td>文字阴影颜色；alpha=0 表示关闭</td></tr>
+</table>
+
+<p>控件状态用选择器表达，而不是在同一个规则里写四个颜色：</p>
+
+<pre><code>{ "selector": "button.primary", "declarations": {
+    "background": "#4A90D9", "text-color": "#FFFFFF" } }
+
+{ "selector": "button.primary:hover", "declarations": {
+    "background": "#6AA3FF" } }
+
+{ "selector": "button.primary:pressed", "declarations": {
+    "background": "#3B73D1" } }
+
+{ "selector": "button.primary:disabled", "declarations": {
+    "background": "#2B3038", "text-color": "#9AA7B8" } }</code></pre>
+
+<p>支持 <code>:hover</code>、<code>:pressed</code>、<code>:disabled</code>、<code>:selected</code>。其中 <code>:selected</code> 当前近似使用 pressed 通道。</p>
+
+<h3>15.6.2 字体和圆角</h3>
+
+<ul>
+  <li><code>font-family</code>：字体枚举名，例如 <code>harmonyos-sans-sc-regular</code>。</li>
+  <li><code>font-size</code>：字号 px。</li>
+  <li><code>font-style</code>：normal / bold / italic / underline / strikethrough。</li>
+  <li><code>border-radius</code>：圆角 px。</li>
+</ul>
+
+<p>没有显式字体声明的控件会沿父链继承最近的主题字体；属性面板显式设置的字体/字号会覆盖主题。</p>
+
+<h3>15.6.3 内边距</h3>
+
+<p>主题声明名可以写 <code>padding</code> 或 <code>content-padding</code>。它改变控件内容区，不改变外框尺寸：</p>
+
+<pre><code>padding: 8                  // 四边 8
+padding: "8 16"             // 上下 8，左右 16
+padding: "8 16 8 16"        // 上 右 下 左
+content-padding: { "left": 16, "top": 8, "right": 16, "bottom": 8 }</code></pre>
+
+<p>可视化管理器的“内边距(上/右/下/左)”会写入 <code>content-padding</code>。Dialog 的旧 <code>padding</code> 是 Float 属性，和这里的内容内边距语义不同。</p>
+
+<h3>15.6.4 阴影</h3>
+
+<p><code>text-shadow</code> 只需颜色；偏移由 <code>shadow-offset-x</code> / <code>shadow-offset-y</code> 控制。</p>
+
+<p><code>box-shadow</code> 是控件外框外的一层阴影，用来做“卡片浮起来”的效果。它不是必填项；不需要阴影时留空。</p>
+
+<table>
+<tr><th>字段</th><th>含义</th><th>示例</th></tr>
+<tr><td><code>color</code></td><td>阴影颜色，最后两位是透明度</td><td><code>#00000066</code></td></tr>
+<tr><td><code>offset-x</code></td><td>水平偏移；正数向右</td><td><code>0</code></td></tr>
+<tr><td><code>offset-y</code></td><td>垂直偏移；正数向下</td><td><code>6</code></td></tr>
+<tr><td><code>blur</code></td><td>模糊/圆角扩展量</td><td><code>16</code></td></tr>
+<tr><td><code>spread</code></td><td>阴影扩张量；正数更大</td><td><code>0</code></td></tr>
+</table>
+
+<p>操作步骤：</p>
+
+<ol class="steps">
+  <li>在规则列表选中要加阴影的规则，例如 <code>panel.card</code>。</li>
+  <li>在“box-shadow”输入框中粘贴完整对象文本：</li>
+</ol>
+
+<pre><code>{"color":"#00000066","offset-x":0,"offset-y":6,"blur":16,"spread":0}</code></pre>
+
+<ol class="steps">
+  <li>点击“应用”或切换到别的规则，保存这条规则。</li>
+  <li>在预览中查看卡片外框是否出现柔和阴影。</li>
+</ol>
+
+<div class="warn">这里需要的是<strong>JSON 对象</strong>，不是 CSS 的 <code>0 6 16 #000</code> 简写。写成字符串、缺少花括号或字段名拼错时，管理器会提示“box-shadow 需要 JSON 对象”，该字段不会按预期保存。</div>
+
+<p>图 15-2 的按钮规则中 <code>box-shadow</code> 填的是 <code>{"color":"#00000066","offset-x":0,"offset-y":6,"blur":16,"spread":0}</code>；它会在按钮下方形成一层淡阴影。</p>
+
+<p>当前实现用无高斯模糊的扩展近似：偏移和扩散绘制半透明圆角矩形，blur 作为圆角扩展量参与近似。</p>
+
+<h3>15.6.5 控件专有属性</h3>
+
+<p>规则也可以写控件自己的属性键，例如：</p>
+
+<pre><code>{ "selector": "list-view", "declarations": {
+    "header-background": "#202838", "font-size": 14 } }
+
+{ "selector": "progress-bar", "declarations": {
+    "progress-color": "#22C55E" } }</code></pre>
+
+<p>值会按形态尝试颜色、数字或字符串，最终落到控件对应的属性通道。具体键以属性面板和 schema 为准。</p>
+
+<h2>15.7 变量：统一改一处</h2>
+
+<p>变量用来保存可复用的值。点击主题管理器中的“变量…”：</p>
+
+<ol class="steps">
+  <li>左侧是变量列表，右侧是“变量名”和“值”。</li>
+  <li>点击“新增变量”，自动创建 <code>--var1</code> 之类的名字。</li>
+  <li>输入名称和值，例如 <code>--primary</code> / <code>#4A90D9</code>。</li>
+  <li>点击“应用”保存变量；变量会保存在当前工程主题里。</li>
+</ol>
+
+<p>变量定义示例：</p>
+
+<pre><code>{
+  "variables": {
+    "--bg": "#10141C",
+    "--primary": "#2D7FF9",
+    "--text": "#F5F8FF"
+  }
+}</code></pre>
+
+<p>在规则中引用：</p>
+
+<pre><code>{ "selector": "button.primary", "declarations": {
+    "background": "var(--primary)",
+    "text-color": "var(--text)" } }</code></pre>
+
+<div class="warn">当前可视化规则表单的颜色栏主要写具体十六进制值。如果要在规则里使用 <code>var(--primary)</code>，请在 <span class="menu-path">编辑 → 主题 JSON…</span> 中编辑对应规则；变量编辑器只负责定义变量表。</div>
+
+<h2>15.8 类：把规则和控件连起来</h2>
+
+<p>主题规则不会自动知道“哪个按钮是主按钮”，需要通过类来关联。</p>
+
+<h3>分配类</h3>
+
+<ol class="steps">
+  <li>在画布或控件树选中一个或多个控件。</li>
+  <li>在主题管理器“选择器”中输入包含类名的选择器，例如 <code>button.primary</code>。</li>
+  <li>点击“类应用到选中”。</li>
+  <li>控件获得类 <code>primary</code>，之后匹配 <code>.primary</code>、<code>button.primary</code> 等规则。</li>
+</ol>
+
+<p>“类应用到选中”是从选择器中第一个 <code>.</code> 后面提取类名，所以选择器必须写类，例如 <code>button.primary</code>；只写 <code>button</code> 会提示“当前选择器没有类名”。</p>
+
+<p>控件的类也会随布局保存到 JSON：</p>
+
+<pre><code>{ "type": "button", "id": "saveBtn", "classes": ["primary"] }</code></pre>
+
+<p><code>classes</code> 也支持字符串形式 <code>"primary toolbar"</code>。当前管理器只提供“追加类”，没有删除类的按钮；需要移除时可在原始 JSON 中修改控件的 <code>classes</code>。</p>
+
+<h2>15.9 变体：深色/浅色切换</h2>
+
+<p>变体是在基主题上叠加的命名样式。适合做深色模式、品牌主题或紧凑模式。</p>
+
+<ol class="steps">
+  <li>在主题管理器输入变体名，例如 <code>dark</code>。</li>
+  <li>点击“新增变体”，作用域自动切到“变体: dark”。</li>
+  <li>为深色模式添加规则，例如 <code>panel.card</code> 的背景色、<code>label</code> 的文字色。</li>
+  <li>点击“应用”。</li>
+</ol>
+
+<p>变体名的格式没有 CSS 限制，但建议使用简短的英文/数字/下划线，例如 <code>dark</code>、<code>compact</code>、<code>brand_A</code>。名称为空会提示“变体名为空”；同名已存在会提示“变体已存在”。新增成功后，作用域下拉会自动切到该变体。</p>
+
+<div class="grid2">
+  <div class="shot">
+    <img src="assets/screenshots/theme-after.png" alt="基主题效果">
+    <div class="cap">基主题：蓝色主按钮、深灰次按钮</div>
+  </div>
+  <div class="shot">
+    <img src="assets/screenshots/theme-dark.png" alt="dark 变体效果">
+    <div class="cap">切换到 dark 变体：主按钮变紫色，卡片/侧栏更深</div>
+  </div>
+</div>
+
+<p>变体只覆盖声明过的属性，所以基主题的圆角和内边距仍然保留。下面的截图来自同一布局，只切换了变体。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/theme-scope-variant.png" alt="变体作用域的主题管理器">
+  <div class="cap">图 15-4 作用域为“变体: dark”：条件字段自动禁用，只显示变体自己的规则</div>
+</div>
+
+<p>变体不需要重复基主题中的所有规则。例如基主题已经设置了按钮圆角，变体只覆盖背景和文字：</p>
+
+<pre><code>{
+  "variants": {
+    "dark": {
+      "variables": { "--surface": "#0B0F16", "--text": "#F5F8FF" },
+      "styles": [
+        { "selector": "panel.card", "declarations": { "background": "var(--surface)" } },
+        { "selector": "label", "declarations": { "text-color": "var(--text)" } }
+      ]
+    }
+  }
+}</code></pre>
+
+<p>层序是：基础普通 → 基础媒体 → 基础容器 → 变体普通 → 变体媒体 → 变体容器。运行时切换变体由 UICornerstone API 完成；设计器负责保存/导出变体定义。</p>
+
+<h2>15.10 媒体条件：窗口变窄时调整</h2>
+
+<p>媒体条件根据视口尺寸匹配，例如窗口宽度小于 800px 时缩小字号。</p>
+
+<ol class="steps">
+  <li>点击“+媒体”。</li>
+  <li>作用域切到新建的媒体条件。</li>
+  <li>编辑“条件ID”和“查询”，例如 <code>compact</code> 和 <code>(max-width: 800px)</code>。</li>
+  <li>在该作用域新增规则，例如按钮字号 13、内边距 4/8。</li>
+  <li>调整预览窗口大小，观察规则命中。</li>
+</ol>
+
+<p>“+媒体”会自动创建一个条件并切换作用域。新条件的默认 ID 类似 <code>media1</code>，默认查询是 <code>(min-width: 800px)</code>；把 ID 改成 <code>compact</code> 只是便于识别，规则本身不依赖这个名称。查询字段启用后填写：</p>
+
+<table>
+<tr><th>写法</th><th>示例</th><th>含义</th></tr>
+<tr><td>字符串</td><td><code>(max-width: 800px)</code></td><td>视口宽度不超过 800px</td></tr>
+<tr><td>字符串</td><td><code>(min-width: 1200px)</code></td><td>视口宽度至少 1200px</td></tr>
+<tr><td>字符串</td><td><code>(orientation: portrait)</code></td><td>竖向视口</td></tr>
+<tr><td>对象</td><td><code>{"max-width": 800, "orientation": "portrait"}</code></td><td>多个条件同时满足</td></tr>
+</table>
+
+<p>支持 <code>min-width</code> / <code>max-width</code> / <code>min-height</code> / <code>max-height</code> / <code>orientation</code> / <code>min-scale</code> / <code>max-scale</code>。调节预览窗口大小，或在导出运行时改变窗口尺寸，条件会重新计算。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/theme-scope-media.png" alt="媒体作用域的主题管理器">
+  <div class="cap">图 15-5 作用域为“媒体: compact”：条件ID、查询启用；容器字段禁用</div>
+</div>
+
+<pre><code>{
+  "media": [
+    {
+      "id": "compact",
+      "query": "(max-width: 800px)",
+      "variables": { "--gap": 8 },
+      "styles": [
+        { "selector": "button.primary", "declarations": {
+            "background": "#F59E0B", "content-padding": "4 8", "font-size": 13 } },
+        { "selector": "button.secondary", "declarations": {
+            "content-padding": "4 8", "font-size": 13 } }
+      ]
+    }
+  ]
+}</code></pre>
+
+<p>查询可以写字符串，也可以写对象：<code>{"max-width": 800, "orientation": "portrait"}</code>。支持 min/max width/height、orientation 和缩放范围。</p>
+
+<div class="note">当前管理器的“+媒体”在基主题下新建条件；如果要把媒体条件放进某个变体，请用“主题 JSON…”编辑 <code>variants.dark.media</code>。</div>
+
+<div class="grid2">
+  <div class="shot">
+    <img src="assets/screenshots/theme-media-wide.png" alt="媒体条件未命中：1000px 窗口">
+    <div class="cap">窗口 1000px：未命中 max-width: 800px，按钮保持蓝色</div>
+  </div>
+  <div class="shot">
+    <img src="assets/screenshots/theme-media-narrow.png" alt="媒体条件命中：700px 窗口">
+    <div class="cap">窗口 700px：命中条件，按钮变小并变为橙色</div>
+  </div>
+</div>
+
+<div class="warn">媒体/容器规则也要遵守优先级。如果基主题写的是更具体的 <code>button.primary</code>，媒体规则只写 <code>button</code> 可能无法覆盖它；需要写同样具体的 <code>button.primary</code>。</div>
+
+<h2>15.11 容器条件：侧栏变窄时调整</h2>
+
+<p>容器条件不是看整个窗口，而是看某个祖先容器的尺寸。典型场景：侧栏 Panel 变窄后，按钮只显示图标或缩小字号。</p>
+
+<ol class="steps">
+  <li>点击“+容器”。</li>
+  <li>编辑“条件ID”，例如 <code>narrow</code>。</li>
+  <li>“容器”填祖先选择器，例如 <code>panel.sidebar</code>。</li>
+  <li>“查询”填 <code>{"max-width": 280}</code>，或字符串 <code>(max-width: 280px)</code>。</li>
+  <li>新增规则，例如 <code>button.primary</code> 的背景色、内边距、字号。</li>
+</ol>
+
+<p>“+容器”会自动创建条件并切换作用域。新条件默认 ID 类似 <code>container1</code>，默认容器是 <code>.panel</code>，默认查询是 <code>(max-width: 599px)</code>。实际使用时把“容器”改成真正要观察的祖先，例如：</p>
+
+<table>
+<tr><th>容器写法</th><th>匹配</th></tr>
+<tr><td><code>panel</code></td><td>任意 Panel 祖先</td></tr>
+<tr><td><code>.sidebar</code></td><td>带 sidebar 类的任意祖先</td></tr>
+<tr><td><code>panel.sidebar</code></td><td>同时是 Panel 且带 sidebar 类</td></tr>
+<tr><td><code>#sidePanel</code></td><td>ID 为 sidePanel 的祖先</td></tr>
+</table>
+
+<p>容器选择器只支持简单形式，不支持空格后代选择器或逗号。查询推荐用对象形式 <code>{"max-width": 280}</code>，字符串形式也可用；比较的是容器内容区尺寸。</p>
+
+<p>同样，<code>narrow</code> 只是条件 ID 示例，不是固定值；可以按用途命名，但建议唯一。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/theme-scope-container.png" alt="容器作用域的主题管理器">
+  <div class="cap">图 15-6 作用域为“容器: narrow”：条件ID、查询、容器三个字段都启用</div>
+</div>
+
+<pre><code>{
+  "containerQueries": [
+    {
+      "id": "narrow",
+      "container": "panel.sidebar",
+      "query": { "max-width": 280 },
+      "styles": [
+        { "selector": "button.primary", "declarations": {
+            "background": "#0F766E", "font-size": 11, "content-padding": "3 6" } }
+      ]
+    }
+  ]
+}</code></pre>
+
+<p><code>container</code> 是简单的祖先选择器（类型、类、ID），匹配最近的祖先容器 contentRect。当前 UI 支持编辑 ID、query 和 container 字段。</p>
+
+<div class="grid2">
+  <div class="shot">
+    <img src="assets/screenshots/theme-container-wide.png" alt="容器条件未命中：侧栏 360px">
+    <div class="cap">侧栏外框 360px：未命中 max-width: 280，按钮保持蓝色</div>
+  </div>
+  <div class="shot">
+    <img src="assets/screenshots/theme-container-narrow.png" alt="容器条件命中：侧栏 240px">
+    <div class="cap">侧栏外框 240px：命中条件，侧栏按钮变青色</div>
+  </div>
+</div>
+
+<div class="note">容器条件比较的是容器的<strong>内容区</strong>，不是外框。若侧栏有 16px 内边距，外框 280px 的内容区只有 248px；判断阈值时要把 padding 算进去。推荐用对象形式写 query，语义更清楚。</div>
+
+<h2>15.12 完整示例：一套小主题</h2>
+
+<p>把下面 JSON 复制到 <span class="menu-path">编辑 → 主题 JSON…</span>，然后应用，即可得到一套带主按钮、卡片和紧凑模式的主题。</p>
+
+<pre><code>{
+  "variables": {
+    "--bg": "#10141C",
+    "--surface": "#1A2130",
+    "--line": "#2B3648",
+    "--text": "#F5F8FF",
+    "--muted": "#94A3B8",
+    "--primary": "#2D7FF9",
+    "--danger": "#E06060"
+  },
+  "styles": [
+    { "selector": "panel.root", "declarations": {
+        "background": "var(--bg)" } },
+    { "selector": "panel.card", "declarations": {
+        "background": "var(--surface)",
+        "border-color": "var(--line)",
+        "border-visible": true,
+        "border-radius": 14,
+        "content-padding": "16" } },
+    { "selector": "label.title", "declarations": {
+        "text-color": "var(--text)", "font-size": 24 } },
+    { "selector": "label.muted", "declarations": {
+        "text-color": "var(--muted)", "font-size": 13 } },
+    { "selector": "button.primary", "declarations": {
+        "background": "var(--primary)",
+        "text-color": "#FFFFFFFF",
+        "border-radius": 8,
+        "content-padding": "8 16" } },
+    { "selector": "button.primary:hover", "declarations": {
+        "background": "#4A90D9" } },
+    { "selector": "button.danger", "declarations": {
+        "background": "var(--danger)",
+        "text-color": "#FFFFFFFF",
+        "border-radius": 8 } },
+    { "selector": "edit-box", "declarations": {
+        "background": "#111826",
+        "border-color": "#334155",
+        "text-color": "var(--text)",
+        "border-radius": 8,
+        "content-padding": "10 12" } }
+  ],
+  "variants": {
+    "dark": {
+      "variables": { "--surface": "#0B0F16", "--bg": "#080B11" },
+      "styles": [
+        { "selector": "panel.card", "declarations": { "background": "var(--surface)" } }
+      ]
+    }
+  },
+  "media": [
+    {
+      "id": "compact",
+      "query": "(max-width: 800px)",
+      "styles": [
+        { "selector": "button", "declarations": { "content-padding": "4 8", "font-size": 13 } }
+      ]
+    }
+  ],
+  "containerQueries": [
+    {
+      "id": "narrow",
+      "container": "panel.sidebar",
+      "query": "(max-width: 280px)",
+      "styles": [
+        { "selector": "button", "declarations": { "font-size": 12 } }
+      ]
+    }
+  ]
+}</code></pre>
+
+<p>应用后需要在画布上给控件分配类：<code>panel root</code>、<code>panel card</code>、<code>label title</code>、<code>button primary</code> 等。类通过“类应用到选中”或控件的 <code>classes</code> 字段设置。</p>
+
+<h2>15.13 常见主题配方</h2>
+
+<table>
+<tr><th>目标</th><th>选择器</th><th>主要声明</th></tr>
+<tr><td>主按钮</td><td><code>button.primary</code></td><td>background、text-color、border-radius</td></tr>
+<tr><td>次按钮</td><td><code>button.secondary</code></td><td>background 浅灰、border-color</td></tr>
+<tr><td>危险按钮</td><td><code>button.danger</code></td><td>background 红、text-color 白</td></tr>
+<tr><td>卡片</td><td><code>panel.card</code></td><td>background、border-color、border-radius、box-shadow</td></tr>
+<tr><td>输入框</td><td><code>edit-box</code></td><td>background、border-color、content-padding</td></tr>
+<tr><td>标题</td><td><code>label.title</code></td><td>font-size、text-color、font-style</td></tr>
+<tr><td>侧栏紧凑</td><td><code>panel.sidebar</code> + 容器条件</td><td>font-size、content-padding</td></tr>
+<tr><td>深色模式</td><td>变体 <code>dark</code></td><td>背景/文字变量覆盖</td></tr>
+</table>
+
+<h2>15.14 设计器自身 UI 主题</h2>
+
+<p>设计器界面（菜单、工具箱、属性面板）使用另一份主题文件：exe 同目录的 <code>designer_theme.json</code>。它和项目主题<strong>完全分离</strong>：</p>
+
+<ul>
+  <li>修改项目主题不会改变设计器界面；</li>
+  <li>修改设计器主题不会影响用户画布、预览和导出；</li>
+  <li>源码文件在 <code>layouts/designer_theme.json</code>，构建时复制到输出目录；</li>
+  <li>修改后使用 <span class="menu-path">视图 → 重新加载设计器主题</span> 热重载。</li>
+</ul>
+
+<p>文件缺失或 JSON 非法时只输出诊断，不阻止启动。</p>
+
+<h2>15.15 排查：为什么主题没生效</h2>
+
+<ol class="steps">
+  <li><strong>看的是设计画布还是预览？</strong> 当前设计画布主要显示显式样式和设计态；请在预览或导出界面看完整主题。</li>
+  <li><strong>控件有类吗？</strong> 规则 <code>button.primary</code> 需要控件 classes 含 <code>primary</code>。</li>
+  <li><strong>选择器写对了吗？</strong> 不支持空格后代选择器、逗号分组、属性选择器和 <code>!important</code>。</li>
+  <li><strong>属性面板是否显式设过颜色？</strong> 显式属性优先于主题；清除显式覆盖或改用类统一管理。</li>
+  <li><strong>作用域对吗？</strong> 媒体/容器/变体规则只在对应作用域和条件命中时生效。</li>
+  <li><strong>规则保存了吗？</strong> 修改已有规则后点“应用”或切换到别的规则；不要误点“新增规则”。</li>
+  <li><strong>是否用了变量？</strong> 检查 <code>var(--name)</code> 拼写和变量是否存在；未定义变量会回退。</li>
+  <li><strong>box-shadow 是合法 JSON 对象吗？</strong> 管理器的 box-shadow 字段需要对象文本。</li>
+</ol>
+
+<h2>15.16 当前限制</h2>
+
+<ul>
+  <li>设计画布不是项目主题的完整预览；以预览/导出为准。</li>
+  <li>可视化表单覆盖常用字段；复杂状态、变量引用、变体内的媒体/容器需要“主题 JSON…”。</li>
+  <li>不支持 CSS 后代/子选择器、属性选择器、逗号分组、<code>!important</code> 和 <code>opacity</code>。</li>
+  <li>主题不改变控件矩形；内边距只影响内容区。</li>
+  <li>当前管理器只能追加类，不能删除类；移除类请编辑控件 <code>classes</code>。</li>
+  <li><code>:selected</code> 当前近似使用 pressed 通道。</li>
+</ul>
+
+<div class="chapter-nav">
+  <a href="13-components.html">← 上一章：14 组件系统</a>
+  <a href="15-export.html">下一章：16 导出与集成 →</a>
+</div>
+
+</div>
+</body>
+</html>
