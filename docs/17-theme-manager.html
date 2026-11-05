@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>17 主题管理器逐项说明 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="17-theme-manager.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content"><h1>17 主题管理器逐项说明</h1>
+
+<h3>作用域</h3>
+
+<table>
+<tr><th>选项</th><th>含义</th><th>什么时候用</th></tr>
+<tr><td>基主题</td><td>所有控件默认使用的规则</td><td>普通颜色、字体、圆角、主按钮</td></tr>
+<tr><td>变体: 名称</td><td>叠加在基主题之上的命名样式</td><td>深色模式、品牌主题、紧凑模式</td></tr>
+<tr><td>媒体: 名称</td><td>窗口尺寸/方向满足时叠加</td><td>窗口变窄、横屏/竖屏切换</td></tr>
+<tr><td>容器: 名称</td><td>某个祖先容器尺寸满足时叠加</td><td>侧栏变窄后隐藏文字、缩小按钮</td></tr>
+</table>
+
+<h3>条件字段</h3>
+
+<table>
+<tr><th>作用域</th><th>条件ID</th><th>查询</th><th>容器</th></tr>
+<tr><td>基主题</td><td>禁用</td><td>禁用</td><td>禁用</td></tr>
+<tr><td>变体</td><td>禁用</td><td>禁用</td><td>禁用</td></tr>
+<tr><td>媒体</td><td><code>compact</code></td><td><code>(max-width: 800px)</code> 或 <code>{"max-width": 800}</code></td><td>禁用</td></tr>
+<tr><td>容器</td><td><code>narrow</code></td><td><code>{"max-width": 280}</code></td><td><code>panel.sidebar</code></td></tr>
+</table>
+
+<div class="note"><strong>条件 ID 不是固定枚举。</strong>它只是给条件起一个可读名称，<code>compact</code>、<code>narrow</code> 只是示例；你也可以写 <code>mobile</code>、<code>tablet</code>、<code>side_small</code>。真正决定条件是否命中的是“查询”和“容器”，不是 ID。管理器会阻止媒体/容器条件 ID 重复；建议使用英文、数字、下划线，方便在作用域下拉和 <code>GetActiveMedia()</code> 结果中辨认。</div>
+
+<p>“条件ID”“查询”“容器”只在作用域是媒体或容器时启用：</p>
+
+<ul>
+  <li><strong>条件ID</strong>：给条件起名，方便识别；可以是 <code>compact</code>、<code>mobile</code> 等任意名称，不是固定选项。</li>
+  <li><strong>查询</strong>：条件表达式，例如 <code>(max-width: 800px)</code>。</li>
+  <li><strong>容器</strong>：只用于容器条件，写祖先选择器，例如 <code>panel.sidebar</code>。</li>
+</ul>
+
+<h3>新增作用域</h3>
+
+<table>
+<tr><th>目标</th><th>操作</th><th>新增后发生什么</th></tr>
+<tr><td>变体</td><td>在“新增变体”左侧输入名称，点击“新增变体”</td><td>创建空变体并切换作用域；基主题规则继续生效</td></tr>
+<tr><td>媒体条件</td><td>点击“+媒体”</td><td>创建默认媒体条件并切换；条件ID/查询启用</td></tr>
+<tr><td>容器条件</td><td>点击“+容器”</td><td>创建默认容器条件并切换；条件ID/查询/容器启用</td></tr>
+<tr><td>删除</td><td>选中对应作用域，点击“删除作用域”</td><td>删除该变体/条件及其规则；基主题不能删除</td></tr>
+</table>
+
+<h3>哪些可以随便命名，哪些必须按规则写</h3>
+
+<p>主题里同时存在“名字”和“语法”。名字是给人和日志看的，可以自己起；选择器、声明、查询是语法，必须按固定格式写；枚举项只能从给定值中选择。</p>
+
+<table>
+<tr><th>字段/内容</th><th>能否随意命名</th><th>规则与建议</th></tr>
+<tr><td>条件 ID（媒体/容器）</td><td class="status-ok">可以</td><td>任意可读名称；不是固定枚举。<code>compact</code>/<code>narrow</code> 只是示例；必须唯一（管理器阻止重复）；建议使用英文、数字、下划线。</td></tr>
+<tr><td>变体名</td><td class="status-ok">可以</td><td>非空、不能重复；用于运行时 <code>SetThemeVariant("dark")</code>，建议使用英文/数字/下划线。</td></tr>
+<tr><td>类名（class）</td><td class="status-ok">可以</td><td>建议只用字母、数字、<code>_</code>、<code>-</code>；一个控件可加多个类，选择器里写 <code>.primary</code>。</td></tr>
+<tr><td>控件 ID</td><td class="status-ok">可以，但应唯一</td><td>供事件、代码和 <code>FindControl</code> 引用；建议英文/数字/下划线，不要空格。</td></tr>
+<tr><td>变量名</td><td class="status-part">部分自由</td><td>变量编辑器会自动补 <code>--</code>；建议 <code>--primary</code>、<code>--surface</code>。引用时写 <code>var(--primary)</code>。</td></tr>
+<tr><td>选择器</td><td class="status-no">不能随意</td><td>只能写类型、类、ID、状态和简单组合；不支持空格后代、逗号、属性选择器、<code>!important</code>。</td></tr>
+<tr><td>媒体/容器查询</td><td class="status-no">不能随意</td><td>使用固定键：<code>min-width</code>/<code>max-width</code>/<code>min-height</code>/<code>max-height</code>/<code>orientation</code>/<code>min-scale</code>/<code>max-scale</code>；值写数字或字符串。</td></tr>
+<tr><td>容器字段</td><td class="status-no">不能随意</td><td>只能写简单的祖先选择器：类型、类、ID 或组合，例如 <code>panel.sidebar</code>；不能写后代选择器。</td></tr>
+<tr><td>声明键</td><td class="status-no">不能随意</td><td>使用文档支持的键：<code>background</code>、<code>text-color</code>、<code>font-size</code>、<code>border-radius</code>、<code>content-padding</code>、<code>box-shadow</code> 等；控件专有键以 schema 为准。</td></tr>
+<tr><td>字体名称</td><td class="status-part">从列表选择</td><td>使用主题管理器字体下拉中的名称，或引擎支持的字体枚举名；不是任意字体文件路径。</td></tr>
+<tr><td>字体样式</td><td class="status-part">固定枚举</td><td><code>normal</code> / <code>bold</code> / <code>italic</code> / <code>underline</code> / <code>strikethrough</code>。</td></tr>
+<tr><td>颜色值</td><td class="status-part">固定格式</td><td><code>#RRGGBB</code>、<code>#RRGGBBAA</code>、<code>rgb()</code>、<code>rgba()</code> 或颜色名。</td></tr>
+<tr><td>box-shadow 字段名</td><td class="status-no">固定</td><td><code>color</code>、<code>offset-x</code>、<code>offset-y</code>、<code>blur</code>、<code>spread</code>；值必须是 JSON 对象。</td></tr>
+<tr><td>作用域下拉</td><td class="status-part">只能选现有项</td><td>基主题、已有变体、已有媒体条件、已有容器条件；不能手写未知作用域。</td></tr>
+</table>
+
+<div class="tip">简单记：<strong>名字可以自己起，语法不能自己编，枚举只能从清单里选。</strong>条件 ID、变体名、类名、控件 ID 是名字；选择器、查询、声明和容器字段是语法。</div>
+
+<div class="tip">主题管理器已把<strong>选择器、查询、容器、box-shadow</strong>做成“可编辑下拉框”：常用值可以直接选，也可以手动输入。新增规则/应用时会检查格式；选择器、query、容器或 box-shadow 不合法时，底部状态栏会提示原因并阻止保存。字号、圆角、内边距使用数值控件，字体使用下拉，颜色使用取色器。</div>
+
+<h3>选择器与属性表单</h3>
+
+<table>
+<tr><th>控件</th><th>含义</th></tr>
+<tr><td>选择器</td><td>规则匹配的控件，见 18</td></tr>
+<tr><td>背景色 / 文字色 / 边框色 / 文字阴影</td><td>规则的颜色声明；当前表单编辑的是常态值</td></tr>
+<tr><td>字体 / 字号 / 圆角</td><td>字体名、字号 px、圆角 px</td></tr>
+<tr><td>内边距(上/右/下/左)</td><td>控件内容区的内边距，写入 <code>content-padding</code></td></tr>
+<tr><td>box-shadow</td><td>需要填写 JSON 对象，见 19.4</td></tr>
+</table>
+
+<h3>按钮</h3>
+
+<table>
+<tr><th>按钮</th><th>作用</th></tr>
+<tr><td>新增规则</td><td>把当前选择器和属性保存为一条新规则</td></tr>
+<tr><td>删除规则</td><td>删除规则列表中选中的规则</td></tr>
+<tr><td>类应用到选中</td><td>从当前选择器的 <code>.类名</code> 提取类，追加到画布选中控件</td></tr>
+<tr><td>变量…</td><td>打开变量编辑器，定义/删除变量</td></tr>
+<tr><td>新增变体</td><td>创建命名变体并切换到该作用域</td></tr>
+<tr><td>删除作用域</td><td>删除当前变体/媒体/容器；基主题不能删</td></tr>
+<tr><td>+媒体 / +容器</td><td>在基主题下创建默认条件</td></tr>
+<tr><td>应用 / 取消</td><td>应用并关闭 / 放弃本次草稿</td></tr>
+</table>
+
+<div class="chapter-nav">
+  <a href="16-first-theme.html">← 上一章：16 第一次使用主题</a>
+  <a href="18-theme-selectors.html">下一章：18 选择器 →</a>
+</div>
+
+</div>
+</body>
+</html>

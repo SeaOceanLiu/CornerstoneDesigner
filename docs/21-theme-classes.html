@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>21 类：把规则和控件连起来 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="21-theme-classes.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content"><h1>21 类：把规则和控件连起来</h1>
+
+<p>主题规则不会自动知道“哪个按钮是主按钮”，需要通过类来关联。</p>
+
+<h3>分配类</h3>
+
+<ol class="steps">
+  <li>在画布或控件树选中一个或多个控件。</li>
+  <li>在主题管理器“选择器”中输入包含类名的选择器，例如 <code>button.primary</code>。</li>
+  <li>点击“类应用到选中”。</li>
+  <li>控件获得类 <code>primary</code>，之后匹配 <code>.primary</code>、<code>button.primary</code> 等规则。</li>
+</ol>
+
+<p>“类应用到选中”是从选择器中第一个 <code>.</code> 后面提取类名，所以选择器必须写类，例如 <code>button.primary</code>；只写 <code>button</code> 会提示“当前选择器没有类名”。</p>
+
+<p>控件的类也会随布局保存到 JSON：</p>
+
+<pre><code>{ "type": "button", "id": "saveBtn", "classes": ["primary"] }</code></pre>
+
+<p><code>classes</code> 也支持字符串形式 <code>"primary toolbar"</code>。当前管理器只提供“追加类”，没有删除类的按钮；需要移除时可在原始 JSON 中修改控件的 <code>classes</code>。</p>
+
+<div class="chapter-nav">
+  <a href="20-theme-variables.html">← 上一章：20 变量</a>
+  <a href="22-theme-variants.html">下一章：22 变体 →</a>
+</div>
+
+</div>
+</body>
+</html>

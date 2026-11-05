@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>29 读写控件数据 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="29-read-write-controls.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>29 读写控件数据</h1>
+
+<h2>29.1 读取控件数据</h2>
+
+<h3>C++ Binding</h3>
+
+<p>C++ Binding 的属性读取返回具体类型；属性名可以使用 <code>PropertyNames.h</code> 常量，也可以直接写字符串。</p>
+
+<pre><code>const std::string caption = saveBtn.GetString(PropertyNames::kCaption);
+const bool visible       = saveBtn.GetBool(PropertyNames::kVisible);
+const int selected       = saveBtn.GetInt(PropertyNames::kSelectedIndex);
+const float fontSize     = saveBtn.GetFloat(PropertyNames::kFontSize);
+const std::string anchor = saveBtn.GetEnum(PropertyNames::kAnchor);
+
+UIColor bg = saveBtn.GetColor(PropertyNames::kBackground);
+UIStateColor bgStates = saveBtn.GetStateColor(PropertyNames::kBackground);
+
+UIRect r = saveBtn.GetRect();
+float l = 0, t = 0, rr = 0, b = 0;
+saveBtn.GetContentPadding(l, t, rr, b);</code></pre>
+
+<table>
+<tr><th>数据</th><th>方法</th><th>说明</th></tr>
+<tr><td>文本</td><td><code>GetString("caption")</code> / <code>GetString("text")</code></td><td>Button/Label 用 caption；输入框用 text</td></tr>
+<tr><td>整数</td><td><code>GetInt("selected-index")</code></td><td>索引、枚举数值</td></tr>
+<tr><td>浮点</td><td><code>GetFloat("font-size")</code></td><td>字号、进度、范围</td></tr>
+<tr><td>布尔</td><td><code>GetBool("visible")</code></td><td>可见、启用、勾选</td></tr>
+<tr><td>颜色</td><td><code>GetColor("background")</code></td><td>普通单色</td></tr>
+<tr><td>四态颜色</td><td><code>GetStateColor("background")</code></td><td>normal/hover/pressed/disabled</td></tr>
+<tr><td>矩形</td><td><code>GetRect()</code></td><td>相对父容器的位置和尺寸</td></tr>
+<tr><td>内容内边距</td><td><code>GetContentPadding(...)</code></td><td>content-padding</td></tr>
+<tr><td>指针/对象</td><td><code>GetPtr("...")</code></td><td>行首控件等对象句柄，再用 <code>FromHandle</code></td></tr>
+</table>
+
+<h3>C ABI</h3>
+
+<p>C ABI 的字符串读取需要缓冲区，并通过 <code>outLen</code> 得到完整长度；缓冲区不足时先查询长度再分配。</p>
+
+<pre><code>char caption[256] = {0};
+int captionLen = 0;
+if (UICornerstone_GetString(inst, saveBtn, "caption",
+                            caption, sizeof(caption), &amp;captionLen)) {
+    printf("caption=%s len=%d\n", caption, captionLen);
+}
+
+int visible = 0;
+int selected = -1;
+float fontSize = 0.0f;
+UICornerstone_GetBool(inst, saveBtn, "visible", &amp;visible);
+UICornerstone_GetInt(inst, saveBtn, "selected-index", &amp;selected);
+UICornerstone_GetFloat(inst, saveBtn, "font-size", &amp;fontSize);
+
+char anchor[64] = {0};
+UICornerstone_GetEnum(inst, saveBtn, "anchor", anchor, sizeof(anchor));
+
+UIColor bg;
+UIStateColor bgStates;
+if (UICornerstone_GetColor(inst, saveBtn, "background", &amp;bg))
+    printf("bg=%02X%02X%02X%02X\n", bg.r, bg.g, bg.b, bg.a);
+if (UICornerstone_GetStateColor(inst, saveBtn, "background", &amp;bgStates))
+    printf("hover=%02X%02X%02X%02X\n",
+           bgStates.hover.r, bgStates.hover.g,
+           bgStates.hover.b, bgStates.hover.a);
+
+float x = 0, y = 0, w = 0, h = 0;
+float padL = 0, padT = 0, padR = 0, padB = 0;
+UICornerstone_GetRect(inst, saveBtn, &amp;x, &amp;y, &amp;w, &amp;h);
+UICornerstone_GetContentPadding(inst, saveBtn, &amp;padL, &amp;padT, &amp;padR, &amp;padB);
+printf("rect=%.1f,%.1f %.1fx%.1f padding=%.1f,%.1f,%.1f,%.1f\n",
+       x, y, w, h, padL, padT, padR, padB);
+
+char type[64] = {0};
+UICornerstone_GetControlType(inst, saveBtn, type, sizeof(type));
+printf("id=%s type=%s\n", UICornerstone_GetControlId(inst, saveBtn), type);</code></pre>
+
+<p>如果需要读取完整字符串而缓冲区可能不足，先传 <code>out=NULL</code> 查询长度，再按 <code>outLen</code> 分配并读取。</p>
+
+<h2>29.2 设置控件数据</h2>
+
+<h3>C++ Binding</h3>
+
+<pre><code>saveBtn.SetString(PropertyNames::kCaption, "保存");
+saveBtn.SetBool(PropertyNames::kVisible, true);
+saveBtn.SetBool(PropertyNames::kEnabled, false);
+saveBtn.SetInt(PropertyNames::kSelectedIndex, 1);
+saveBtn.SetFloat(PropertyNames::kFontSize, 18.0f);
+saveBtn.SetEnum(PropertyNames::kAnchor, "top-left");
+
+saveBtn.SetColor(PropertyNames::kBackground, UIColor{0x4A, 0x90, 0xD9, 0xFF});
+saveBtn.SetStateColor(PropertyNames::kBackground, UIStateColor{
+    {0x4A, 0x90, 0xD9, 0xFF},   // normal
+    {0x6A, 0xA3, 0xFF, 0xFF},   // hover
+    {0x3B, 0x73, 0xD1, 0xFF},   // pressed
+    {0x2B, 0x30, 0x38, 0xFF}    // disabled
+});
+
+saveBtn.SetRect(24, 16, 160, 40);
+saveBtn.SetContentPadding(8, 4, 8, 4);</code></pre>
+
+<p>控件主题类通过 <code>classes</code> 属性设置：</p>
+
+<pre><code>saveBtn.SetString("classes", "primary toolbar");</code></pre>
+
+<div class="tip">设置属性会走与设计器属性面板相同的底层通道。若控件有主题规则，显式 <code>Set*</code> 会覆盖主题派生值；需要恢复主题时使用 <code>ClearThemeOverrides</code>。</div>
+
+<h3>C ABI</h3>
+
+<pre><code>UICornerstone_SetString(inst, saveBtn, "caption", "保存");
+UICornerstone_SetBool(inst, saveBtn, "visible", 1);
+UICornerstone_SetBool(inst, saveBtn, "enabled", 0);
+UICornerstone_SetInt(inst, saveBtn, "selected-index", 1);
+UICornerstone_SetFloat(inst, saveBtn, "font-size", 18.0f);
+UICornerstone_SetEnum(inst, saveBtn, "anchor", "top-left");
+
+UIColor normal   = { 0x4A, 0x90, 0xD9, 0xFF };
+UIColor hover    = { 0x6A, 0xA3, 0xFF, 0xFF };
+UIColor pressed  = { 0x3B, 0x73, 0xD1, 0xFF };
+UIColor disabled = { 0x2B, 0x30, 0x38, 0xFF };
+UIStateColor bgStates = { normal, hover, pressed, disabled };
+
+UICornerstone_SetColor(inst, saveBtn, "background", normal);
+UICornerstone_SetStateColor(inst, saveBtn, "background", bgStates);
+UICornerstone_SetRect(inst, saveBtn, 24, 16, 160, 40);
+UICornerstone_SetContentPadding(inst, saveBtn, 8, 4, 8, 4);
+UICornerstone_SetString(inst, saveBtn, "classes", "primary toolbar");</code></pre>
+
+<h2>29.3 列表、树和页签的专用接口</h2>
+
+<h3>C++ Binding</h3>
+
+<p>复杂数据不要只靠通用属性。C++ Binding 提供了专用方法，例如：</p>
+
+<table>
+<tr><th>控件</th><th>示例</th></tr>
+<tr><td>ListView</td><td><code>ui-&gt;ListViewGetCellText(lv, row, col)</code>、<code>ListViewSetCellText</code>、<code>ListViewGetEditingCell</code></td></tr>
+<tr><td>TreeView</td><td><code>ui-&gt;TreeViewGetSelectedId(tree)</code>、<code>TreeViewSelectNode</code>、<code>TreeViewBeginEditNode</code></td></tr>
+<tr><td>TabControl</td><td><code>ctl.SetInt("currentIndex", 1)</code> 或专用页操作方法</td></tr>
+<tr><td>ScrollBar / Slider</td><td><code>SetFloat("value", ...)</code>、<code>GetFloat("value")</code>，具体键以属性面板为准</td></tr>
+</table>
+
+<p>完整方法列表见 UICornerstone 的 C++ Binding 头文件与文档。</p>
+
+<h3>C ABI 的专用接口</h3>
+
+<pre><code>UIControlHandle listView = UICornerstone_FindControl(inst, "userList");
+UIControlHandle treeView = UICornerstone_FindControl(inst, "navTree");
+UIControlHandle tabCtrl  = UICornerstone_FindControl(inst, "mainTabs");
+
+/* ListView：读取/设置单元格文本 */
+char cell[256] = {0};
+UICornerstone_ListViewGetCellText(inst, listView, 0, 1, cell, sizeof(cell));
+UICornerstone_ListViewSetCellText(inst, listView, 0, 1, "完成");
+
+/* TreeView：读取当前选中节点、选中指定节点 */
+char nodeId[128] = {0};
+if (UICornerstone_TreeViewGetSelectedId(inst, treeView, nodeId, sizeof(nodeId)))
+    printf("selected node=%s\n", nodeId);
+UICornerstone_TreeViewSelectNode(inst, treeView, "node-1");
+UICornerstone_TreeViewExpandNode(inst, treeView, "node-1");
+
+/* TabControl：切换当前页 */
+UICornerstone_SetInt(inst, tabCtrl, "currentIndex", 1);</code></pre>
+
+<p>专用接口的函数名与 C++ Binding 基本一一对应：<code>UICornerstone_ListView...</code>、<code>UICornerstone_TreeView...</code>、<code>UICornerstone_ComboBox...</code>。完整签名见 <code>UICornerstoneAPI.h</code>。</p>
+
+<h2>29.4 常用属性名</h2>
+
+<table>
+<tr><th>用途</th><th>键</th></tr>
+<tr><td>文本</td><td><code>caption</code>（按钮/标签）、<code>text</code>（输入框/多行文本）</td></tr>
+<tr><td>可见/启用</td><td><code>visible</code>、<code>enabled</code></td></tr>
+<tr><td>位置/尺寸</td><td><code>rect</code>（<code>GetRect/SetRect</code>）</td></tr>
+<tr><td>背景/文字/边框</td><td><code>background</code>、<code>text-color</code>、<code>border-color</code></td></tr>
+<tr><td>字号</td><td><code>font-size</code></td></tr>
+<tr><td>主题类</td><td><code>classes</code></td></tr>
+<tr><td>选中索引</td><td><code>selected-index</code></td></tr>
+<tr><td>勾选状态</td><td><code>checked</code> / <code>check-state</code>（以控件为准）</td></tr>
+<tr><td>页签当前页</td><td><code>currentIndex</code>（TabControl）</td></tr>
+</table>
+
+<div class="note">属性键的完整集合见 <code>PropertyNames.h</code>；设计器属性面板显示的字段与这些键对应。不同引擎版本可能增加属性，优先使用常量而不是手写字符串。</div>
+
+<div class="chapter-nav">
+  <a href="28-find-control.html">← 上一章：28 在程序代码中找到控件</a>
+  <a href="30-json-actions.html">下一章：30 事件回调方式 1 →</a>
+</div>
+
+</div>
+</body>
+</html>

@@ -23,12 +23,35 @@
       ["12-resources.html", "13 资源管理"],
       ["13-components.html", "14 组件系统"]
     ]],
-    ["主题与交付", [
-      ["14-theme.html", "15 主题系统"],
-      ["15-export.html", "16 导出与集成"],
-      ["16-shortcuts.html", "17 快捷键与效率"],
-      ["17-troubleshooting.html", "18 故障排查与 FAQ"],
-      ["18-tutorials.html", "19 实战教程"]
+    ["主题", [
+      ["15-theme-system.html", "15 主题系统"],
+      ["16-first-theme.html", "16 第一次使用主题"],
+      ["17-theme-manager.html", "17 主题管理器"],
+      ["18-theme-selectors.html", "18 选择器"],
+      ["19-theme-declarations.html", "19 声明"],
+      ["20-theme-variables.html", "20 变量"],
+      ["21-theme-classes.html", "21 类"],
+      ["22-theme-variants.html", "22 变体"],
+      ["23-theme-media.html", "23 媒体条件"],
+      ["24-theme-containers.html", "24 容器条件"],
+      ["25-theme-example.html", "25 完整示例"],
+      ["26-theme-notes.html", "26 其它说明"]
+    ]],
+    ["交付", [
+      ["27-export.html", "27 导出与集成"],
+      ["28-find-control.html", "28 在程序代码中找到控件"],
+      ["29-read-write-controls.html", "29 读写控件数据"],
+      ["30-json-actions.html", "30 注册 JSON 动作"],
+      ["31-bind-events.html", "31 绑定控件事件"],
+      ["32-event-differences.html", "32 JSON 动作与事件绑定的区别"],
+      ["33-runtime-switch.html", "33 运行时切换事件逻辑"],
+      ["34-access-in-callback.html", "34 回调中访问控件"],
+      ["35-minimal-example.html", "35 最小完整示例"]
+    ]],
+    ["效率与支持", [
+      ["36-shortcuts.html", "36 快捷键与效率"],
+      ["37-troubleshooting.html", "37 故障排查与 FAQ"],
+      ["38-tutorials.html", "38 实战教程"]
     ]],
     ["附录", [
       ["appendix-a-controls.html", "A 控件参考"],
@@ -37,8 +60,7 @@
       ["appendix-d-theme.html", "D 主题语法参考"],
       ["appendix-e-files.html", "E 文件格式"],
       ["appendix-f-glossary.html", "F 术语表"],
-      ["appendix-g-status.html", "G 当前限制与功能状态"],
-      ["appendix-h-code.html", "H 代码中访问控件"]
+      ["appendix-g-status.html", "G 当前限制与功能状态"]
     ]]
   ];
   function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }

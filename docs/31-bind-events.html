@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>31 事件回调方式 2：绑定控件事件 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="31-bind-events.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>31 事件回调方式 2：绑定控件事件</h1>
+
+<h3>C++ Binding</h3>
+
+<p>C++ Binding 用 <code>SetCallback</code> 注册事件回调，事件名使用运行时字符串（例如 <code>"click"</code>），不是 JSON 中的 <code>"onClick"</code>。</p>
+
+<pre><code>#include "Event.h"
+
+saveBtn.SetCallback(PropertyNames::kEventClick, [this](const Event&amp; e) {
+    if (!e.IsClick()) return;
+    std::printf("保存按钮被点击\n");
+    doSave();
+});</code></pre>
+
+<table>
+<tr><th>事件</th><th>事件名</th><th>常用读取</th></tr>
+<tr><td>点击</td><td><code>click</code></td><td><code>IsClick()</code></td></tr>
+<tr><td>文本变化</td><td><code>text-changed</code></td><td><code>GetTextChanged()</code></td></tr>
+<tr><td>数值变化</td><td><code>value-changed</code></td><td><code>GetValueChanged()</code> / <code>GetValueChangedDouble()</code></td></tr>
+<tr><td>选择变化</td><td><code>selection-changed</code></td><td><code>GetSelectedIndex()</code> / <code>GetSelectedValue()</code></td></tr>
+<tr><td>勾选变化</td><td><code>check-changed</code></td><td><code>GetCheckState()</code></td></tr>
+<tr><td>页签切换</td><td><code>tab-changed</code></td><td><code>GetTabChangedIndex()</code></td></tr>
+<tr><td>树节点选择</td><td><code>select</code></td><td><code>GetNodeId()</code></td></tr>
+<tr><td>列表选中</td><td><code>list-selection-changed</code></td><td><code>GetGridRow()</code> / <code>GetGridCol()</code></td></tr>
+<tr><td>列表行点击</td><td><code>item-click</code></td><td><code>GetGridRow()</code> / <code>GetGridCol()</code></td></tr>
+<tr><td>单元格编辑完成</td><td><code>cell-edited</code></td><td><code>GetEditRow()</code> / <code>GetEditCol()</code> / <code>GetEditNewText()</code></td></tr>
+</table>
+
+<p>解绑：</p>
+
+<pre><code>saveBtn.SetCallback(PropertyNames::kEventClick, {});   // 空回调 = 解绑</code></pre>
+
+<h3>C ABI 事件回调</h3>
+
+<p>C ABI 通过 <code>UICornerstone_SetCallback</code> 注册，回调签名是 <code>void (*)(UIControlHandle, const UIEventData*, void*)</code>。事件负载在 <code>ev-&gt;data</code> union 中，按事件名读取。</p>
+
+<pre><code>#include &lt;string.h&gt;
+
+typedef struct {
+    UIInstance inst;
+    int saveCount;
+    int saved;
+} AppState;
+
+static void on_control_event(UIControlHandle ctl, const UIEventData* ev, void* user) {
+    AppState* app = (AppState*)user;
+    if (!ev || !ev-&gt;eventName) return;
+
+    if (strcmp(ev-&gt;eventName, "click") == 0) {
+        app-&gt;saveCount++;
+        printf("click: %s\n", UICornerstone_GetControlId(app-&gt;inst, ctl));
+    } else if (strcmp(ev-&gt;eventName, "text-changed") == 0) {
+        printf("text: %s\n", ev-&gt;data.strVal ? ev-&gt;data.strVal : "");
+    } else if (strcmp(ev-&gt;eventName, "value-changed") == 0) {
+        printf("value: %f / %f\n", ev-&gt;data.floatVal, ev-&gt;data.doubleVal);
+    } else if (strcmp(ev-&gt;eventName, "selection-changed") == 0) {
+        printf("selection: %d / %s\n", ev-&gt;data.selection.idx,
+               ev-&gt;data.selection.val ? ev-&gt;data.selection.val : "");
+    } else if (strcmp(ev-&gt;eventName, "item-click") == 0) {
+        printf("item: %d,%d\n", ev-&gt;data.grid.row, ev-&gt;data.grid.col);
+    } else if (strcmp(ev-&gt;eventName, "check-changed") == 0) {
+        printf("check: %d\n", ev-&gt;data.intVal);
+    } else if (strcmp(ev-&gt;eventName, "tab-changed") == 0) {
+        printf("tab: %d\n", ev-&gt;data.intVal);
+    } else if (strcmp(ev-&gt;eventName, "select") == 0) {
+        printf("tree node: %s\n", ev-&gt;data.treeNode.id ? ev-&gt;data.treeNode.id : "");
+    } else if (strcmp(ev-&gt;eventName, "list-selection-changed") == 0) {
+        printf("list: %d,%d\n", ev-&gt;data.grid.row, ev-&gt;data.grid.col);
+    } else if (strcmp(ev-&gt;eventName, "cell-edited") == 0) {
+        printf("edited: %d,%d = %s\n", ev-&gt;data.grid.row, ev-&gt;data.grid.col,
+               ev-&gt;data.grid.newText ? ev-&gt;data.grid.newText : "");
+    } else if (strcmp(ev-&gt;eventName, "color-changed") == 0) {
+        printf("color: %02X%02X%02X%02X\n", ev-&gt;data.color.r, ev-&gt;data.color.g,
+               ev-&gt;data.color.b, ev-&gt;data.color.a);
+    }
+}
+
+UIControlHandle nameEdit = UICornerstone_FindControl(inst, "nameEdit");
+UIControlHandle listView = UICornerstone_FindControl(inst, "userList");
+
+AppState app = { inst, 0, 0 };
+UICornerstone_SetCallback(inst, saveBtn, "click", on_control_event, &amp;app);
+UICornerstone_SetCallback(inst, nameEdit, "text-changed", on_control_event, &amp;app);
+UICornerstone_SetCallback(inst, listView, "list-selection-changed", on_control_event, &amp;app);</code></pre>
+
+<table>
+<tr><th>事件</th><th>C ABI 负载</th></tr>
+<tr><td><code>click</code></td><td>无</td></tr>
+<tr><td><code>text-changed</code></td><td><code>data.strVal</code></td></tr>
+<tr><td><code>value-changed</code></td><td><code>data.floatVal</code> 或 <code>data.doubleVal</code></td></tr>
+<tr><td><code>selection-changed</code></td><td><code>data.selection.idx</code> / <code>data.selection.val</code></td></tr>
+<tr><td><code>check-changed</code></td><td><code>data.intVal</code></td></tr>
+<tr><td><code>tab-changed</code></td><td><code>data.intVal</code></td></tr>
+<tr><td><code>select</code></td><td><code>data.treeNode.id</code> / <code>data.treeNode.userData</code></td></tr>
+<tr><td><code>list-selection-changed</code></td><td><code>data.grid.row</code> / <code>data.grid.col</code></td></tr>
+<tr><td><code>cell-edited</code></td><td><code>data.grid.row/col/newText</code></td></tr>
+<tr><td><code>color-changed</code></td><td><code>data.color</code></td></tr>
+</table>
+
+<p>解绑：</p>
+
+<pre><code>UICornerstone_SetCallback(inst, saveBtn, "click", NULL, NULL);</code></pre>
+
+<div class="chapter-nav">
+  <a href="30-json-actions.html">← 上一章：30 事件回调方式 1</a>
+  <a href="32-event-differences.html">下一章：32 JSON 动作与绑定事件的区别 →</a>
+</div>
+
+</div>
+</body>
+</html>

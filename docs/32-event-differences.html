@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>32 JSON 动作与绑定控件事件的区别 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="32-event-differences.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>32 JSON 动作与绑定控件事件的区别</h1>
+
+<table>
+<tr><th>方式</th><th>适合</th><th>注册时机</th><th>回调数据</th></tr>
+<tr><td><code>RegisterAction("onSave", ...)</code></td><td>布局 JSON 中的 <code>events</code> 动作</td><td><strong>LoadLayout 之前</strong></td><td>只拿 <code>Control</code></td></tr>
+<tr><td><code>SetCallback("click", ...)</code></td><td>代码直接控制某个控件</td><td>控件找到后，任意时刻</td><td>可读取 <code>Event</code> 负载</td></tr>
+</table>
+
+<p>设计器导出的 C++ 工程使用 <code>RegisterAction</code> 把事件名映射到 <code>events.c</code> 中的函数：</p>
+
+<pre><code>ui->RegisterAction("onSaveClick", [](Control c) {
+    onSaveClick(c.Handle(), nullptr);
+});</code></pre>
+
+<p>如果需要在代码中读取文本、行号、颜色等事件负载，请对控件使用 <code>SetCallback</code>；如果只是响应设计器事件面板里填写的 handler，使用 <code>RegisterAction</code>。</p>
+
+<div class="chapter-nav">
+  <a href="31-bind-events.html">← 上一章：31 事件回调方式 2</a>
+  <a href="33-runtime-switch.html">下一章：33 运行时切换事件处理逻辑 →</a>
+</div>
+
+</div>
+</body>
+</html>

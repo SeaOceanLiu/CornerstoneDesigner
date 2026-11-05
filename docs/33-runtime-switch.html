@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>33 运行时切换事件处理逻辑 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="33-runtime-switch.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>33 运行时切换事件处理逻辑</h1>
+
+<p>运行中改变事件处理逻辑，优先使用控件级 <code>SetCallback</code>，不要依赖对已加载布局重新 <code>RegisterAction</code>。有两种稳定做法：</p>
+
+<p><strong>做法 A：保留一个稳定的分发回调，只切换内部状态/函数对象。</strong>这种方式不会反复改引擎绑定，最适合按登录态、编辑态、权限等切换业务逻辑。</p>
+
+<pre><code>class Page {
+public:
+    void Bind() {
+        m_saveBtn = m_ui-&gt;FindControl("saveBtn");
+        m_saveBtn.SetCallback(PropertyNames::kEventClick, [this](const Event&amp; e) {
+            if (m_onSave) m_onSave(e);   // 每次点击读取当前逻辑
+        });
+    }
+
+    void SetAdminMode(bool admin) {
+        m_onSave = admin
+            ? std::function&lt;void(const Event&amp;)&gt;([this](const Event&amp;) { adminSave(); })
+            : std::function&lt;void(const Event&amp;)&gt;([this](const Event&amp;) { normalSave(); });
+    }
+
+private:
+    UICornerstone::UICornerstone* m_ui = nullptr;
+    Control m_saveBtn;
+    std::function&lt;void(const Event&amp;)&gt; m_onSave;
+};</code></pre>
+
+<p><strong>做法 B：直接替换回调。</strong>找到控件后再次调用 <code>SetCallback</code>，新回调会替换该控件该事件的引擎绑定；旧回调不再被调用。</p>
+
+<pre><code>auto saveBtn = ui-&gt;FindControl("saveBtn");
+if (saveBtn.IsValid()) {
+    saveBtn.SetCallback(PropertyNames::kEventClick, [](const Event&amp;) {
+        // 新的点击逻辑
+    });
+}</code></pre>
+
+<p>C ABI 同样使用稳定的 C 函数指针分发，或直接再次调用 <code>UICornerstone_SetCallback</code> 替换：</p>
+
+<pre><code>typedef void (*SaveHandler)(UIControlHandle, const UIEventData*, void*);
+
+static void on_admin_save(UIControlHandle ctl, const UIEventData* ev, void* user) {
+    (void)ctl; (void)ev; (void)user;
+    /* 管理员模式逻辑 */
+}
+
+static void on_normal_save(UIControlHandle ctl, const UIEventData* ev, void* user) {
+    (void)ctl; (void)ev; (void)user;
+    /* 普通模式逻辑 */
+}
+
+static SaveHandler g_saveHandler = NULL;
+static void dispatch_save(UIControlHandle ctl, const UIEventData* ev, void* user) {
+    if (g_saveHandler) g_saveHandler(ctl, ev, user);
+}
+
+/* 初始化时只绑定一次 */
+UICornerstone_SetCallback(inst, saveBtn, "click", dispatch_save, &amp;app);
+
+/* 运行中切换逻辑 */
+g_saveHandler = on_admin_save;   // 或 on_normal_save
+
+/* 或者直接替换该控件该事件的回调 */
+UICornerstone_SetCallback(inst, saveBtn, "click", on_admin_save, &amp;app);</code></pre>
+
+<div class="warn"><code>RegisterAction</code> 是布局解析期的动作表：运行时再次注册同名 action 主要影响后续 <code>LoadLayout</code>，不保证改变已经解析并绑定的控件。要在运行中立即切换，使用 <code>SetCallback</code>；确实要换 JSON action，请重新加载布局，但注意控件树会重建、旧句柄/代理可能失效。</div>
+
+<p>回调在 UI 线程的 <code>ProcessEvents</code> 中执行；如果切换逻辑来自其他线程，请先把状态安全地传到 UI 线程，不要在工作线程直接调用 <code>SetCallback</code> 或修改控件。</p>
+
+<div class="chapter-nav">
+  <a href="32-event-differences.html">← 上一章：32 JSON 动作与绑定事件的区别</a>
+  <a href="34-access-in-callback.html">下一章：34 在事件回调中访问其他控件 →</a>
+</div>
+
+</div>
+</body>
+</html>

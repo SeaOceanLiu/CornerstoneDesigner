@@ -4084,7 +4084,6 @@ void CanvasPane::rebuildDynamicRows() {
         "font-file", "font-resource",   // 资源路径类（border-visible 已随 P0-26 视觉组下放启用）
         "flow-weight",                                     // 布局权重（画布自由布局无意义）
         "col", "colSpan", "row", "rowSpan", "gap", "padding",   // 容器布局键
-        "clip-children",
     };
 
     const UIRect box = m_propDynamic.GetRect();    // 容器实际尺寸（v-flow 排布后）
@@ -7083,6 +7082,9 @@ void CanvasPane::applyModelToEngine(PlacedControl& pc) {
     // 容器布局（锚定生效前提——先于锚定）
     if (ex.contains("layout") && ex["layout"].is_string())
         ctl.SetEnum(PropertyNames::kLayout, ex["layout"].get<std::string>());
+    // 容器裁剪开关（Panel 专属；旧布局缺省 false，不改变行为）
+    if (ex.contains(PropertyNames::kClipChildren) && ex[PropertyNames::kClipChildren].is_boolean())
+        ctl.SetBool(PropertyNames::kClipChildren, ex[PropertyNames::kClipChildren].get<bool>());
     // 锚定（子控件级：父容器/根 child-id + anchor；顶层首次自动切根布局）
     if (ex.contains("anchor") && ex["anchor"].is_string()) {
         Control par = anchorParentOf(pc);
@@ -12129,7 +12131,18 @@ void ThemeManagerDialog::EnsureCreated() {
             auto& media = m_draft["media"];
             if (!media.is_array()) media = nlohmann::json::array();
             int n = static_cast<int>(media.size()) + 1;
-            media.push_back({ { "id", "media" + std::to_string(n) },
+            std::string newId;
+            bool clash = true;
+            while (clash) {
+                newId = "media" + std::to_string(n++);
+                clash = false;
+                for (const auto* key : { "media", "containerQueries" }) {
+                    if (!m_draft.contains(key) || !m_draft[key].is_array()) continue;
+                    for (const auto& item : m_draft[key])
+                        if (item.is_object() && item.value("id", std::string()) == newId) clash = true;
+                }
+            }
+            media.push_back({ { "id", newId },
                               { "query", "(min-width: 800px)" },
                               { "variables", nlohmann::json::object() },
                               { "styles", nlohmann::json::array() } });
@@ -12145,7 +12158,18 @@ void ThemeManagerDialog::EnsureCreated() {
             auto& cq = m_draft["containerQueries"];
             if (!cq.is_array()) cq = nlohmann::json::array();
             int n = static_cast<int>(cq.size()) + 1;
-            cq.push_back({ { "id", "container" + std::to_string(n) },
+            std::string newId;
+            bool clash = true;
+            while (clash) {
+                newId = "container" + std::to_string(n++);
+                clash = false;
+                for (const auto* key : { "media", "containerQueries" }) {
+                    if (!m_draft.contains(key) || !m_draft[key].is_array()) continue;
+                    for (const auto& item : m_draft[key])
+                        if (item.is_object() && item.value("id", std::string()) == newId) clash = true;
+                }
+            }
+            cq.push_back({ { "id", newId },
                            { "container", ".panel" },
                            { "query", "(max-width: 599px)" },
                            { "variables", nlohmann::json::object() },
@@ -12218,6 +12242,21 @@ bool ThemeManagerDialog::StoreCondition() {
     const std::string id = m_condId.IsValid()
         ? themeTrim(m_condId.GetString(PropertyNames::kTextContent)) : std::string();
     if (id.empty()) return fail(u8"条件 ID 不能为空");
+    // 条件 ID 在 media + containerQueries 中必须唯一；否则 GetActiveMedia
+    // 返回的逗号分隔 ID 无法区分条件。
+    const std::string currentKey = m_variant;
+    auto duplicateIn = [&](const char* key) {
+        if (!m_draft.contains(key) || !m_draft[key].is_array()) return false;
+        const auto& arr = m_draft[key];
+        for (int i = 0; i < static_cast<int>(arr.size()); ++i) {
+            if (currentKey == std::string(key == std::string("media") ? "m:" : "c:") +
+                std::to_string(i)) continue;
+            if (arr[i].is_object() && arr[i].value("id", std::string()) == id) return true;
+        }
+        return false;
+    };
+    if (duplicateIn("media") || duplicateIn("containerQueries"))
+        return fail(u8"条件 ID 已存在：" + id);
     const std::string query = m_condQuery.IsValid()
         ? m_condQuery.GetString(PropertyNames::kTextContent) : std::string();
     std::string err;

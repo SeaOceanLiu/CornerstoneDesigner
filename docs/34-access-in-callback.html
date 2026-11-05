@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>34 在事件回调中访问其他控件 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="34-access-in-callback.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>34 在事件回调中访问其他控件</h1>
+
+<h3>C++ Binding</h3>
+
+<p>回调的第一个参数通常是事件源；也可以按 ID 再查找其他控件：</p>
+
+<pre><code>nameEdit.SetCallback(PropertyNames::kEventTextChanged, [ui = ui.get()](const Event&amp; e) {
+    const std::string text = e.GetTextChanged();
+    auto status = ui->FindControl("statusLabel");
+    if (status.IsValid()) status.SetString(PropertyNames::kCaption, "你好，" + text);
+});</code></pre>
+
+<p>回调在 <code>ProcessEvents</code> 期间执行，应在 UI 线程运行。不要在回调里做长时间阻塞操作；重活可以记录状态，延到下一帧处理。</p>
+
+<div class="warn"><code>LoadLayout</code> 重建控件树后，之前缓存的 <code>Control</code> 代理或裸句柄可能失效。重建后重新 <code>FindControl</code>，并在使用前检查 <code>IsValid()</code>。</div>
+
+<h3>C ABI 回调中访问其他控件</h3>
+
+<pre><code>typedef struct {
+    UIInstance inst;
+} TextState;
+
+static void on_name_changed(UIControlHandle ctl, const UIEventData* ev, void* user) {
+    (void)ctl;
+    TextState* app = (TextState*)user;
+    UIControlHandle status = UICornerstone_FindControl(app-&gt;inst, "statusLabel");
+    if (!status) return;
+
+    char msg[512];
+    snprintf(msg, sizeof(msg), "你好，%s", ev-&gt;data.strVal ? ev-&gt;data.strVal : "");
+    UICornerstone_SetString(app-&gt;inst, status, "caption", msg);
+}
+
+UIControlHandle nameEdit = UICornerstone_FindControl(inst, "nameEdit");
+TextState app = { inst };
+UICornerstone_SetCallback(inst, nameEdit, "text-changed", on_name_changed, &amp;app);</code></pre>
+
+<p>C ABI 回调同样在 <code>ProcessEvents</code> 中执行；耗时工作应延后，不要阻塞事件泵。</p>
+
+<div class="chapter-nav">
+  <a href="33-runtime-switch.html">← 上一章：33 运行时切换事件处理逻辑</a>
+  <a href="35-minimal-example.html">下一章：35 最小完整示例 →</a>
+</div>
+
+</div>
+</body>
+</html>

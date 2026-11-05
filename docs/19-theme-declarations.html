@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>19 声明：具体改什么 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="19-theme-declarations.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content"><h1>19 声明：具体改什么</h1>
+
+<h3>19.1 颜色和状态</h3>
+
+<p>颜色写法支持 <code>#RRGGBB</code>、<code>#RRGGBBAA</code>、<code>rgb(...)</code>、<code>rgba(...)</code> 和常用颜色名。设计器取色器通常写出 8 位十六进制。</p>
+
+<table>
+<tr><th>声明</th><th>作用</th></tr>
+<tr><td><code>background</code></td><td>背景色</td></tr>
+<tr><td><code>text-color</code></td><td>文字色</td></tr>
+<tr><td><code>border-color</code></td><td>边框色</td></tr>
+<tr><td><code>text-shadow</code></td><td>文字阴影颜色；alpha=0 表示关闭</td></tr>
+</table>
+
+<p>控件状态用选择器表达，而不是在同一个规则里写四个颜色：</p>
+
+<pre><code>{ "selector": "button.primary", "declarations": {
+    "background": "#4A90D9", "text-color": "#FFFFFF" } }
+
+{ "selector": "button.primary:hover", "declarations": {
+    "background": "#6AA3FF" } }
+
+{ "selector": "button.primary:pressed", "declarations": {
+    "background": "#3B73D1" } }
+
+{ "selector": "button.primary:disabled", "declarations": {
+    "background": "#2B3038", "text-color": "#9AA7B8" } }</code></pre>
+
+<p>支持 <code>:hover</code>、<code>:pressed</code>、<code>:disabled</code>、<code>:selected</code>。其中 <code>:selected</code> 当前近似使用 pressed 通道。</p>
+
+<h3>19.2 字体和圆角</h3>
+
+<ul>
+  <li><code>font-family</code>：字体枚举名，例如 <code>harmonyos-sans-sc-regular</code>。</li>
+  <li><code>font-size</code>：字号 px。</li>
+  <li><code>font-style</code>：normal / bold / italic / underline / strikethrough。</li>
+  <li><code>border-radius</code>：圆角 px。</li>
+</ul>
+
+<p>没有显式字体声明的控件会沿父链继承最近的主题字体；属性面板显式设置的字体/字号会覆盖主题。</p>
+
+<h3>19.3 内边距</h3>
+
+<p>主题声明名可以写 <code>padding</code> 或 <code>content-padding</code>。它改变控件内容区，不改变外框尺寸：</p>
+
+<pre><code>padding: 8                  // 四边 8
+padding: "8 16"             // 上下 8，左右 16
+padding: "8 16 8 16"        // 上 右 下 左
+content-padding: { "left": 16, "top": 8, "right": 16, "bottom": 8 }</code></pre>
+
+<p>可视化管理器的“内边距(上/右/下/左)”会写入 <code>content-padding</code>。Dialog 的旧 <code>padding</code> 是 Float 属性，和这里的内容内边距语义不同。</p>
+
+<h3>19.4 阴影</h3>
+
+<p><code>text-shadow</code> 只需颜色；偏移由 <code>shadow-offset-x</code> / <code>shadow-offset-y</code> 控制。</p>
+
+<p><code>box-shadow</code> 是控件外框外的一层阴影，用来做“卡片浮起来”的效果。它不是必填项；不需要阴影时留空。</p>
+
+<table>
+<tr><th>字段</th><th>含义</th><th>示例</th></tr>
+<tr><td><code>color</code></td><td>阴影颜色，最后两位是透明度</td><td><code>#00000066</code></td></tr>
+<tr><td><code>offset-x</code></td><td>水平偏移；正数向右</td><td><code>0</code></td></tr>
+<tr><td><code>offset-y</code></td><td>垂直偏移；正数向下</td><td><code>6</code></td></tr>
+<tr><td><code>blur</code></td><td>模糊/圆角扩展量</td><td><code>16</code></td></tr>
+<tr><td><code>spread</code></td><td>阴影扩张量；正数更大</td><td><code>0</code></td></tr>
+</table>
+
+<p>操作步骤：</p>
+
+<ol class="steps">
+  <li>在规则列表选中要加阴影的规则，例如 <code>panel.card</code>。</li>
+  <li>在“box-shadow”输入框中粘贴完整对象文本：</li>
+</ol>
+
+<pre><code>{"color":"#00000066","offset-x":0,"offset-y":6,"blur":16,"spread":0}</code></pre>
+
+<ol class="steps">
+  <li>点击“应用”或切换到别的规则，保存这条规则。</li>
+  <li>在预览中查看卡片外框是否出现柔和阴影。</li>
+</ol>
+
+<div class="warn">这里需要的是<strong>JSON 对象</strong>，不是 CSS 的 <code>0 6 16 #000</code> 简写。管理器提供轻/中/强阴影三个可编辑预设，也可以手动输入；不是合法对象、含未知字段或数值字段不是数字时，会提示错误并阻止保存。</div>
+
+<p>图 15-2 的按钮规则中 <code>box-shadow</code> 填的是 <code>{"color":"#00000066","offset-x":0,"offset-y":6,"blur":16,"spread":0}</code>；它会在按钮下方形成一层淡阴影。</p>
+
+<p>当前实现用无高斯模糊的扩展近似：偏移和扩散绘制半透明圆角矩形，blur 作为圆角扩展量参与近似。</p>
+
+<h3>19.5 控件专有属性</h3>
+
+<p>规则也可以写控件自己的属性键，例如：</p>
+
+<pre><code>{ "selector": "list-view", "declarations": {
+    "header-background": "#202838", "font-size": 14 } }
+
+{ "selector": "progress-bar", "declarations": {
+    "progress-color": "#22C55E" } }</code></pre>
+
+<p>值会按形态尝试颜色、数字或字符串，最终落到控件对应的属性通道。具体键以属性面板和 schema 为准。</p>
+
+<div class="chapter-nav">
+  <a href="18-theme-selectors.html">← 上一章：18 选择器</a>
+  <a href="20-theme-variables.html">下一章：20 变量 →</a>
+</div>
+
+</div>
+</body>
+</html>

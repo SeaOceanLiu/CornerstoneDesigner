@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>16 第一次使用主题：给按钮换色 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="16-first-theme.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content"><h1>16 第一次使用主题：给按钮换色</h1>
+
+<p>下面按顺序做一遍。完成后你会得到：基主题、类、按钮规则、悬停规则，并能在预览中看到效果。</p>
+
+<ol class="steps">
+  <li><strong>新建工程</strong>，从工具箱放置一个 Button，文本改成“保存”。</li>
+  <li><strong>选中按钮</strong>，点击右侧“事件”旁边的“属性”，确认没有手动改过它的背景色。显式属性会覆盖主题。</li>
+  <li>打开 <span class="menu-path">编辑 → 主题…</span>。</li>
+  <li>在“作用域”保持“基主题”。</li>
+  <li>在“选择器”输入或从下拉选择 <code>button.primary</code>。</li>
+  <li>“背景色”填 <code>#2D7FF9FF</code>，“文字色”填 <code>#FFFFFFFF</code>。</li>
+  <li>“边框色”填 <code>#4A90D9FF</code>，“文字阴影”填 <code>#00000066</code>。</li>
+  <li>“字体”下拉选择 <code>harmonyos-sans-sc-regular</code>；“字号”填 <code>16</code>；“圆角”填 <code>8</code>。</li>
+  <li>“内边距(上/右/下/左)”填 <code>8</code>、<code>16</code>、<code>8</code>、<code>16</code>。</li>
+  <li>“box-shadow”填下面这个 JSON 对象：<br><code>{"color":"#00000066","offset-x":0,"offset-y":6,"blur":16,"spread":0}</code></li>
+  <li>点击“新增规则”。下方规则列表出现 <code>button.primary</code>，声明数为 9。</li>
+  <li><strong>保持按钮在画布中被选中</strong>，回到主题管理器，点击“类应用到选中”。按钮会获得 <code>primary</code> 类。</li>
+  <li>再新增一条规则：选择器 <code>button.primary:hover</code>，背景色改成更亮的 <code>#4A90D9FF</code>，点击“新增规则”。</li>
+  <li>点击“应用”关闭管理器，按 <span class="kbd">F5</span> 打开预览，把鼠标移到按钮上。</li>
+</ol>
+
+<p>此时你应该看到：按钮常态是蓝色，悬停变亮。回到画布后，按钮本身的位置、大小、文本都不变，只是外观来自主题。</p>
+
+<div class="warn"><strong>修改已有规则时不要点“新增规则”。</strong>先在上方规则列表选中该规则，修改字段，然后点“应用”（或切换到别的规则/作用域让修改保存）。“新增规则”会创建一条新规则，容易产生重复。</div>
+
+<h3>16.1 全部设置项填写完成</h3>
+
+<p>下面是完成上述步骤后的主题管理器。可以看到选择器、背景色、文字色、边框色、文字阴影、字体、字号、圆角、四边内边距和 box-shadow 都已经有值；下方规则列表同时保留了常态和悬停规则。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/theme-manager-filled.png" alt="填写完成的主题管理器">
+  <div class="cap">图 15-2 全部设置项填写完成：button.primary 规则（9 条声明）与规则列表</div>
+</div>
+
+<h3>16.2 套用前后的效果对比</h3>
+
+<div class="grid2">
+  <div class="shot">
+    <img src="assets/screenshots/theme-before.png" alt="未套用主题的效果">
+    <div class="cap">套用前：控件只有默认外观，主/次/危险按钮没有区分</div>
+  </div>
+  <div class="shot">
+    <img src="assets/screenshots/theme-after.png" alt="套用主题后的效果">
+    <div class="cap">套用后：卡片、主按钮、次按钮、危险按钮和输入框都应用了主题</div>
+  </div>
+</div>
+
+<p>这两张图来自同一个布局，只差“有没有项目主题”。按钮的位置、大小、文字没有改变，改变的是背景、文字、边框、圆角和内边距。</p>
+
+<div class="chapter-nav">
+  <a href="15-theme-system.html">← 上一章：15 主题系统</a>
+  <a href="17-theme-manager.html">下一章：17 主题管理器逐项说明 →</a>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>30 事件回调方式 1：注册 JSON 动作 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="30-json-actions.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>30 事件回调方式 1：注册 JSON 动作</h1>
+
+<p>如果事件名写在布局 JSON 的 <code>events</code> 中，例如 <code>{"onClick":"onSave"}</code>，宿主用 <code>RegisterAction("onSave", ...)</code> 注册同名动作。注册必须发生在 <code>LoadLayout</code> 之前。</p>
+
+<h3>C++ Binding</h3>
+
+<pre><code>// 假设 ui 已创建
+ui->RegisterAction("onSave", [](Control ctl) {
+    std::printf("action=%s\n", ctl.GetId().c_str());
+});
+ui->LoadLayoutFromFile("layout.json");</code></pre>
+
+<h3>C ABI</h3>
+
+<pre><code>typedef struct { UIInstance inst; int saved; } AppState;
+
+static void on_save_action(UIControlHandle ctl, void* user) {
+    AppState* app = (AppState*)user;
+    app-&gt;saved = 1;
+    printf("action control id=%s\n",
+           UICornerstone_GetControlId(app-&gt;inst, ctl));
+}
+
+AppState app = { inst, 0 };
+UICornerstone_RegisterAction(inst, "onSaveClick", on_save_action, &amp;app);
+UICornerstone_LoadLayoutFromFile(inst, "layout.json");</code></pre>
+
+<div class="warn"><strong>注册时机：</strong><code>RegisterAction</code> 先把“动作名 → 回调”登记到动作表；<code>LoadLayout</code> 解析控件的 <code>events</code> 时才按名字查表并绑定。若加载后才注册，解析器已经跳过该事件，之后注册不会回溯绑定已创建的控件。需要后绑定请使用 31 的 <code>SetCallback</code>，或重新加载布局。</div>
+
+<div class="chapter-nav">
+  <a href="29-read-write-controls.html">← 上一章：29 读写控件数据</a>
+  <a href="31-bind-events.html">下一章：31 事件回调方式 2 →</a>
+</div>
+
+</div>
+</body>
+</html>

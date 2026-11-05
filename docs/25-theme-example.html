@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>25 完整示例：一套小主题 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="25-theme-example.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content"><h1>25 完整示例：一套小主题</h1>
+
+<p>把下面 JSON 复制到 <span class="menu-path">编辑 → 主题 JSON…</span>，然后应用，即可得到一套带主按钮、卡片和紧凑模式的主题。</p>
+
+<pre><code>{
+  "variables": {
+    "--bg": "#10141C",
+    "--surface": "#1A2130",
+    "--line": "#2B3648",
+    "--text": "#F5F8FF",
+    "--muted": "#94A3B8",
+    "--primary": "#2D7FF9",
+    "--danger": "#E06060"
+  },
+  "styles": [
+    { "selector": "panel.root", "declarations": {
+        "background": "var(--bg)" } },
+    { "selector": "panel.card", "declarations": {
+        "background": "var(--surface)",
+        "border-color": "var(--line)",
+        "border-visible": true,
+        "border-radius": 14,
+        "content-padding": "16" } },
+    { "selector": "label.title", "declarations": {
+        "text-color": "var(--text)", "font-size": 24 } },
+    { "selector": "label.muted", "declarations": {
+        "text-color": "var(--muted)", "font-size": 13 } },
+    { "selector": "button.primary", "declarations": {
+        "background": "var(--primary)",
+        "text-color": "#FFFFFFFF",
+        "border-radius": 8,
+        "content-padding": "8 16" } },
+    { "selector": "button.primary:hover", "declarations": {
+        "background": "#4A90D9" } },
+    { "selector": "button.danger", "declarations": {
+        "background": "var(--danger)",
+        "text-color": "#FFFFFFFF",
+        "border-radius": 8 } },
+    { "selector": "edit-box", "declarations": {
+        "background": "#111826",
+        "border-color": "#334155",
+        "text-color": "var(--text)",
+        "border-radius": 8,
+        "content-padding": "10 12" } }
+  ],
+  "variants": {
+    "dark": {
+      "variables": { "--surface": "#0B0F16", "--bg": "#080B11" },
+      "styles": [
+        { "selector": "panel.card", "declarations": { "background": "var(--surface)" } }
+      ]
+    }
+  },
+  "media": [
+    {
+      "id": "compact",
+      "query": "(max-width: 800px)",
+      "styles": [
+        { "selector": "button", "declarations": { "content-padding": "4 8", "font-size": 13 } }
+      ]
+    }
+  ],
+  "containerQueries": [
+    {
+      "id": "narrow",
+      "container": "panel.sidebar",
+      "query": "(max-width: 280px)",
+      "styles": [
+        { "selector": "button", "declarations": { "font-size": 12 } }
+      ]
+    }
+  ]
+}</code></pre>
+
+<p>应用后需要在画布上给控件分配类：<code>panel root</code>、<code>panel card</code>、<code>label title</code>、<code>button primary</code> 等。类通过“类应用到选中”或控件的 <code>classes</code> 字段设置。</p>
+
+<div class="chapter-nav">
+  <a href="24-theme-containers.html">← 上一章：24 容器条件</a>
+  <a href="26-theme-notes.html">下一章：26 其它说明 →</a>
+</div>
+
+</div>
+</body>
+</html>

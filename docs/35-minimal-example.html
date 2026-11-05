@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>35 最小完整示例 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="35-minimal-example.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>35 最小完整示例</h1>
+
+<h3>C++ Binding</h3>
+
+<pre><code>#include "UICornerstone.h"
+#include "Control.h"
+#include "Event.h"
+#include "PropertyNames.h"
+#include &lt;cstdio&gt;
+
+int main() {
+    auto ui = UICornerstone::UICornerstone::Create(
+        UICornerstone::UICornerstone::Config{}.WithBackend("sdl3"));
+
+    ui->RegisterAction("onSaveClick", [](Control c) {
+        std::printf("action from %s\n", c.GetId().c_str());
+    });
+    ui->LoadLayoutFromFile("layout.json");
+
+    Control name = ui->FindControl("nameEdit");
+    Control status = ui->FindControl("statusLabel");
+    if (name.IsValid() &amp;&amp; status.IsValid()) {
+        name.SetCallback(PropertyNames::kEventTextChanged,
+            [status](const Event&amp; e) mutable {
+                status.SetString(PropertyNames::kCaption, "你好，" + e.GetTextChanged());
+            });
+    }
+
+    while (!ui->IsQuitRequested()) {
+        ui->ProcessEvents();
+        ui->Update(0.016);
+        ui->Clear();
+        ui->Render();
+        ui->Present();
+    }
+}</code></pre>
+
+<h3>C ABI 最小完整示例</h3>
+
+<pre><code>#include "UICornerstoneAPI.h"
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+
+typedef struct {
+    UIInstance inst;
+    UIControlHandle status;
+} App;
+
+static void on_save_action(UIControlHandle ctl, void* user) {
+    (void)ctl;
+    (void)user;
+    printf("onSaveClick action\n");
+}
+
+static void on_name_changed(UIControlHandle ctl, const UIEventData* ev, void* user) {
+    (void)ctl;
+    App* app = (App*)user;
+    char msg[512];
+    snprintf(msg, sizeof(msg), "你好，%s", ev-&gt;data.strVal ? ev-&gt;data.strVal : "");
+    UICornerstone_SetString(app-&gt;inst, app-&gt;status, "caption", msg);
+}
+
+int main(void) {
+    UIInstanceConfig cfg = UI_INSTANCE_CONFIG_DEFAULT;
+    cfg.windowTitle = "C ABI Demo";
+    cfg.windowWidth = 1024;
+    cfg.windowHeight = 768;
+    cfg.resourceRoot = "assets";
+
+    UIInstance inst = UICornerstone_CreateInstanceFromPlugin("sdl3", &amp;cfg);
+    if (!inst) return 1;
+
+    UICornerstone_RegisterAction(inst, "onSaveClick", on_save_action, NULL);
+    if (!UICornerstone_LoadLayoutFromFile(inst, "layout.json")) {
+        UICornerstone_DestroyInstance(inst);
+        return 1;
+    }
+
+    UIControlHandle nameEdit = UICornerstone_FindControl(inst, "nameEdit");
+    UIControlHandle status   = UICornerstone_FindControl(inst, "statusLabel");
+    if (!nameEdit || !status) {
+        UICornerstone_DestroyInstance(inst);
+        return 1;
+    }
+
+    App app = { inst, status };
+    UICornerstone_SetCallback(inst, nameEdit, "text-changed", on_name_changed, &amp;app);
+
+    while (!UICornerstone_IsQuitRequested(inst)) {
+        UICornerstone_ProcessEvents(inst);
+        UICornerstone_Update(inst, 1.0 / 60.0);
+        UICornerstone_Clear(inst);
+        UICornerstone_Render(inst);
+        UICornerstone_Present(inst);
+    }
+
+    UICornerstone_DestroyInstance(inst);
+    return 0;
+}</code></pre>
+
+<div class="note">上面的 C ABI 示例已经包含 <code>CreateInstanceFromPlugin</code>、<code>RegisterAction</code>、<code>LoadLayout</code>、<code>FindControl</code>、<code>SetCallback</code> 和帧循环，因此不再重复列一份“C ABI 完整宿主骨架”。</div>
+
+<div class="chapter-nav">
+  <a href="34-access-in-callback.html">← 上一章：34 在事件回调中访问其他控件</a>
+  <a href="36-shortcuts.html">下一章：36 快捷键与效率 →</a>
+</div>
+
+</div>
+</body>
+</html>

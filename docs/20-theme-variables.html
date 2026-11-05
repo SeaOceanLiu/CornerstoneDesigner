@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>20 变量：统一改一处 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="20-theme-variables.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content"><h1>20 变量：统一改一处</h1>
+
+<p>变量用来保存可复用的值。点击主题管理器中的“变量…”：</p>
+
+<ol class="steps">
+  <li>左侧是变量列表，右侧是“变量名”和“值”。</li>
+  <li>点击“新增变量”，自动创建 <code>--var1</code> 之类的名字。</li>
+  <li>输入名称和值，例如 <code>--primary</code> / <code>#4A90D9</code>。</li>
+  <li>点击“应用”保存变量；变量会保存在当前工程主题里。</li>
+</ol>
+
+<p>变量定义示例：</p>
+
+<pre><code>{
+  "variables": {
+    "--bg": "#10141C",
+    "--primary": "#2D7FF9",
+    "--text": "#F5F8FF"
+  }
+}</code></pre>
+
+<p>在规则中引用：</p>
+
+<pre><code>{ "selector": "button.primary", "declarations": {
+    "background": "var(--primary)",
+    "text-color": "var(--text)" } }</code></pre>
+
+<div class="warn">当前可视化规则表单的颜色栏主要写具体十六进制值。如果要在规则里使用 <code>var(--primary)</code>，请在 <span class="menu-path">编辑 → 主题 JSON…</span> 中编辑对应规则；变量编辑器只负责定义变量表。</div>
+
+<div class="chapter-nav">
+  <a href="19-theme-declarations.html">← 上一章：19 声明</a>
+  <a href="21-theme-classes.html">下一章：21 类 →</a>
+</div>
+
+</div>
+</body>
+</html>

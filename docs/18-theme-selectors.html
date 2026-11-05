@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>18 选择器：主题作用到谁 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="18-theme-selectors.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content"><h1>18 选择器：主题作用到谁</h1>
+
+<p>选择器语法是 CSS 的一个很小子集。先掌握下面几种就够了：</p>
+
+<table>
+<tr><th>写法</th><th>匹配</th><th>适合</th></tr>
+<tr><td><code>button</code></td><td>所有按钮</td><td>统一按钮基础样式</td></tr>
+<tr><td><code>.primary</code></td><td>所有带 <code>primary</code> 类的控件</td><td>跨控件复用同一种标签</td></tr>
+<tr><td><code>button.primary</code></td><td>同时是按钮且带 <code>primary</code> 类</td><td>主按钮</td></tr>
+<tr><td><code>#saveBtn</code></td><td>ID 为 <code>saveBtn</code> 的控件</td><td>只改一个特定控件</td></tr>
+<tr><td><code>button.primary:hover</code></td><td>主按钮在悬停状态</td><td>悬停变色</td></tr>
+<tr><td><code>label.title</code></td><td>带 <code>title</code> 类的标签</td><td>标题字体</td></tr>
+<tr><td><code>*</code></td><td>所有参与主题的控件</td><td>谨慎使用，影响范围最大</td></tr>
+</table>
+
+<h3>优先级</h3>
+
+<ol>
+  <li><strong>ID</strong> 选择器 <code>#saveBtn</code></li>
+  <li><strong>类</strong> 选择器 <code>.primary</code></li>
+  <li><strong>类型</strong> 选择器 <code>button</code></li>
+  <li>同权重按规则添加顺序，后面的覆盖前面的</li>
+</ol>
+
+<p>如果同一个控件同时命中多条规则，按优先级和顺序层叠；但<strong>属性面板里显式设置的值永远高于主题</strong>。</p>
+
+<h3>常见错误</h3>
+
+<ul>
+  <li>写 <code>button .primary</code>（中间有空格）：V1 不支持后代选择器。应写 <code>button.primary</code>。</li>
+  <li>选择器写 <code>.primary</code> 但控件没有 <code>primary</code> 类：不会匹配。先分配类。</li>
+  <li>把悬停规则写成 <code>button.primary:hover</code> 但字段里改的是常态背景色：检查规则列表选中的是不是悬停规则。</li>
+  <li>使用逗号 <code>button, label</code>、属性选择器或 <code>!important</code>：当前版本不支持，拆成多条规则。</li>
+</ul>
+
+<div class="chapter-nav">
+  <a href="17-theme-manager.html">← 上一章：17 主题管理器逐项说明</a>
+  <a href="19-theme-declarations.html">下一章：19 声明 →</a>
+</div>
+
+</div>
+</body>
+</html>

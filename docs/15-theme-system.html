@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>15 主题系统 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="15-theme-system.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+
+
+<h1>15 主题系统</h1>
+
+<p>主题用于统一控件外观：颜色、字体、圆角、间距、阴影，以及窗口变窄、容器变小、切换深色模式时的变化。它解决的是“同一个样式要改很多控件”的问题。</p>
+
+<div class="note">本章讲的是<strong>项目主题</strong>：它保存在工程里，作用于<strong>预览和导出的运行界面</strong>。设计器自身界面的颜色由另一份 <code>designer_theme.json</code> 控制，见 26.3。</div>
+
+<div class="note"><strong>本章导览：</strong>15–17 先理解概念并完成第一个主题；18–21 讲选择器、声明、变量和类；22–25 讲变体、媒体、容器和完整示例；26 汇总常用配方、内置模板、设计器主题、排错和限制。新手建议按顺序阅读。</div>
+
+<div class="shot">
+  <img src="assets/screenshots/05-theme-manager.png" alt="主题管理器">
+  <div class="cap">图 15-1 主题管理器：上方是作用域/条件/规则表单，下方是规则列表</div>
+</div>
+
+
+<h2>15.1 先理解：主题能帮你做什么</h2>
+
+<p>假设画布上有 20 个按钮，都使用主色。没有主题时，主色从蓝色改成绿色，需要逐个选中按钮、逐个改颜色。使用主题后：</p>
+
+<ol>
+  <li>定义一个变量 <code>--primary</code>，或者一条规则 <code>button.primary</code>；</li>
+  <li>给 20 个按钮都加上 <code>primary</code> 类；</li>
+  <li>以后只需要改规则的背景色，20 个按钮一起变化。</li>
+</ol>
+
+<p>主题不改变控件的位置和大小，只改变样式属性。布局仍然由画布上的位置、尺寸、容器和对齐决定。</p>
+
+<div class="tip">如果只是想改一个控件的颜色，直接使用属性面板更快；当同一套样式要复用到多个控件时，再使用主题。</div>
+<h2>15.2 六个核心概念</h2>
+
+<table>
+<tr><th>概念</th><th>通俗含义</th><th>例子</th></tr>
+<tr><td><strong>变量</strong></td><td>给一个值起名字，后面反复使用</td><td><code>--primary = #4A90D9</code></td></tr>
+<tr><td><strong>选择器</strong></td><td>这条规则作用到哪些控件</td><td><code>button.primary</code></td></tr>
+<tr><td><strong>声明</strong></td><td>具体要改什么属性、改成什么值</td><td><code>background: #4A90D9</code></td></tr>
+<tr><td><strong>规则</strong></td><td>“选择器 + 一组声明”</td><td><code>button.primary { background: ... }</code></td></tr>
+<tr><td><strong>类（class）</strong></td><td>给控件贴的标签，供选择器匹配</td><td>按钮的 <code>classes = ["primary"]</code></td></tr>
+<tr><td><strong>作用域</strong></td><td>规则放在哪一层：基础、变体、媒体或容器</td><td>基主题 / dark / 窄窗口 / 侧栏</td></tr>
+</table>
+
+<p>另外两个概念是：</p>
+
+<ul>
+  <li><strong>变体</strong>：在基础主题之上叠加的一套命名样式，例如 <code>dark</code>。切换变体时，基础规则仍然保留，变体规则覆盖同名属性。</li>
+  <li><strong>条件</strong>：媒体条件（窗口宽度/高度/方向）或容器条件（某个祖先容器的尺寸）满足时，额外叠加规则。</li>
+</ul>
+
+<div class="chapter-nav">
+  <a href="13-components.html">← 上一章：14 组件系统</a>
+  <a href="16-first-theme.html">下一章：16 第一次使用主题 →</a>
+</div>
+
+</div>
+</body>
+</html>

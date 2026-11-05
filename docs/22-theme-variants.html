@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>22 变体：深色/浅色切换 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="22-theme-variants.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content"><h1>22 变体：深色/浅色切换</h1>
+
+<p>变体是在基主题上叠加的命名样式。适合做深色模式、品牌主题或紧凑模式。</p>
+
+<ol class="steps">
+  <li>在主题管理器输入变体名，例如 <code>dark</code>。</li>
+  <li>点击“新增变体”，作用域自动切到“变体: dark”。</li>
+  <li>为深色模式添加规则，例如 <code>panel.card</code> 的背景色、<code>label</code> 的文字色。</li>
+  <li>点击“应用”。</li>
+</ol>
+
+<p>变体名的格式没有 CSS 限制，但建议使用简短的英文/数字/下划线，例如 <code>dark</code>、<code>compact</code>、<code>brand_A</code>。名称为空会提示“变体名为空”；同名已存在会提示“变体已存在”。新增成功后，作用域下拉会自动切到该变体。</p>
+
+<div class="grid2">
+  <div class="shot">
+    <img src="assets/screenshots/theme-after.png" alt="基主题效果">
+    <div class="cap">基主题：蓝色主按钮、深灰次按钮</div>
+  </div>
+  <div class="shot">
+    <img src="assets/screenshots/theme-dark.png" alt="dark 变体效果">
+    <div class="cap">切换到 dark 变体：主按钮变紫色，卡片/侧栏更深</div>
+  </div>
+</div>
+
+<p>变体只覆盖声明过的属性，所以基主题的圆角和内边距仍然保留。下面的截图来自同一布局，只切换了变体。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/theme-scope-variant.png" alt="变体作用域的主题管理器">
+  <div class="cap">图 15-4 作用域为“变体: dark”：条件字段自动禁用，只显示变体自己的规则</div>
+</div>
+
+<p>变体不需要重复基主题中的所有规则。例如基主题已经设置了按钮圆角，变体只覆盖背景和文字：</p>
+
+<pre><code>{
+  "variants": {
+    "dark": {
+      "variables": { "--surface": "#0B0F16", "--text": "#F5F8FF" },
+      "styles": [
+        { "selector": "panel.card", "declarations": { "background": "var(--surface)" } },
+        { "selector": "label", "declarations": { "text-color": "var(--text)" } }
+      ]
+    }
+  }
+}</code></pre>
+
+<p>层序是：基础普通 → 基础媒体 → 基础容器 → 变体普通 → 变体媒体 → 变体容器。运行时切换变体由 UICornerstone API 完成；设计器负责保存/导出变体定义。</p>
+
+<div class="chapter-nav">
+  <a href="21-theme-classes.html">← 上一章：21 类</a>
+  <a href="23-theme-media.html">下一章：23 媒体条件 →</a>
+</div>
+
+</div>
+</body>
+</html>

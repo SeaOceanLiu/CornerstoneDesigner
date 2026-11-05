@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>23 媒体条件：窗口变窄时调整 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="23-theme-media.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content"><h1>23 媒体条件：窗口变窄时调整</h1>
+
+<p>媒体条件根据视口尺寸匹配，例如窗口宽度小于 800px 时缩小字号。</p>
+
+<ol class="steps">
+  <li>点击“+媒体”。</li>
+  <li>作用域切到新建的媒体条件。</li>
+  <li>编辑“条件ID”和“查询”，例如 <code>compact</code> 和 <code>(max-width: 800px)</code>。</li>
+  <li>在该作用域新增规则，例如按钮字号 13、内边距 4/8。</li>
+  <li>调整预览窗口大小，观察规则命中。</li>
+</ol>
+
+<p>“+媒体”会自动创建一个条件并切换作用域。新条件的默认 ID 类似 <code>media1</code>，默认查询是 <code>(min-width: 800px)</code>；把 ID 改成 <code>compact</code> 只是便于识别，规则本身不依赖这个名称。查询字段启用后填写：</p>
+
+<table>
+<tr><th>写法</th><th>示例</th><th>含义</th></tr>
+<tr><td>字符串</td><td><code>(max-width: 800px)</code></td><td>视口宽度不超过 800px</td></tr>
+<tr><td>字符串</td><td><code>(min-width: 1200px)</code></td><td>视口宽度至少 1200px</td></tr>
+<tr><td>字符串</td><td><code>(orientation: portrait)</code></td><td>竖向视口</td></tr>
+<tr><td>对象</td><td><code>{"max-width": 800, "orientation": "portrait"}</code></td><td>多个条件同时满足</td></tr>
+</table>
+
+<p>支持 <code>min-width</code> / <code>max-width</code> / <code>min-height</code> / <code>max-height</code> / <code>orientation</code> / <code>min-scale</code> / <code>max-scale</code>。调节预览窗口大小，或在导出运行时改变窗口尺寸，条件会重新计算。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/theme-scope-media.png" alt="媒体作用域的主题管理器">
+  <div class="cap">图 15-5 作用域为“媒体: compact”：条件ID、查询启用；容器字段禁用</div>
+</div>
+
+<pre><code>{
+  "media": [
+    {
+      "id": "compact",
+      "query": "(max-width: 800px)",
+      "variables": { "--gap": 8 },
+      "styles": [
+        { "selector": "button.primary", "declarations": {
+            "background": "#F59E0B", "content-padding": "4 8", "font-size": 13 } },
+        { "selector": "button.secondary", "declarations": {
+            "content-padding": "4 8", "font-size": 13 } }
+      ]
+    }
+  ]
+}</code></pre>
+
+<p>查询可以写字符串，也可以写对象：<code>{"max-width": 800, "orientation": "portrait"}</code>。管理器提供常用查询下拉，也可直接输入；不支持的键、错误的方向值或非数字尺寸会被提示并阻止保存。支持 min/max width/height、orientation 和缩放范围。</p>
+
+<div class="note">当前管理器的“+媒体”在基主题下新建条件；如果要把媒体条件放进某个变体，请用“主题 JSON…”编辑 <code>variants.dark.media</code>。</div>
+
+<div class="grid2">
+  <div class="shot">
+    <img src="assets/screenshots/theme-media-wide.png" alt="媒体条件未命中：1000px 窗口">
+    <div class="cap">窗口 1000px：未命中 max-width: 800px，按钮保持蓝色</div>
+  </div>
+  <div class="shot">
+    <img src="assets/screenshots/theme-media-narrow.png" alt="媒体条件命中：700px 窗口">
+    <div class="cap">窗口 700px：命中条件，按钮变小并变为橙色</div>
+  </div>
+</div>
+
+<div class="warn">媒体/容器规则也要遵守优先级。如果基主题写的是更具体的 <code>button.primary</code>，媒体规则只写 <code>button</code> 可能无法覆盖它；需要写同样具体的 <code>button.primary</code>。</div>
+
+<div class="chapter-nav">
+  <a href="22-theme-variants.html">← 上一章：22 变体</a>
+  <a href="24-theme-containers.html">下一章：24 容器条件 →</a>
+</div>
+
+</div>
+</body>
+</html>

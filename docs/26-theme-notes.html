@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>26 其它说明 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="26-theme-notes.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content"><h1>26 其它说明</h1>
+
+<h2>26.1 常见主题配方</h2>
+
+<table>
+<tr><th>目标</th><th>选择器</th><th>主要声明</th></tr>
+<tr><td>主按钮</td><td><code>button.primary</code></td><td>background、text-color、border-radius</td></tr>
+<tr><td>次按钮</td><td><code>button.secondary</code></td><td>background 浅灰、border-color</td></tr>
+<tr><td>危险按钮</td><td><code>button.danger</code></td><td>background 红、text-color 白</td></tr>
+<tr><td>卡片</td><td><code>panel.card</code></td><td>background、border-color、border-radius、box-shadow</td></tr>
+<tr><td>输入框</td><td><code>edit-box</code></td><td>background、border-color、content-padding</td></tr>
+<tr><td>标题</td><td><code>label.title</code></td><td>font-size、text-color、font-style</td></tr>
+<tr><td>侧栏紧凑</td><td><code>panel.sidebar</code> + 容器条件</td><td>font-size、content-padding</td></tr>
+<tr><td>深色模式</td><td>变体 <code>dark</code></td><td>背景/文字变量覆盖</td></tr>
+</table>
+<h2>26.2 内置主题模板与独立加载</h2>
+
+<p>设计器自带两套可直接使用的项目主题模板：<strong>明亮</strong>和<strong>暗黑</strong>。模板是独立的 JSON 文件，不依赖当前画布结构；应用后只设置项目主题，不会删除控件、改布局或清空已分配的类。</p>
+
+<table>
+<tr><th>菜单</th><th>作用</th></tr>
+<tr><td>编辑 → 应用明亮主题模板</td><td>加载 <code>themes/theme_light.json</code> 并设为当前项目主题</td></tr>
+<tr><td>编辑 → 应用暗黑主题模板</td><td>加载 <code>themes/theme_dark.json</code> 并设为当前项目主题</td></tr>
+<tr><td>编辑 → 加载主题文件…</td><td>选择任意主题 JSON，独立应用，不必先打开主题管理器</td></tr>
+</table>
+
+<div class="grid2">
+  <div class="shot">
+    <img src="assets/screenshots/theme-template-light.png" alt="明亮主题模板效果">
+    <div class="cap">应用明亮主题模板：浅色背景、白色卡片、蓝色主按钮</div>
+  </div>
+  <div class="shot">
+    <img src="assets/screenshots/theme-template-dark.png" alt="暗黑主题模板效果">
+    <div class="cap">应用暗黑主题模板：深色背景、深色卡片、亮色按钮</div>
+  </div>
+</div>
+
+<ol class="steps">
+  <li>打开一个已有工程，或先新建一个带按钮/面板的布局。</li>
+  <li>选择 <span class="menu-path">编辑 → 应用明亮主题模板</span> 或“应用暗黑主题模板”。</li>
+  <li>如果预览已经打开，应用模板后会自动重建预览；否则按 <span class="kbd">F5</span> 打开预览查看效果。</li>
+  <li>需要微调时，打开“主题…”或“主题 JSON…”继续修改；模板会成为当前 <code>.csd</code> 的项目主题。</li>
+</ol>
+
+<p>模板文件位于 exe 同目录的 <code>themes/theme_light.json</code> 和 <code>themes/theme_dark.json</code>（源码在仓库 <code>themes/</code>）。用户可以复制一份修改，或通过“加载主题文件…”应用自己的主题文件。</p>
+
+<div class="warn">模板只覆盖主题规则，不会覆盖控件的显式属性。如果按钮/面板在属性面板里已经显式设置颜色，模板不会改变它；“类”和“显式属性”的优先级仍按 15/18 的规则。</div>
+
+<div class="note"><strong>设计器放置控件时写入的默认外观不算“用户显式样式”。</strong>应用模板后，预览/导出会自动忽略按钮 <code>#FAFAFA</code>、标签 <code>#333333</code> 这类设计器缺省颜色，让模板生效；你手动改过的颜色仍会保留并继续覆盖模板。设计画布本身仍显示设计态默认外观，请以预览/导出为准。</div>
+
+<div class="note">“加载主题文件…”接受直接的主题对象，也接受带 <code>"theme"</code> 字段的布局 JSON；如果文件不是合法 JSON 对象，状态栏会提示，当前主题不变。预览已经打开时，通过菜单应用模板会自动重建预览；直接修改主题 JSON 后仍建议刷新预览。</div>
+<h2>26.3 设计器自身 UI 主题</h2>
+
+<p>设计器界面（菜单、工具箱、属性面板）使用另一份主题文件：exe 同目录的 <code>designer_theme.json</code>。它和项目主题<strong>完全分离</strong>：</p>
+
+<ul>
+  <li>修改项目主题不会改变设计器界面；</li>
+  <li>修改设计器主题不会影响用户画布、预览和导出；</li>
+  <li>源码文件在 <code>layouts/designer_theme.json</code>，构建时复制到输出目录；</li>
+  <li>修改后使用 <span class="menu-path">视图 → 重新加载设计器主题</span> 热重载。</li>
+</ul>
+
+<p>文件缺失或 JSON 非法时只输出诊断，不阻止启动。</p>
+<h2>26.4 排查：为什么主题没生效</h2>
+
+<ol class="steps">
+  <li><strong>看的是设计画布还是预览？</strong> 当前设计画布主要显示显式样式和设计态；请在预览或导出界面看完整主题。</li>
+  <li><strong>控件有类吗？</strong> 规则 <code>button.primary</code> 需要控件 classes 含 <code>primary</code>。</li>
+  <li><strong>选择器写对了吗？</strong> 不支持空格后代选择器、逗号分组、属性选择器和 <code>!important</code>。</li>
+  <li><strong>属性面板是否显式设过颜色？</strong> 显式属性优先于主题；清除显式覆盖或改用类统一管理。</li>
+  <li><strong>作用域对吗？</strong> 媒体/容器/变体规则只在对应作用域和条件命中时生效。</li>
+  <li><strong>规则保存了吗？</strong> 修改已有规则后点“应用”或切换到别的规则；不要误点“新增规则”。</li>
+  <li><strong>是否用了变量？</strong> 检查 <code>var(--name)</code> 拼写和变量是否存在；未定义变量会回退。</li>
+  <li><strong>box-shadow 是合法 JSON 对象吗？</strong> 管理器的 box-shadow 字段需要对象文本。</li>
+</ol>
+<h2>26.5 当前限制</h2>
+
+<ul>
+  <li>设计画布不是项目主题的完整预览；以预览/导出为准。</li>
+  <li>可视化表单覆盖常用字段；复杂状态、变量引用、变体内的媒体/容器需要“主题 JSON…”。</li>
+  <li>不支持 CSS 后代/子选择器、属性选择器、逗号分组、<code>!important</code> 和 <code>opacity</code>。</li>
+  <li>主题不改变控件矩形；内边距只影响内容区。</li>
+  <li><code>content-padding</code> 对 ListView/TreeView 的滚动内容区和部分自绘控件不承诺完整可用。</li>
+  <li>当前管理器只能追加类，不能删除类；移除类请编辑控件 <code>classes</code>。</li>
+  <li><code>:selected</code> 当前近似使用 pressed 通道。</li>
+</ul>
+
+<div class="chapter-nav">
+  <a href="25-theme-example.html">← 上一章：25 完整示例</a>
+  <a href="27-export.html">下一章：27 导出与集成 →</a>
+</div>
+
+</div>
+</body>
+</html>
