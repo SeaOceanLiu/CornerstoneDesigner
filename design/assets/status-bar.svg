@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="860" height="170" viewBox="0 0 860 170" font-family="HarmonyOS Sans SC, Microsoft YaHei, PingFang SC, sans-serif">
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="860" height="170" viewBox="0 0 860 170" font-family="HarmonyOS Sans SC, Microsoft YaHei, PingFang SC, sans-serif">
   <!-- 底板 -->
   <rect x="0" y="0" width="860" height="170" rx="8" fill="#1A1A1A"/>
-  <text x="24" y="30" font-size="20" font-weight="bold" fill="#E0E0E0">状态栏（statusBar）— Panel + 3 Label 三段式</text>
+  <text x="24" y="30" font-size="20" font-weight="bold" fill="#E0E0E0">状态栏（statusBar）— 原生 status-bar（items）</text>
 
   <!-- 状态栏 -->
   <rect x="20" y="52" width="820" height="40" rx="4" fill="#202020" stroke="#404040" stroke-width="1"/>

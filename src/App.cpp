@@ -19,6 +19,10 @@
 #include <fstream>
 #include <thread>
 
+#ifndef CORNERSTONE_BUILD_TIMESTAMP
+#define CORNERSTONE_BUILD_TIMESTAMP __DATE__ " " __TIME__
+#endif
+
 #ifdef _WIN32
 #include <windows.h>
 #include <commdlg.h>
@@ -319,25 +323,50 @@ void App::syncRootToWindow() {
     m_lastWinH = h;
 }
 
+void App::emitStartupProgress(const char* phase, int progress) const {
+    if (!m_startupProgressStdio && m_startupProgressFile.empty()) return;
+    char line[256] = {0};
+    std::snprintf(line, sizeof(line),
+                  "[StartupProgress] {\"phase\":\"%s\",\"progress\":%d}\n",
+                  phase, progress);
+    if (!m_startupProgressFile.empty()) {
+        std::ofstream f(std::filesystem::u8path(m_startupProgressFile),
+                        std::ios::app | std::ios::binary);
+        if (f) { f << line; f.flush(); }
+    }
+    if (m_startupProgressStdio) {
+        std::fputs(line, stdout);
+        std::fflush(stdout);
+    }
+}
+
 bool App::init() {
     m_ui = UICornerstone::UICornerstone::Create(
         UICornerstone::UICornerstone::Config{}
             .WithBackend("sdl3")
             .WithResourceRoot(exeRelative("assets"))
             .WithWindow("CornerstoneDesigner", 1920, 1080)
-            .WithWindowFlags(UIWindowFlags::Resizable));
+            .WithWindowFlags(UIWindowFlags::Resizable |
+                             (m_startupHidden ? UIWindowFlags::Hidden : 0u)));
     if (!m_ui) {
         std::printf("[App] Create failed\n");
         return false;
+    }
+    emitStartupProgress("init", 5);
+    if (m_startupHidden && !m_ui->SetWindowVisible(false)) {
+        std::printf("[App] startup-hidden failed; main window remains visible\n");
     }
     // 动作注册必须先于布局解析：引擎在 LoadLayout 解析期将 instance->actions 注入
     // parser handlers 绑定菜单项 onClick——先解析后注册会导致所有菜单项无回调（静默失效）
     loadSettings();   // 对话框记忆目录（exe 同目录 designer_settings.json）
     registerActions();
+    emitStartupProgress("layout_start", 20);
     if (!loadSkeleton()) {
         std::printf("[App] LoadLayout failed: %s\n", m_lastError.c_str());
+        emitStartupProgress("error", 0);
         return false;
     }
+    emitStartupProgress("layout_done", 75);
     m_sdl.load();
     if (!m_sdl.loaded) {
         std::printf("[App] SDL3.dll 未解析（窗口 resize 同步降级）\n");
@@ -352,6 +381,7 @@ bool App::init() {
     // 的指针空间不一致），曾致守卫恒阻塞——设计器 SDL 全部输入失效（工具拖放/页签拖动死、假框选消失）。
     m_sdl.mainWindow = m_sdl.windowHandle();
     setupCanvas();
+    emitStartupProgress("canvas", 80);
     setupTreeContextMenu();   // P0-105：控件树右键菜单
     bindToolbar();
     if (m_canvas) {
@@ -416,9 +446,19 @@ bool App::init() {
         }
     }
     // F5.4：最近文件菜单回填 + 窗口标题（项目名 + 未保存 *）
+    emitStartupProgress("recent", 85);
     refreshRecentMenu();
+    emitStartupProgress("theme_start", 90);
     applyDesignerTheme();   // 设计器 UI 主题（独立于项目 theme；缺失时降级）
+    emitStartupProgress("theme_done", 95);
     updateWindowTitle();
+    if (m_startupHidden) {
+        if (!m_ui->SetWindowVisible(true)) {
+            std::printf("[App] startup show failed; window may remain hidden\n");
+        }
+        m_startupBringFrontPending = true;
+    }
+    emitStartupProgress("ready", 100);
     return true;
 }
 
@@ -592,13 +632,13 @@ void App::saveSettings() const {
 }
 
 // F5.4：最近文件记录（去重提升到顶 + 上限 10；persist=false 供自测免写盘）
-void App::recordRecentFile(const std::string& path, bool persist) {
+void App::recordRecentFile(const std::string& path, bool persist, bool deferRefresh) {
     if (path.empty()) return;
     m_recentFiles.erase(std::remove(m_recentFiles.begin(), m_recentFiles.end(), path),
                         m_recentFiles.end());
     m_recentFiles.insert(m_recentFiles.begin(), path);
     if (m_recentFiles.size() > 10) m_recentFiles.resize(10);
-    refreshRecentMenu();
+    if (!deferRefresh) refreshRecentMenu();
     if (persist) saveSettings();
 }
 
@@ -624,7 +664,9 @@ void App::refreshRecentMenu() {
         m_ui->MenuPanelAddItem(m_recentPanel, mi);
         mi.SetCallback(PropertyNames::kEventClick, [this, i](const Event&) {
             if (m_canvas) m_canvas->SuppressCanvasClickThisFrame();
-            openRecentFile(i);
+            // 最近文件没有模态对话框缓冲：立即打开会与菜单关闭同帧，旧 Recent 面板可能闪一帧。
+            m_pendingRecentOpen = (int)i;
+            m_pendingRecentWait = 2;
         });
         m_recentItems.push_back(mi);
     }
@@ -643,10 +685,14 @@ void App::openRecentFile(size_t idx) {
         return;
     }
     if (m_canvas->OpenProject(p)) {
-        recordRecentFile(p, true);
+        // 打开 Recent 时主菜单/子菜单仍在收尾：延迟重建 Recent 子菜单，避免面板闪动。
+        recordRecentFile(p, true, true);
+        m_pendingRecentRefresh = true;
+        m_pendingRecentRefreshWait = 2;
         m_dirty = false;
         updateWindowTitle();
         m_frameCaptureLeft = 120;   // P0-104 诊断：打开成功后逐帧区域哈希
+        presentCleanFrame();         // 打开后立即呈现新布局，避免旧菜单帧残留
     }
 }
 
@@ -657,6 +703,15 @@ void App::updateWindowTitle() {
         name = std::filesystem::u8path(m_canvas->ProjectPath()).filename().u8string();
     const std::string t = name + (m_dirty ? " *" : "") + " — CornerstoneDesigner";
     if (m_sdl.setWindowTitle && m_sdl.mainWindow) m_sdl.setWindowTitle(m_sdl.mainWindow, t.c_str());
+}
+
+void App::presentCleanFrame() {
+    if (!m_ui) return;
+    m_ui->Clear();
+    m_ui->Render();
+    if (m_canvas) m_canvas->RenderViewport();
+    m_ui->RenderOverlays();
+    m_ui->Present();
 }
 
 void App::registerActions() {
@@ -672,21 +727,17 @@ void App::registerActions() {
     // 闭时 DWM 会露出"末次呈现帧"（即点击菜单项时菜单仍开启的旧画面 → 面板闪动 ✗）。
     auto guard = [this](std::function<void(Control)> fn) {
         return [this, fn](Control ctl) {
-            if (m_ui) {
-                m_ui->Clear();
-                m_ui->Render();
-                if (m_canvas) m_canvas->RenderViewport();
-                m_ui->RenderOverlays();
-                m_ui->Present();   // 干净帧（菜单已关闭）→ 模态关闭后不再露出旧菜单画面
-            }
+            presentCleanFrame();   // 干净帧（菜单已关闭）→ 模态关闭后不再露出旧菜单画面
             fn(ctl);
         };
     };
     // F5.4：最近文件项动作（骨架生成 onMenuRecentN——动作回调 ctl 上下文不可用，按索引直取）
     for (int i = 0; i < 10; ++i) {
-        const size_t idx = static_cast<size_t>(i);
         m_ui->RegisterAction("onMenuRecent" + std::to_string(i),
-                             guard([this, idx](Control) { openRecentFile(idx); }));
+                             [this, i](Control) {
+                                 m_pendingRecentOpen = i;
+                                 m_pendingRecentWait = 2;
+                             });
     }
     const char* actions[] = {
         "onMenuNew", "onMenuOpen", "onMenuSave", "onMenuSaveAs",
@@ -761,11 +812,13 @@ void App::registerActions() {
             m_ui->RegisterAction(name, guard([this, fileDialog](Control) {
                 if (!m_canvas) return;
                 const std::string p = fileDialog(false, kCsdFilter, L"csd", L"打开项目");
+                presentCleanFrame();   // 模态关闭后先呈现干净帧，再加载工程
                 if (!p.empty() && m_canvas->OpenProject(p)) {
                     recordRecentFile(p, true);   // F5.4
                     m_dirty = false;
                     updateWindowTitle();
                     m_frameCaptureLeft = 120;    // P0-104 诊断：打开成功后逐帧区域哈希
+                    presentCleanFrame();         // 打开后立即呈现新布局，避免旧菜单帧残留
                 }
             }));
         } else if (std::string(name) == "onMenuSave") {
@@ -843,7 +896,10 @@ void App::registerActions() {
             m_ui->RegisterAction(name, guard([this](Control) { applyDesignerTheme(); }));
         } else if (std::string(name) == "onMenuAbout") {
             m_ui->RegisterAction(name, guard([this](Control) {
-                std::printf("[App] CornerstoneDesigner v0.1 (stage 1 skeleton)\n");
+                const std::string info =
+                    std::string("CornerstoneDesigner build ") + CORNERSTONE_BUILD_TIMESTAMP;
+                std::printf("[App] %s\n", info.c_str());
+                if (m_canvas) m_canvas->ShowAboutPopup(info);
             }));
         } else if (std::string(name) == "onMenuPreview") {
             m_ui->RegisterAction(name, guard([this](Control) { togglePreview(); }));   // 预览模式 F5
@@ -1572,7 +1628,7 @@ int App::run(int autoSeconds) {
 #ifdef _WIN32
     SetUnhandledExceptionFilter(&unhandledExceptionLog);   // P0-105：挂死/退出定位
 #endif
-    std::printf("[App] CornerstoneDesigner build %s %s\n", __DATE__, __TIME__);
+    std::printf("[App] CornerstoneDesigner build %s\n", CORNERSTONE_BUILD_TIMESTAMP);
     // 命令行路径参数：启动即打开（超长路径不经文件对话框——不依赖系统长路径注册表）
     if (!m_openPathArg.empty() && m_canvas) {
         const bool ok = m_canvas->OpenProject(m_openPathArg);
@@ -1668,6 +1724,24 @@ int App::run(int autoSeconds) {
             } else if (ext == ".json") {
                 std::printf("[Drop] import %s\n", dp.c_str());
                 m_canvas->ImportLayout(dp);
+            }
+        }
+        // 最近文件延迟一帧：等 ProcessEvents 完成菜单关闭和本帧清屏，避免 Recent 面板残留闪动。
+        if (m_pendingRecentOpen >= 0) {
+            if (m_pendingRecentWait > 0) {
+                --m_pendingRecentWait;
+            } else {
+                const size_t idx = (size_t)m_pendingRecentOpen;
+                m_pendingRecentOpen = -1;
+                presentCleanFrame();
+                openRecentFile(idx);
+            }
+        }
+        if (m_pendingRecentRefresh) {
+            if (m_pendingRecentRefreshWait > 0) --m_pendingRecentRefreshWait;
+            else {
+                m_pendingRecentRefresh = false;
+                refreshRecentMenu();
             }
         }
         if (m_sdl.pollF5Key()) togglePreview();   // 预览模式切换（菜单快捷键 F5）
@@ -1886,6 +1960,11 @@ int App::run(int autoSeconds) {
         m_ui->Update(delta);
         if (m_canvas) {
             m_canvas->TickInput();                    // 画布交互（放置/选中/拖动）
+            if (m_sdl.getMouseState) {
+                float mx = 0, my = 0;
+                const unsigned btn = m_sdl.getMouseState(&mx, &my);
+                m_canvas->DragCodeEditor(mx, my, (btn & 1u) != 0);
+            }
             m_canvas->UpdateViewport((float)delta);
         }
         // 布局引擎在 Update 中重排，须在其后读取 canvasArea 矩形做稳定检测
@@ -1893,7 +1972,7 @@ int App::run(int autoSeconds) {
         m_ui->Clear();
         m_ui->Render();
         if (m_canvas) m_canvas->RenderViewport();
-        m_ui->RenderOverlays();   // P0-52①：owner 浮层（下拉/菜单/弹窗）重绘于画布子视口之上
+        m_ui->RenderOverlays();
         // P0-104 诊断（真实流程）：打开工程成功后逐帧区域哈希（左上 400×600——"文件"菜单区 ✗）
         // 供引擎按帧序列分析闪烁模式（用户正常操作即可，无需特殊动作）
         if (m_frameCaptureLeft > 0 && m_ui) {
@@ -1976,6 +2055,14 @@ int App::run(int autoSeconds) {
 
         if (frame == 0) {
             std::printf("[App] skeleton running (1920x1080)\n");
+        }
+        if (m_startupBringFrontPending && frame >= 30) {
+            // Launcher 在 ready 后退出；延迟约半秒再抢前台，避免焦点退回旧应用。
+            // Launcher 退出后只抢一次前台；不能永久置顶（会盖住其他应用）。
+            m_ui->SetWindowAlwaysOnTop(false);
+            if (!m_ui->SetWindowForeground())
+                std::printf("[App] startup foreground failed\n");
+            m_startupBringFrontPending = false;
         }
         frame++;
     }

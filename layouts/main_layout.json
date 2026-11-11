@@ -418,14 +418,14 @@
                                                         "x": 8,
                                                         "y": 6,
                                                         "w": 224,
-                                                        "h": 26
+                                                        "h": 44
                                                     },
                                                     "anchor": "top-stretch",
                                                     "anchorOffset": { "left": 8, "right": 8, "top": 6 },
                                                     "placeholder": "搜索控件…",
                                                     "font": {
                                                         "name": "HarmonyOS_Sans_SC_Regular",
-                                                        "size": 14
+                                                        "size": 18
                                                     }
                                                 },
                                                 {
@@ -438,7 +438,7 @@
                                                     "h": 700
                                                 },
                                                 "anchor": "fill",
-                                                    "anchorOffset": { "top": 40 },
+                                                    "anchorOffset": { "top": 56 },
                                                 "defaultExpand": true,
                                                 "items": [
                                                     {
@@ -1855,7 +1855,7 @@
                                                                 "flow-weight": 1,
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 },
                                                                 "items": [
                                                                     {
@@ -1933,7 +1933,7 @@
                                                             "x": 0,
                                                             "y": 0,
                                                             "w": 464,
-                                                            "h": 32
+                                                            "h": 48
                                                         },
                                                         "layout": {
                                                             "type": "h-flow",
@@ -1947,19 +1947,35 @@
                                                                     "x": 0,
                                                                     "y": 0,
                                                                     "w": 0,
-                                                                    "h": 32
+                                                                    "h": 48
                                                                 },
                                                                 "flow-weight": 1,
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 },
                                                                 "placeholder": "handler 名"
                                                             }
                                                         ]
                                                     },
                                                     {
+                                                        "type": "tree-view",
+                                                        "id": "evMenuTree",
+                                                        "rect": {
+                                                            "x": 0,
+                                                            "y": 0,
+                                                            "w": 464,
+                                                            "h": 320
+                                                        },
+                                                        "font": {
+                                                            "name": "HarmonyOS_Sans_SC_Regular",
+                                                            "size": 18
+                                                        },
+                                                        "visible": false
+                                                    },
+                                                    {
                                                         "type": "panel",
+                                                        "id": "ev_actions",
                                                         "rect": {
                                                             "x": 0,
                                                             "y": 0,
@@ -1983,7 +1999,7 @@
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 }
                                                             },
                                                             {
@@ -1998,8 +2014,40 @@
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 }
+                                                            },
+                                                            {
+                                                                "type": "button",
+                                                                "id": "ev_code",
+                                                                "caption": "代码",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 72,
+                                                                    "h": 32
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 18
+                                                                },
+                                                                "visible": false
+                                                            },
+                                                            {
+                                                                "type": "button",
+                                                                "id": "ev_del",
+                                                                "caption": "删除",
+                                                                "rect": {
+                                                                    "x": 0,
+                                                                    "y": 0,
+                                                                    "w": 72,
+                                                                    "h": 32
+                                                                },
+                                                                "font": {
+                                                                    "name": "HarmonyOS_Sans_SC_Regular",
+                                                                    "size": 18
+                                                                },
+                                                                "visible": false
                                                             }
                                                         ]
                                                     },
@@ -2015,7 +2063,7 @@
                                                         },
                                                         "font": {
                                                             "name": "HarmonyOS_Sans_SC_Regular",
-                                                            "size": 16
+                                                            "size": 18
                                                         },
                                                         "colors": {
                                                             "text": {
@@ -2069,7 +2117,7 @@
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 }
                                                             },
                                                             {
@@ -2083,7 +2131,7 @@
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 }
                                                             },
                                                             {
@@ -2097,7 +2145,7 @@
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 }
                                                             },
                                                             {
@@ -2111,7 +2159,7 @@
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 }
                                                             }
                                                         ]
@@ -2142,7 +2190,7 @@
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 },
                                                                 "colors": {
                                                                     "text": {
@@ -2162,7 +2210,7 @@
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 },
                                                                 "colors": {
                                                                     "text": {
@@ -2182,7 +2230,7 @@
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 },
                                                                 "colors": {
                                                                     "text": {
@@ -2202,7 +2250,7 @@
                                                                 },
                                                                 "font": {
                                                                     "name": "HarmonyOS_Sans_SC_Regular",
-                                                                    "size": 16
+                                                                    "size": 18
                                                                 }
                                                             }
                                                         ]
@@ -2219,7 +2267,7 @@
                                                         },
                                                         "font": {
                                                             "name": "HarmonyOS_Sans_SC_Regular",
-                                                            "size": 16
+                                                            "size": 18
                                                         },
                                                         "colors": {
                                                             "text": {
@@ -2290,6 +2338,42 @@
                 "type": "v-flow",
                 "gap": 0
             }
+        }
+    ],
+    "dialogs": [
+        {
+            "type": "popup",
+            "id": "aboutPopup",
+            "rect": {
+                "x": 0,
+                "y": 0,
+                "w": 520,
+                "h": 96
+            },
+            "centered": true,
+            "visible": false,
+            "close-on-click-outside": true,
+            "close-on-esc": true,
+            "children": [
+                {
+                    "type": "label",
+                    "id": "aboutLabel",
+                    "caption": "",
+                    "rect": {
+                        "x": 20,
+                        "y": 20,
+                        "w": 480,
+                        "h": 56
+                    },
+                    "font-size": 16,
+                    "alignment": "center",
+                    "colors": {
+                        "text": {
+                            "normal": "#E8E8E8FF"
+                        }
+                    }
+                }
+            ]
         }
     ]
 }

@@ -42,3 +42,12 @@
 2. 审核通过后实现**集成测试**（应用冒烟 + auto 参数）。
 3. 最后做**兼容性测试**（导出 JSON 在 UICornerstone 验证）。
 4. 新控件需求（如需要 UICornerstone 侧能力）在 UICornerstone 仓库侧按其三层次规范（标准 C++ / fromsource 集成 / C ABI）补充测试。
+
+## 进程清理（Launcher / Designer）
+
+自动化与手工验证都可能启动 `CornerstoneLauncher.exe` 和 `CornerstoneDesigner.exe`。测试结束必须确认进程退出：
+
+- 自动模式优先使用 `auto=1/2/3`，不要启动无 `auto=` 的常驻实例；
+- Launcher 验证使用 `CornerstoneLauncher.exe auto=1`，等待 ready 与子进程退出；
+- 每轮验证前后可运行 `build_scripts\cleanup_processes.bat`，强制清理残留；
+- 出现“窗口关闭但进程仍在”时，先查 Launcher 正常 ready 路径（Designer 按设计继续运行），再查测试是否漏掉 `auto`/终止。

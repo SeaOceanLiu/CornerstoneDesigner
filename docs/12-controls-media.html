@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>17 图片、动画与绘制 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="12-controls-media.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>17 图片、动画与绘制</h1>
+
+<p>这类控件依赖资源文件或绘制参数，属性面板之外还要检查资源提供者和路径。正式交付前建议在预览中确认资源能正常加载，再导出工程。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/10-media-preview.png" alt="Image、Animation 和 Shape 示例">
+  <div class="cap">图 17-1 从左到右：Image 位图、Animation 动画帧、Shape 圆形</div>
+</div>
+
+<h2>17.1 图片 Image</h2>
+
+<h3>17.1.1 准备资源</h3>
+
+<ol class="steps">
+  <li>把图片所在目录加入资源提供者，见 <a href="12-resources.html">资源管理</a>。</li>
+  <li>假设提供者名称为 <code>demo</code>，图片文件为 <code>images/logo.png</code>。</li>
+  <li>图片路径填写为 <code>provider:demo/images/logo.png</code>。</li>
+</ol>
+
+<p>属性面板中的图片路径示例：</p>
+
+<pre><code>provider:demo/images/logo.png</code></pre>
+
+<h3>17.1.2 常用属性</h3>
+
+<table>
+<tr><th>项目</th><th>说明</th></tr>
+<tr><td>图片路径</td><td>优先使用 provider 相对路径；也可以使用运行时资源 ID（如果已配置）</td></tr>
+<tr><td>缩放方式</td><td><code>stretch</code>（默认拉伸）、<code>fit-center</code>（等比完整显示并居中）、<code>center-crop</code>（等比裁切填满）、<code>none</code>（原始尺寸）、<code>tile</code>（平铺）</td></tr>
+<tr><td>透明/背景</td><td>PNG 透明通道是否保留；是否需要底色</td></tr>
+<tr><td>源矩形</td><td>只显示图片的一部分时设置 source rect（如支持）</td></tr>
+</table>
+
+<h3>17.1.3 常见问题</h3>
+
+<table>
+<tr><th>现象</th><th>检查</th></tr>
+<tr><td>图片空白</td><td>提供者名称、相对路径、大小写、文件是否随导出包复制</td></tr>
+<tr><td>图片变形</td><td>控件宽高比、缩放方式；不要同时依赖拉伸和固定尺寸</td></tr>
+<tr><td>图片被裁切</td><td>父 Panel 的 clip-children、控件 rect 或源矩形</td></tr>
+<tr><td>导出后路径失效</td><td>导出目录的资源结构；绝对路径只在当前机器有效</td></tr>
+</table>
+
+<h2>17.2 动画 Animation</h2>
+
+<h3>17.2.1 准备 LuotiAni 资源</h3>
+
+<p>Animation 读取的是 LuotiAni 的 JSONC 描述文件，不是单张图片。JSONC 内部还会引用帧图片等资源，因此整个动画目录都需要能被资源提供者解析。</p>
+
+<pre><code>provider:demo/animations/button.jsonc</code></pre>
+
+<ol class="steps">
+  <li>把动画目录加入资源提供者（例如 <code>demo</code>）。</li>
+  <li>放置 Animation，在动画路径属性中填写 JSONC 路径。</li>
+  <li>设置是否自动播放、是否循环；需要外部控制时保持 playing 关闭。</li>
+  <li>在预览中观察帧变化和控件尺寸；导出后检查动画资源是否随包复制。</li>
+</ol>
+
+<h3>17.2.2 常用属性</h3>
+
+<table>
+<tr><th>项目</th><th>说明</th></tr>
+<tr><td>动画路径</td><td>JSONC 文件路径；相对路径基于资源提供者</td></tr>
+<tr><td>playing</td><td>是否播放/暂停；运行时可通过代码切换</td></tr>
+<tr><td>loop</td><td>播放到最后一帧后是否循环</td></tr>
+<tr><td>frame / total-frames</td><td>当前帧和总帧数，通常用于调试或进度显示</td></tr>
+<tr><td>尺寸</td><td>空路径时可能使用 JSONC overview 的画布尺寸；建议显式设置控件 rect</td></tr>
+</table>
+
+<div class="warn">路径指向的是 JSONC 描述文件，不是图片文件本身。若动画只显示第一帧或空白，先检查 JSONC 中的 src 图片路径是否能从同一资源提供者解析。</div>
+
+<h2>17.3 图形 Shape</h2>
+
+<h3>17.3.1 形状类型</h3>
+
+<table>
+<tr><th>类型</th><th>用途</th></tr>
+<tr><td><code>rect</code></td><td>普通矩形边框</td></tr>
+<tr><td><code>filled-rect</code></td><td>填充矩形</td></tr>
+<tr><td><code>round-rect</code></td><td>圆角矩形；半径配合属性设置</td></tr>
+<tr><td><code>circle</code> / <code>ellipse</code></td><td>圆/椭圆，适合图标底、状态点</td></tr>
+<tr><td><code>polyline</code> / <code>polygon</code></td><td>折线/多边形；需要点集</td></tr>
+</table>
+
+<h3>17.3.2 颜色与点集</h3>
+
+<p>Shape 的填充、描边和线宽通过属性面板设置。多边形/折线的点集一行一个点，坐标相对 Shape 控件左上角：</p>
+
+<pre><code>0,80
+80,0
+160,80</code></pre>
+
+<p>上面的点集表示一个三角形：左下 → 顶部中间 → 右下。点集只对 polyline/polygon 有意义，矩形/圆形不需要手写点集。</p>
+
+<ol class="steps">
+  <li>放置 Shape，选择形状类型。</li>
+  <li>设置填充色、描边色和线宽；需要透明填充时把填充 alpha 设为 0。</li>
+  <li>polyline/polygon 在点集行填写坐标，每行 <code>x,y</code>。</li>
+  <li>在预览中检查形状边界和尺寸；复杂图形建议改用 SVG/图片资源。</li>
+</ol>
+
+<h3>17.3.3 事件与使用建议</h3>
+
+<ul>
+  <li>Shape 常作为装饰或命中区域；需要点击时确认该形状是否参与普通命中。</li>
+  <li>用圆角矩形做卡片底时，把圆角半径和父容器内边距一起考虑。</li>
+  <li>大量点集或复杂图形优先使用图片/SVG，避免在 Designer 中维护长点集。</li>
+</ul>
+
+<h2>17.4 资源提供者与导出</h2>
+
+<ul>
+  <li>资源提供者只保存“名称 → 目录”的映射，不会自动把文件复制到工程目录。</li>
+  <li>资源引用使用 <code>provider:名称/路径</code>，名称和路径区分大小写。</li>
+  <li>导出工程时检查生成目录中的资源结构和路径；缺失资源通常表现为空白或回退图形。</li>
+  <li>修改资源目录后，重新打开预览并检查所有引用该资源的控件。</li>
+</ul>
+
+<h2>17.5 媒体控件自检</h2>
+
+<ol class="steps">
+  <li>图片/动画路径是否使用 provider 相对路径。</li>
+  <li>控件尺寸是否与资源宽高比匹配，是否被父容器裁切。</li>
+  <li>动画是否 playing、loop 设置正确，帧是否正常显示。</li>
+  <li>Shape 的颜色、线宽和点集是否符合预期。</li>
+  <li>预览通过后再导出，并在导出目录中再运行一次。</li>
+</ol>
+
+<div class="chapter-nav">
+  <a href="12-controls-menu.html">← 上一章：16 菜单、状态栏与右键菜单</a>
+  <a href="11-preview.html">下一章：18 预览 →</a>
+</div>
+
+</div>
+</body>
+</html>

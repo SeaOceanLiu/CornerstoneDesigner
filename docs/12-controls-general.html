@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>12 控件通用操作 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="12-controls-general.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>12 控件通用操作</h1>
+
+<p>工具箱中的控件放置到画布后，使用流程基本一致：选中控件、在属性面板填写属性、在事件面板绑定事件、在预览或导出结果中验证。本章先讲通用操作，后续章节再按控件类型说明具体字段和使用方式。</p>
+
+<h2>12.1 从放置到运行</h2>
+
+<ol class="steps">
+  <li>在工具箱中双击或拖拽控件，按 <a href="06-toolbox.html">工具箱与放置</a> 的规则放到画布或容器中。</li>
+  <li>在画布或控件树中选中控件；右侧属性面板显示该控件可编辑的字段。</li>
+  <li>填写控件 ID、位置尺寸、文本、颜色和控件专有属性。</li>
+  <li>切换到“事件”页签，按 <a href="10-events.html">事件面板</a> 的方法绑定 handler。</li>
+  <li>按 <span class="kbd">F5</span> 或画布工具栏“预览”检查运行时效果。</li>
+  <li>最后保存工程，并按需要导出 JSON 或 C/C++ 工程。</li>
+</ol>
+
+<div class="tip">控件 ID 是代码和事件绑定引用的名字。建议在开始绑定事件前先改成有意义的 ID，例如 <code>saveButton</code>，避免后续重命名引发引用同步。</div>
+
+<h2>12.2 通用属性</h2>
+
+<table>
+<tr><th>字段</th><th>用途</th><th>注意</th></tr>
+<tr><td>控件 ID</td><td>代码、事件和父子关系引用</td><td>工程内唯一；不要使用空白或 C/C++ 关键字</td></tr>
+<tr><td>X / Y / 宽 / 高</td><td>相对父容器的位置和尺寸</td><td>容器子控件的坐标相对容器内容区</td></tr>
+<tr><td>锚点</td><td>窗口或父容器变化时的定位方式</td><td>需要跟随拉伸时优先用锚点，不写死坐标</td></tr>
+<tr><td>可见 / 启用</td><td>控制是否显示、是否响应交互</td><td>隐藏控件通常也不参与命中</td></tr>
+<tr><td>文本 / 内容</td><td>Label、Button、EditBox 等的主文本</td><td>具体字段随控件类型变化</td></tr>
+<tr><td>颜色 / 字体</td><td>背景、文字、边框和状态色</td><td>项目主题也可能覆盖未显式设置的通道</td></tr>
+<tr><td>控件专有属性</td><td>items、columns、rows、tabs、menus 等</td><td>复杂字段通常提供行式编辑，也可用原始 JSON</td></tr>
+</table>
+
+<p>属性面板会根据控件类型和 schema 显示动态字段；未在面板中出现的属性仍会保留在工程 JSON 中。字段含义的完整列表见 <a href="appendix-b-properties.html">附录 B</a>。</p>
+
+<h2>12.3 容器、父子关系与层级</h2>
+
+<ul>
+  <li>控件落在 Panel、WinFrame 客户端区或 TabControl 当前页时，会成为该容器的子控件。</li>
+  <li>控件树中越靠下的同级节点越靠前绘制；层级通过控件树右键菜单调整。</li>
+  <li>移动控件到另一个容器后，坐标语义改为相对新父容器。</li>
+  <li>容器属性会参与布局；删除父容器会连同子树一起删除。</li>
+</ul>
+
+<p>容器专有操作见 <a href="12-controls-container.html">容器与布局控件</a>。</p>
+
+<h2>12.4 事件绑定</h2>
+
+<ul>
+  <li>事件名和参数由控件类型决定；在事件页签中选择实际存在的事件。</li>
+  <li>MenuBar、StatusBar、ContextMenu 的条目事件是分级编辑的，需要先在条目上选择事件，再填写 handler。</li>
+  <li>同一个 handler 可以被多个控件共享；但参数含义可能不同，需在代码中判断来源。</li>
+  <li>导出 C/C++ 工程时，事件绑定会生成函数骨架；只导出 JSON 时只保留事件字段。</li>
+</ul>
+
+<p>具体操作见 <a href="10-events.html">事件面板</a>；各控件常用事件见后续控件章节和 <a href="appendix-c-events.html">附录 C</a>。</p>
+
+<h2>12.5 三种编辑方式</h2>
+
+<table>
+<tr><th>方式</th><th>适合</th><th>注意</th></tr>
+<tr><td>画布 + 属性面板</td><td>单个控件的常规属性</td><td>修改立即生效，并进入撤销栈</td></tr>
+<tr><td>行式结构化编辑</td><td>items、menus、columns、rows、tabs 等列表</td><td>按字段提示的格式一行一项；空行通常忽略</td></tr>
+<tr><td>原始 JSON</td><td>批量数据、面板尚未覆盖的字段</td><td>应用前确认控件 ID 和父节点，错误可能使子树丢失</td></tr>
+</table>
+
+<h2>12.6 控件目录</h2>
+
+<table>
+<tr><th>类别</th><th>包含控件</th><th>详细说明</th></tr>
+<tr><td>基础与输入</td><td>Button、Label、CheckBox、EditBox、TextArea、NumericUpDown、ColorPicker、ProgressBar、Slider、ScrollBar</td><td><a href="12-controls-basic.html">13 基础与输入控件</a></td></tr>
+<tr><td>容器与布局</td><td>Panel、WinFrame、Splitter、TabControl</td><td><a href="12-controls-container.html">14 容器与布局控件</a></td></tr>
+<tr><td>列表、树与选择</td><td>ComboBox、ListView、TreeView</td><td><a href="12-controls-list.html">15 列表、树与选择控件</a></td></tr>
+<tr><td>菜单、状态栏与右键菜单/浮层</td><td>MenuBar、StatusBar、ContextMenu、Dialog、Popup、ConfirmPopup</td><td><a href="12-controls-menu.html">16 菜单、状态栏与右键菜单</a></td></tr>
+<tr><td>图片、动画与绘制</td><td>Image、Animation、Shape</td><td><a href="12-controls-media.html">17 图片、动画与绘制</a></td></tr>
+</table>
+
+<h2>12.7 使用后的自检</h2>
+
+<ol class="steps">
+  <li>在控件树里确认控件位于预期的父容器，而不是画布根或错误的面板。</li>
+  <li>确认控件 ID 唯一，事件绑定列表中没有指向旧 ID 的残留。</li>
+  <li>用预览检查文字、资源和交互；不要只依赖设计画布。</li>
+  <li>导出后检查生成工程中的控件 ID、事件名和资源路径。</li>
+</ol>
+
+<div class="chapter-nav">
+  <a href="10-events.html">← 上一章：11 事件面板</a>
+  <a href="12-controls-basic.html">下一章：13 基础与输入控件 →</a>
+</div>
+
+</div>
+</body>
+</html>

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>29 读写控件数据 - CornerstoneDesigner 用户手册</title>
+<title>35 读写控件数据 - CornerstoneDesigner 用户手册</title>
 <link rel="stylesheet" href="css/style.css">
 <script id="nav-data" src="assets/nav.js" data-current="29-read-write-controls.html"></script>
 </head>
@@ -12,9 +12,9 @@
 <div id="sidebar"></div>
 <div id="content">
 
-<h1>29 读写控件数据</h1>
+<h1>35 读写控件数据</h1>
 
-<h2>29.1 读取控件数据</h2>
+<h2>35.1 读取控件数据</h2>
 
 <h3>C++ Binding</h3>
 
@@ -89,7 +89,7 @@ printf("id=%s type=%s\n", UICornerstone_GetControlId(inst, saveBtn), type);</cod
 
 <p>如果需要读取完整字符串而缓冲区可能不足，先传 <code>out=NULL</code> 查询长度，再按 <code>outLen</code> 分配并读取。</p>
 
-<h2>29.2 设置控件数据</h2>
+<h2>35.2 设置控件数据</h2>
 
 <h3>C++ Binding</h3>
 
@@ -138,7 +138,7 @@ UICornerstone_SetRect(inst, saveBtn, 24, 16, 160, 40);
 UICornerstone_SetContentPadding(inst, saveBtn, 8, 4, 8, 4);
 UICornerstone_SetString(inst, saveBtn, "classes", "primary toolbar");</code></pre>
 
-<h2>29.3 列表、树和页签的专用接口</h2>
+<h2>35.3 列表、树和页签的专用接口</h2>
 
 <h3>C++ Binding</h3>
 
@@ -177,7 +177,7 @@ UICornerstone_SetInt(inst, tabCtrl, "currentIndex", 1);</code></pre>
 
 <p>专用接口的函数名与 C++ Binding 基本一一对应：<code>UICornerstone_ListView...</code>、<code>UICornerstone_TreeView...</code>、<code>UICornerstone_ComboBox...</code>。完整签名见 <code>UICornerstoneAPI.h</code>。</p>
 
-<h2>29.4 常用属性名</h2>
+<h2>35.4 常用属性名</h2>
 
 <table>
 <tr><th>用途</th><th>键</th></tr>
@@ -195,8 +195,8 @@ UICornerstone_SetInt(inst, tabCtrl, "currentIndex", 1);</code></pre>
 <div class="note">属性键的完整集合见 <code>PropertyNames.h</code>；设计器属性面板显示的字段与这些键对应。不同引擎版本可能增加属性，优先使用常量而不是手写字符串。</div>
 
 <div class="chapter-nav">
-  <a href="28-find-control.html">← 上一章：28 在程序代码中找到控件</a>
-  <a href="30-json-actions.html">下一章：30 事件回调方式 1 →</a>
+  <a href="28-find-control.html">← 上一章：34 在程序代码中找到控件</a>
+  <a href="30-json-actions.html">下一章：36 事件回调方式 1 →</a>
 </div>
 
 </div>

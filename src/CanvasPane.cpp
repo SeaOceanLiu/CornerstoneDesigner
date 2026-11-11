@@ -424,6 +424,14 @@ void CanvasPane::UpdateViewport(float deltaSeconds) {
         if (p->ctl.GetEnum(PropertyNames::kState) != kStatePreviewKeys[mode])
             p->ctl.SetEnum(PropertyNames::kState, kStatePreviewKeys[mode]);
     }
+    // 设计器编辑态常显：ContextMenu/Popup/Dialog/WinFrame 的引擎内部关闭逻辑
+    // 可能把 visible 置 false；每帧恢复（不改变模型/导出）。
+    for (auto& it : m_items) {
+        const std::string& tp = it.model->props.type;
+        if ((tp == "context-menu" || tp == "popup" || tp == "dialog" || tp == "win-frame") &&
+            it.ctl.IsValid() && !it.ctl.GetBool(PropertyNames::kVisible))
+            it.ctl.SetBool(PropertyNames::kVisible, 1);
+    }
     // 控件 id 行：回车或焦点转移后提交（取消空闲定时弹确认 ✗）
     if (m_idRenamePending && m_idRenameEdit.IsValid() && m_ui &&
         !m_ui->DebugIsControlFocused(m_ui->Handle(), m_idRenameEdit.Handle()))
@@ -2105,6 +2113,108 @@ void CanvasPane::writeStringPropTo(const std::string& id, const std::string& pro
     commitUndo("t:" + prop);   // F2.5：文本编辑（同键 0.7s 合并——多选批量=一步）
 }
 
+// 前向声明（定义在后面的结构化/事件区）
+static std::vector<std::string> splitNonEmptyLines(const std::string& text);
+static std::vector<std::string> splitUnescaped(const std::string& s, char sep);
+static std::string fieldUnescape(const std::string& s, const char* special);
+static bool parseFlatItemPath(const std::string& path, const char* prefix, int& idx);
+static bool isFlatItemType(const std::string& type);
+
+// 结构化：context-menu items 文本（一行一项：caption@shortcut；-- separator）+ 事件保留。
+void CanvasPane::applyContextMenuItemsText(ControlModel& m, const std::string& text) {
+    const std::vector<std::string> lines = splitNonEmptyLines(text);
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& ln : lines) {
+        if (ln == "--") { arr.push_back({ { "type", "separator" } }); continue; }
+        const auto f = splitUnescaped(ln, '@');
+        const std::string caption = fieldUnescape(f.empty() ? std::string() : f[0], "@");
+        if (caption.empty()) continue;
+        nlohmann::json it = { { "caption", caption } };
+        if (f.size() > 1 && !f[1].empty()) it["shortcut"] = fieldUnescape(f[1], "@");
+        arr.push_back(std::move(it));
+    }
+    const nlohmann::json oldItems = m.props.extended.value("items", nlohmann::json::array());
+    if (oldItems.is_array()) {
+        for (size_t i = 0; i < arr.size() && i < oldItems.size(); ++i) {
+            if (arr[i].is_object() && oldItems[i].is_object() &&
+                oldItems[i].contains("events") && oldItems[i]["events"].is_object())
+                arr[i]["events"] = oldItems[i]["events"];
+        }
+    }
+    m.props.extended["items"] = std::move(arr);
+    syncContextMenuItems(m, oldItems);
+    commitUndo("struct:" + m.props.id);
+}
+
+// ContextMenu 无 remove-item C ABI：items 变化时重建控件，保留 id/rect/样式/事件。
+void CanvasPane::syncContextMenuItems(ControlModel& m, const nlohmann::json& oldItems) {
+    (void)oldItems;
+    PlacedControl* pc = placedById(m.props.id);
+    if (!pc || !m_viewport || m_ctxMenuSyncing) return;
+    m_ctxMenuSyncing = true;
+    if (pc->ctl.IsValid()) pc->ctl.Destroy();
+    const auto r = m.props.rect;
+    pc->ctl = m_viewport->CreateContextMenu(r.x, r.y, r.w, r.h);
+    if (pc->ctl.IsValid()) {
+        Control parent;
+        float ox = 0, oy = 0;
+        if (!pc->parentId.empty() && engineParentOf(pc->parentId, parent, ox, oy)) {
+            parent.AddChild(pc->ctl);
+            pc->ctl.SetRect(r.x, r.y, r.w, r.h);
+        } else {
+            m_viewport->Root().AddChild(pc->ctl);
+        }
+        m_viewport->SetControlId(pc->ctl, m.props.id);
+        pc->ctl.SetBool("close-on-click-outside", 0);
+        pc->ctl.SetBool("close-on-esc", 0);
+        pc->ctl.SetBool(PropertyNames::kVisible, 1);
+        // 应用除 items 外的属性；m_ctxMenuSyncing 阻止递归重建。
+        applyModelToEngine(*pc);
+        const auto& items = m.props.extended.value("items", nlohmann::json::array());
+        if (items.is_array()) {
+            for (size_t i = 0; i < items.size(); ++i) {
+                if (!items[i].is_object()) continue;
+                if (items[i].value("type", "") == "separator") {
+                    m_viewport->ContextMenuAddSeparator(pc->ctl);
+                    continue;
+                }
+                const std::string caption = items[i].value("caption", "");
+                if (caption.empty()) continue;
+                Control mi = m_viewport->ContextMenuAddItemEx(
+                    pc->ctl, caption, items[i].value("shortcut", ""));
+                if (!mi.IsValid()) continue;
+                if (items[i].contains("events") && items[i]["events"].is_object()) {
+                    const std::string h = items[i]["events"].value("onClick", std::string());
+                    if (!h.empty()) {
+                        const std::string cid = m.props.id;
+                        const std::string path = "ctx:" + std::to_string(i);
+                        mi.SetCallback(PropertyNames::kEventClick, [cid, path, h](const Event&) {
+                            std::printf("[Events] %s %s: %s\n", cid.c_str(), path.c_str(), h.c_str());
+                        });
+                    }
+                }
+            }
+        }
+    }
+    m_ctxMenuSyncing = false;
+    bindContextMenuTarget(m.props.id);
+}
+
+void CanvasPane::bindContextMenuTarget(const std::string& menuId) {
+    PlacedControl* menu = placedById(menuId);
+    if (!menu || !menu->ctl.IsValid()) return;
+    auto it = m_contextMenuTargets.find(menuId);
+    if (it == m_contextMenuTargets.end() || it->second.empty()) return;
+    if (it->second == m_benchId) {
+        Control root = m_viewport ? m_viewport->Root() : Control();
+        if (root.IsValid()) root.SetPtr(PropertyNames::kPropContextMenu, menu->ctl.Handle());
+        return;
+    }
+    PlacedControl* target = placedById(it->second);
+    if (!target || !target->ctl.IsValid()) return;
+    target->ctl.SetPtr(PropertyNames::kPropContextMenu, menu->ctl.Handle());
+}
+
 static UIColor hexToColor(const std::string& hex);   // 定义见后（拖动恢复段）
 
 // 结构化：行式文本 → 非空行清单（\r 忽略）。
@@ -2289,6 +2399,14 @@ void CanvasPane::applyStatusBarItemsText(ControlModel& m, const std::string& tex
         }
         arr.push_back(std::move(e));
     }
+    // 保留同下标段的 events（文本编辑不改段数时稳定；删除/重排按新下标重建）。
+    if (oldItems.is_array()) {
+        for (size_t i = 0; i < arr.size() && i < oldItems.size(); ++i) {
+            if (!arr[i].is_object() || !oldItems[i].is_object()) continue;
+            if (oldItems[i].contains("events") && oldItems[i]["events"].is_object())
+                arr[i]["events"] = oldItems[i]["events"];
+        }
+    }
     m.props.extended["items"] = std::move(arr);
     syncStatusBarItems(m, oldItems);
     commitUndo("struct:" + m.props.id);   // F2.5：status-bar items 编辑（0.7s 合并）   // 按旧 id 移除（缩短列表不留残段）+ 重建
@@ -2327,6 +2445,19 @@ void CanvasPane::syncStatusBarItems(ControlModel& m, const nlohmann::json& oldIt
         if (!hbg.empty())
             m_viewport->StatusBarSetItemHoverBackgroundColor(pc->ctl, id, hexToColor(hbg));
     }
+    // 设计期 item 点击打点：StatusBar 只有控件级 status-item-click（int 段索引），
+    // 按当前模型 items 查 action；导出/预览由 LayoutParser events.onClick 接管。
+    const std::string cid = m.props.id;
+    pc->ctl.SetCallback(PropertyNames::kEventStatusItemClick, [this, cid](const Event& e) {
+        const ControlModel* mm = findModel(cid);
+        if (!mm) return;
+        const auto& arr = mm->props.extended.value("items", nlohmann::json::array());
+        const int i = e.GetIntVal();
+        if (!arr.is_array() || i < 0 || i >= (int)arr.size() || !arr[(size_t)i].is_object()) return;
+        const std::string h = arr[(size_t)i].contains("events") && arr[(size_t)i]["events"].is_object()
+            ? arr[(size_t)i]["events"].value("onClick", std::string()) : std::string();
+        if (!h.empty()) std::printf("[Events] %s status:%d: %s\n", cid.c_str(), i, h.c_str());
+    });
 }
 
 static UIColor hexToColor(const std::string& hex);   // 定义见后（拖动恢复段）
@@ -2719,6 +2850,12 @@ void CanvasPane::removePlacedSubtree(const std::string& rootId) {
         m_ghostSig.erase(*rit);
         syncTreeRemove(*rit);
     }
+    for (auto it = m_contextMenuTargets.begin(); it != m_contextMenuTargets.end();) {
+        if (std::find(toRemove.begin(), toRemove.end(), it->first) != toRemove.end() ||
+            std::find(toRemove.begin(), toRemove.end(), it->second) != toRemove.end())
+            it = m_contextMenuTargets.erase(it);
+        else ++it;
+    }
     if (selHit) selectItem("");
     refreshStatusRight();
 }
@@ -3011,13 +3148,95 @@ void CanvasPane::applyMenusText(ControlModel& m, const std::string& text) {
     for (size_t i = 0; i < nodes.size(); ++i)
         if (nodes[i].parent < 0 && nodes[i].menu) menus.push_back(jn[i]);
     const nlohmann::json oldMenus = m.props.extended.value("menus", nlohmann::json::array());
+    // B1/B5：按原始数组下标（separator 也计数）保留旧事件；路径失配只提示，不做 caption 迁移。
+    std::map<std::string, nlohmann::json> oldEvents;
+    std::function<void(const nlohmann::json&, const std::string&)> collectEvents =
+        [&](const nlohmann::json& items, const std::string& base) {
+            if (!items.is_array()) return;
+            for (size_t i = 0; i < items.size(); ++i) {
+                const auto& it = items[i];
+                if (!it.is_object()) continue;
+                const std::string path = base + "/" + std::to_string(i);
+                if (it.contains("events") && it["events"].is_object() && !it["events"].empty())
+                    oldEvents[path] = it["events"];
+                if (it.contains("items")) collectEvents(it["items"], path);
+            }
+        };
+    if (oldMenus.is_array())
+        for (size_t i = 0; i < oldMenus.size(); ++i) {
+            const auto& mn = oldMenus[i];
+            if (mn.is_object() && mn.contains("items"))
+                collectEvents(mn["items"], "menu:" + std::to_string(i));
+        }
+    std::set<std::string> kept;
+    std::function<void(nlohmann::json&, const std::string&)> restoreEvents =
+        [&](nlohmann::json& items, const std::string& base) {
+            if (!items.is_array()) return;
+            for (size_t i = 0; i < items.size(); ++i) {
+                auto& it = items[i];
+                if (!it.is_object()) continue;
+                const std::string path = base + "/" + std::to_string(i);
+                if (it.value("type", "") == "separator") continue;   // separator 不绑定
+                auto e = oldEvents.find(path);
+                if (e != oldEvents.end() && !e->second.empty()) {
+                    it["events"] = e->second;
+                    kept.insert(path);
+                }
+                if (it.contains("items")) restoreEvents(it["items"], path);
+            }
+        };
+    for (size_t i = 0; i < menus.size(); ++i)
+        if (menus[i].is_object() && menus[i].contains("items"))
+            restoreEvents(menus[i]["items"], "menu:" + std::to_string(i));
+    const size_t dropped = oldEvents.size() - kept.size();
     m.props.extended["menus"] = std::move(menus);
     syncMenus(m, oldMenus);
+    if (dropped > 0)
+        setStatusHint(u8"菜单结构变化：有 " + std::to_string(dropped) +
+                      u8" 个事件绑定路径失效（可撤销）");
     commitUndo("struct:" + m.props.id);   // F2.5：menus 编辑（0.7s 合并）
 }
 
 // 结构化：menu-bar menus 模型 → 引擎（按 oldMenus 旧 caption 移除 + 逐菜单重建 panel；
 // 加载/打开路径 oldMenus 传空）。
+void CanvasPane::bindMenuEvents(ControlModel& m, Control panel, const nlohmann::json& items,
+                                const std::string& basePath) {
+    if (!items.is_array() || !m_viewport) return;
+    const std::string cid = m.props.id;
+    for (size_t i = 0; i < items.size(); ++i) {
+        const auto& it = items[i];
+        if (!it.is_object()) continue;
+        const std::string itemPath = basePath + "/" + std::to_string(i);
+        if (it.value("type", "") == "separator") {
+            m_viewport->MenuPanelAddSeparator(panel);
+            continue;
+        }
+        Control mi = m_viewport->CreateMenuItem(it.value("caption", ""), 0);
+        if (!mi.IsValid()) continue;
+        const std::string sc = it.value("shortcut", "");
+        if (!sc.empty()) mi.SetString(PropertyNames::kShortcut, sc);
+        m_viewport->MenuPanelAddItem(panel, mi);
+        // 设计期只 SetCallback 打点，不碰 MenuItem::setOnClick/m_onClick（避免双重触发）。
+        if (it.contains("events") && it["events"].is_object()) {
+            const std::string handler = it["events"].value("onClick", std::string());
+            if (!handler.empty()) {
+                mi.SetCallback(PropertyNames::kEventClick,
+                               [cid, handler, itemPath](const Event&) {
+                                   std::printf("[Events] %s %s: %s\n",
+                                               cid.c_str(), itemPath.c_str(), handler.c_str());
+                               });
+            }
+        }
+        if (it.contains("items") && it["items"].is_array()) {
+            Control sub = m_viewport->CreateMenuPanel(1.0f, 1.0f);
+            if (sub.IsValid()) {
+                bindMenuEvents(m, sub, it["items"], itemPath);
+                m_viewport->MenuItemSetSubMenu(mi, sub);
+            }
+        }
+    }
+}
+
 void CanvasPane::syncMenus(ControlModel& m, const nlohmann::json& oldMenus) {
     PlacedControl* pc = placedById(m.props.id);
     if (!pc || !pc->ctl.IsValid() || !m_viewport) return;
@@ -3029,34 +3248,13 @@ void CanvasPane::syncMenus(ControlModel& m, const nlohmann::json& oldMenus) {
             if (om.is_object()) m_viewport->MenuBarRemoveMenu(pc->ctl, om.value("caption", ""));
     const nlohmann::json menus = m.props.extended.value("menus", nlohmann::json::array());
     if (!menus.is_array()) return;
-    std::function<void(Control, const nlohmann::json&)> fill =
-        [&](Control panel, const nlohmann::json& items) {
-        if (!items.is_array()) return;
-        for (const auto& it : items) {
-            if (!it.is_object()) continue;
-            if (it.value("type", "") == "separator") {
-                m_viewport->MenuPanelAddSeparator(panel);
-                continue;
-            }
-            Control mi = m_viewport->CreateMenuItem(it.value("caption", ""), 0);
-            if (!mi.IsValid()) continue;
-            const std::string sc = it.value("shortcut", "");
-            if (!sc.empty()) mi.SetString(PropertyNames::kShortcut, sc);
-            m_viewport->MenuPanelAddItem(panel, mi);
-            if (it.contains("items") && it["items"].is_array()) {
-                Control sub = m_viewport->CreateMenuPanel(1.0f, 1.0f);
-                if (sub.IsValid()) {
-                    fill(sub, it["items"]);
-                    m_viewport->MenuItemSetSubMenu(mi, sub);
-                }
-            }
-        }
-    };
-    for (const auto& mn : menus) {
+    for (size_t i = 0; i < menus.size(); ++i) {
+        const auto& mn = menus[i];
         if (!mn.is_object()) continue;
         Control panel = m_viewport->CreateMenuPanel(1.0f, 1.0f);
         if (!panel.IsValid()) continue;
-        fill(panel, mn.value("items", nlohmann::json::array()));
+        bindMenuEvents(m, panel, mn.value("items", nlohmann::json::array()),
+                       "menu:" + std::to_string(i));
         // P0-72③ 已交付（引擎 addMenu 自动回放 bar 状态）——原设计器手动回放过渡已删
         m_viewport->MenuBarAddMenu(pc->ctl, mn.value("caption", ""), panel);
         // 每菜单属性在回放之后应用（P0-72①：menus[i].font/shadow-radius——与引擎
@@ -3233,6 +3431,21 @@ static std::string statusBarItemsText(const ControlModel& m) {
 }
 
 // 结构化：字段文本转义（'\' 与 special 字符前加 '\'）——与属性/单元格分隔消歧。
+static std::string contextMenuItemsText(const ControlModel& m) {
+    std::string out;
+    const auto& ex = m.props.extended;
+    if (!ex.contains("items") || !ex["items"].is_array()) return out;
+    for (const auto& it : ex["items"]) {
+        if (!it.is_object()) continue;
+        if (!out.empty()) out += "\n";
+        if (it.value("type", "") == "separator") { out += "--"; continue; }
+        out += fieldEscape(it.value("caption", ""), "@");
+        const std::string sc = it.value("shortcut", "");
+        if (!sc.empty()) out += "@" + fieldEscape(sc, "@");
+    }
+    return out;
+}
+
 static std::string fieldEscape(const std::string& s, const char* special) {
     std::string out;
     out.reserve(s.size() + 2);
@@ -3471,6 +3684,7 @@ static std::string structRowText(const ControlModel& m, const std::string& key) 
     if (m.props.type == "list-view")
         return key == "rows" ? listRowsText(m) : listColumnsText(m);
     if (m.props.type == "status-bar") return statusBarItemsText(m);
+    if (m.props.type == "context-menu") return contextMenuItemsText(m);
     if (m.props.type == "tree-view") return treeItemsText(m);
     if (m.props.type == "shape" && key == "points") return shapePointsText(m);
     if (m.props.type == "menu-bar" && key == "menus") return menusText(m);
@@ -3567,6 +3781,9 @@ void CanvasPane::ShowBenchSettingsDialog() {
             if (!id.empty() && !idOk) {
                 setStatusHint(u8"画布 id 未修改（空白/重复/保留键）：" + id);
             } else if (!id.empty() && id != m_benchId) {
+                const std::string oldBench = m_benchId;
+                for (auto& [menuId, targetId] : m_contextMenuTargets)
+                    if (targetId == oldBench) targetId = id;
                 m_benchId = id;
                 syncTreeRename("@bench", benchTreeNodeLabel());
                 commitUndo("bench-id");   // F2.5：对话框 id 编辑
@@ -3691,6 +3908,9 @@ void CanvasPane::buildBenchRows() {
                         setStatusHint(u8"画布 id 未修改（空白/与控件重复）：" + t);
                         return;
                     }
+                    const std::string oldBench = m_benchId;
+                    for (auto& [menuId, targetId] : m_contextMenuTargets)
+                        if (targetId == oldBench) targetId = t;
                     m_benchId = t;
                     syncTreeRename("@bench", benchTreeNodeLabel());   // 树根节点显示 Bench 控件 id
                     commitUndo("bench-id");   // F2.5：画布 id（编辑完成 0.7s 合并）
@@ -4606,6 +4826,7 @@ void CanvasPane::rebuildDynamicRows() {
         // 模型持有 + 引擎同步；单选——结构化数据不做批量写；一行一项，空行忽略）
         const bool structItems = (key == "items" && (m_schemaType == "combo-box" ||
                                                      m_schemaType == "status-bar" ||
+                                                     m_schemaType == "context-menu" ||
                                                      m_schemaType == "tree-view"));
         const bool structCols  = (key == "columns" && m_schemaType == "list-view");
         const bool structRows  = (key == "rows" && m_schemaType == "list-view");
@@ -4620,8 +4841,9 @@ void CanvasPane::rebuildDynamicRows() {
                                  : structCols ? u8"columns（标题@宽度@背景色@字体色@字号@字体名@阴影色@偏移）"
                                  : structRows ? u8"rows（| 单元格；@ 背景色@字体色@字号@字体名@阴影色@偏移）"
                                  : (m_schemaType == "status-bar" ? u8"items（文本@背景色@字体色@字号@字体名@阴影色@偏移）"
+                                     : (m_schemaType == "context-menu" ? u8"items（caption@shortcut；-- 分隔）"
                                      : (m_schemaType == "tree-view" ? u8"items（> 层级；@ 背景色@字体色@字号@字体名@阴影色@偏移）"
-                                                                     : u8"items（一行一项）")));
+                                                                     : u8"items（一行一项）"))));
             Control ta = takePoolRow("struct:" + key + ":" + m_schemaType, [&] {
                 return m_ui->CreateTextArea(0, 0, rowW, kPropItemsH);
             });
@@ -4647,6 +4869,8 @@ void CanvasPane::rebuildDynamicRows() {
                     else applyListColumnsText(*mm, e.GetTextChanged());
                 } else if (mm->props.type == "status-bar") {
                     applyStatusBarItemsText(*mm, e.GetTextChanged());
+                } else if (mm->props.type == "context-menu") {
+                    applyContextMenuItemsText(*mm, e.GetTextChanged());
                 } else if (mm->props.type == "tree-view") {
                     applyTreeItemsText(*mm, e.GetTextChanged());
                 } else if (mm->props.type == "shape") {
@@ -5422,6 +5646,57 @@ void CanvasPane::rebuildDynamicRows() {
 
     // 行池：本趟未用行隐藏（保留常驻）；复用行统一刷值（读当前选中回填——
     // 新建行的创建期赋值冗余但无害，复用行由此拿到新控件值）
+    if (m_schemaType == "context-menu" && m_selIds.size() == 1) {
+        makeLabel(u8"目标控件 id（右键触发；可下拉或手填）");
+        Control cb = takePoolRow("ctx:target", [&] {
+            return m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
+        });
+        cb.SetRect(kPropInsetX, y, rowW, ctlH);
+        cb.SetBool(PropertyNames::kEditable, true);   // 允许手填 id
+        cb.SetInt(PropertyNames::kFontSize, 16);
+        m_ui->ComboBoxClearItems(cb);   // 行池复用：必须清旧项，否则索引映射错位 ✗
+        std::vector<std::string> targetIds;
+        targetIds.push_back(m_benchId);
+        m_ui->ComboBoxAddItem(cb, u8"画布：" + m_benchId, m_benchId);
+        for (const auto& it : m_items) {
+            if (!it.model || it.model->props.id == m_selectedId) continue;
+            targetIds.push_back(it.model->props.id);
+            m_ui->ComboBoxAddItem(cb, it.model->props.id + u8"  [" + it.model->props.type + u8"]",
+                                  it.model->props.id);
+        }
+        auto it = m_contextMenuTargets.find(m_selectedId);
+        const std::string cur = it == m_contextMenuTargets.end() ? std::string() : it->second;
+        cb.SetString(PropertyNames::kTextContent, cur);
+        auto applyTarget = [this, cb](const std::string& targetIn) {
+            ControlModel* m = findModel(m_selectedId);
+            if (!m || m->props.type != "context-menu") return;
+            const std::string target = targetIn;
+            if (target.empty()) m_contextMenuTargets.erase(m_selectedId);
+            else if (target != m_benchId && !placedById(target)) {
+                setStatusHint(u8"ContextMenu 目标控件不存在：" + target);
+                return;
+            } else m_contextMenuTargets[m_selectedId] = target;
+            bindContextMenuTarget(m_selectedId);
+            commitUndo("ctx-target");
+        };
+        cb.SetCallback(PropertyNames::kEventSelectionChanged,
+                       [this, cb, applyTarget, targetIds](const Event&) {
+            const int idx = cb.GetInt(PropertyNames::kSelectedIndex);
+            const std::string target =
+                (idx >= 0 && idx < (int)targetIds.size()) ? targetIds[(size_t)idx]
+                                                         : cb.GetString(PropertyNames::kTextContent);
+            applyTarget(target);
+        });
+        cb.SetCallback(PropertyNames::kEventTextChanged,
+                       [this, cb, applyTarget](const Event&) {
+            applyTarget(cb.GetString(PropertyNames::kTextContent));
+        });
+        m_dynamicRows.push_back(cb);
+        m_dynamicRowY.push_back(y);
+        y += ctlH + rowGap;
+        ++rows;
+        genKeys += " ctx:target";
+    }
     hideUnusedPoolRows();
     if (!m_rowRefreshers.empty()) {
         m_propSync = true;
@@ -5675,6 +5950,7 @@ void CanvasPane::tickInput() {
         (m_compDlg.IsValid() && m_compDlg.GetBool(PropertyNames::kPopupVisible)) ||
         (m_confirmDlg.IsValid() && m_confirmDlg.GetBool(PropertyNames::kPopupVisible)) ||
         (m_msgDlg.IsValid() && m_msgDlg.GetBool(PropertyNames::kPopupVisible)) ||
+        (m_aboutPopup.IsValid() && m_aboutPopup.GetBool(PropertyNames::kPopupVisible)) ||
         (m_tabDeleteDlg.IsValid() && m_tabDeleteDlg.GetBool(PropertyNames::kPopupVisible)) ||
         (m_benchDlg.IsValid() && m_benchDlg.GetBool(PropertyNames::kPopupVisible))) {
         m_mouseWasDown = down;
@@ -7061,6 +7337,8 @@ void CanvasPane::applyModelToEngine(PlacedControl& pc) {
     if (m.props.type == "combo-box" && ex.contains("items")) syncComboItems(m);
     if (m.props.type == "status-bar" && ex.contains("items"))
         syncStatusBarItems(m, nlohmann::json::array());   // 新建控件无旧段
+    if (m.props.type == "context-menu" && ex.contains("items") && !m_ctxMenuSyncing)
+        syncContextMenuItems(m, nlohmann::json::array()); // 独立右键菜单 items
     if (m.props.type == "list-view" && ex.contains("columns"))
         syncListColumns(m, 0);   // 新建控件无旧列
     if (m.props.type == "tree-view" && ex.contains("items")) syncTreeItems(m);
@@ -7178,7 +7456,13 @@ void CanvasPane::applyModelToEngine(PlacedControl& pc) {
             }
         }
     }
+
+    // 设计器编辑态常显：这些控件运行时/模型可为隐藏，但编辑画布必须可见。
+    if (m.props.type == "context-menu" || m.props.type == "popup" ||
+        m.props.type == "dialog" || m.props.type == "win-frame")
+        ctl.SetBool(PropertyNames::kVisible, 1);
 }
+
 
 // 清空画布（新建/打开/导入前置）：后代先删（控件销毁 + 模型条目移除 + 树节点移除）
 // ── F2.5 撤销/重做（快照式：serializeLayoutJson → 栈；同键 0.7s 合并）──
@@ -7498,6 +7782,11 @@ bool CanvasPane::SaveProject(const std::string& path) {
         meta["handlers"] = std::move(hb);
     }
     if (!m_handlerIncludes.empty()) meta["handlerIncludes"] = m_handlerIncludes;   // F4.6 ✗
+    if (!m_contextMenuTargets.empty()) {
+        nlohmann::json ct = nlohmann::json::object();
+        for (const auto& [mid, tid] : m_contextMenuTargets) ct[mid] = tid;
+        meta["contextMenuTargets"] = std::move(ct);
+    }
     csd["metadata"] = std::move(meta);
     csd["layout"] = serializeLayoutJson();
     std::ofstream f(utf8Path(path), std::ios::binary);   // 宽字符路径
@@ -7547,11 +7836,20 @@ bool CanvasPane::OpenProject(const std::string& path) {
              it != csd["metadata"]["handlers"].end(); ++it)
             if (it.value().is_string())
                 m_handlerBodies[it.key()] = it.value().get<std::string>();
+    m_contextMenuTargets.clear();
+    if (csd.contains("metadata") && csd["metadata"].is_object() &&
+        csd["metadata"].contains("contextMenuTargets") &&
+        csd["metadata"]["contextMenuTargets"].is_object())
+        for (auto it = csd["metadata"]["contextMenuTargets"].begin();
+             it != csd["metadata"]["contextMenuTargets"].end(); ++it)
+            if (it.value().is_string()) m_contextMenuTargets[it.key()] = it.value().get<std::string>();
+    std::printf("[CanvasPane] contextMenuTargets loaded=%zu\n", m_contextMenuTargets.size());
     if (!buildFromLayoutJson(csd["layout"], false)) {
         setStatusHint(u8"打开失败：layout 无效");
         return false;
     }
     if (w > 0 && h > 0) SetCanvasSize(w, h);
+    for (const auto& [mid, tid] : m_contextMenuTargets) bindContextMenuTarget(mid);
     resetUndo();   // F2.5：打开文档 = 新撤销基线
     m_projectPath = path;
     setStatusHint(u8"已打开：" + path);
@@ -7607,8 +7905,12 @@ std::string CanvasPane::buildEventsSourceText() const {
 
 std::string CanvasPane::buildEventListText() const {
     nlohmann::json arr = nlohmann::json::array();
-    for (const auto& b : collectEventBindings())
-        arr.push_back({ { "control", b.controlId }, { "event", b.jsonEvent }, { "handler", b.handler } });
+    for (const auto& b : collectEventBindings()) {
+        nlohmann::json item = { { "control", b.controlId }, { "event", b.jsonEvent },
+                                { "handler", b.handler } };
+        if (!b.menuPath.empty()) item["menuPath"] = b.menuPath;   // 同一 control+event 区分
+        arr.push_back(std::move(item));
+    }
     return arr.dump(2);
 }
 
@@ -7639,6 +7941,19 @@ std::string CanvasPane::buildMainCText() const {
     char wbuf[16], hbuf[16];
     std::snprintf(wbuf, sizeof(wbuf), "%d", (int)m_designW);
     std::snprintf(hbuf, sizeof(hbuf), "%d", (int)m_designH);
+    std::printf("[CanvasPane] contextMenuTargets export=%zu\n", m_contextMenuTargets.size());
+    std::string ctxBind;
+    for (const auto& [mid, tid] : m_contextMenuTargets) {
+        if (mid.empty() || tid.empty()) continue;
+        if (tid == m_benchId) {
+            ctxBind += "    { UIControlHandle t = fnGetRoot(inst); UIControlHandle m = fnFindControl(inst, \"" + cEscape(mid) +
+                       "\"); if (t && m) fnSetPtr(inst, t, \"context-menu\", m); }\n";
+        } else {
+            ctxBind += "    { UIControlHandle t = fnFindControl(inst, \"" + cEscape(tid) +
+                       "\"); UIControlHandle m = fnFindControl(inst, \"" + cEscape(mid) +
+                       "\"); if (t && m) fnSetPtr(inst, t, \"context-menu\", m); }\n";
+        }
+    }
     std::string out = R"MAIN(// main.c — Auto-generated by CornerstoneDesigner
 // 最小宿主：显式加载 UICornerstone.dll（C ABI，无需导入库）→ 创建实例
 // （CreateInstanceFromPlugin 自动加载 UIBackend_sdl3.dll 后端插件）→ 加载 layout.json
@@ -7665,6 +7980,9 @@ static void       (__cdecl *fnPresent)(UIInstance);
 static int        (__cdecl *fnIsQuitRequested)(UIInstance);
 static int        (__cdecl *fnLoadLayout)(UIInstance, const char*);
 static void       (__cdecl *fnRegisterAction)(UIInstance, const char*, UIActionCallback, void*);
+static UIControlHandle (__cdecl *fnFindControl)(UIInstance, const char*);
+static int        (__cdecl *fnSetPtr)(UIInstance, UIControlHandle, const char*, void*);
+static UIControlHandle (__cdecl *fnGetRoot)(UIInstance);
 
 #define RESOLVE(var, name)                                                        \
     do {                                                                          \
@@ -7722,6 +8040,9 @@ int main(int argc, char** argv) {
     RESOLVE(fnIsQuitRequested, "IsQuitRequested");
     RESOLVE(fnLoadLayout, "LoadLayout");
     RESOLVE(fnRegisterAction, "RegisterAction");
+    RESOLVE(fnFindControl, "FindControl");
+    RESOLVE(fnSetPtr, "SetPtr");
+    RESOLVE(fnGetRoot, "GetRoot");
 
     UIInstanceConfig cfg = UI_INSTANCE_CONFIG_DEFAULT;
     cfg.windowTitle  = u8"@T@";
@@ -7741,6 +8062,7 @@ int main(int argc, char** argv) {
         FreeLibrary(core);
         return 1;
     }
+@CTX@
     int frame = 0;
     while (!fnIsQuitRequested(inst) && (maxFrames <= 0 || frame < maxFrames)) {
         fnProcessEvents(inst);
@@ -7765,6 +8087,7 @@ int main(int argc, char** argv) {
     replaceAll(out, "@W@", wbuf);
     replaceAll(out, "@H@", hbuf);
     replaceAll(out, "@REGS@", regs);
+    replaceAll(out, "@CTX@", ctxBind);
     return out;
 }
 
@@ -7938,6 +8261,19 @@ std::string CanvasPane::buildMainCppText() const {
     char wbuf[16], hbuf[16];
     std::snprintf(wbuf, sizeof(wbuf), "%d", (int)m_designW);
     std::snprintf(hbuf, sizeof(hbuf), "%d", (int)m_designH);
+    std::printf("[CanvasPane] contextMenuTargets export=%zu\n", m_contextMenuTargets.size());
+    std::string ctxBind;
+    for (const auto& [mid, tid] : m_contextMenuTargets) {
+        if (mid.empty() || tid.empty()) continue;
+        if (tid == m_benchId) {
+            ctxBind += "    { Control t = ui->Root(); auto m = ui->FindControl(\"" + cEscape(mid) +
+                       "\"); if (t.IsValid() && m.IsValid()) t.SetPtr(\"context-menu\", m.Handle()); }\n";
+        } else {
+            ctxBind += "    if (auto t = ui->FindControl(\"" + cEscape(tid) +
+                       "\"); t.IsValid()) if (auto m = ui->FindControl(\"" + cEscape(mid) +
+                       "\"); m.IsValid()) t.SetPtr(\"context-menu\", m.Handle());\n";
+        }
+    }
     std::string out = R"MAINCPP(// main.cpp — Auto-generated by CornerstoneDesigner（C++ Binding 工程）
 // 宿主：C++ Binding（纯动态加载——核心 DLL + 后端插件 DLL 运行时解析，无需导入库）
 // → Create → 读取 layout.json 经 LoadLayout 提交 → RegisterAction 注册 events.c 回调
@@ -7948,6 +8284,7 @@ std::string CanvasPane::buildMainCppText() const {
 //       build\Release\app.exe --frames 120 （跑 120 帧后自动退出——冒烟/CI）
 #include "UICornerstone.h"
 #include "Control.h"
+#include "Event.h"
 #include "events.h"
 
 #include <windows.h>
@@ -7997,6 +8334,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, u8"加载 layout.json 失败\n");
         return 1;
     }
+@CTX@
     using Clock = std::chrono::steady_clock;
     auto last = Clock::now();
     int frame = 0;
@@ -8027,6 +8365,7 @@ int main(int argc, char** argv) {
     replaceAll(out, "@W@", wbuf);
     replaceAll(out, "@H@", hbuf);
     replaceAll(out, "@REGS@", regs);
+    replaceAll(out, "@CTX@", ctxBind);
     return out;
 }
 
@@ -8231,11 +8570,11 @@ bool CanvasPane::ExportReport(const std::string& dir, int shotW, int shotH) {
            << (int)p.rect.w << ", " << (int)p.rect.h << " | "
            << p.extended.value("caption", std::string()) << " |\n";
     }
-    md << "\n## 事件绑定\n\n| # | 控件 id | 事件 | handler |\n|---|---|---|---|\n";
+    md << "\n## 事件绑定\n\n| # | 控件 id | 菜单路径 | 事件 | handler |\n|---|---|---|---|---|\n";
     idx = 1;
     for (const auto& b : binds)
-        md << "| " << idx++ << " | " << b.controlId << " | " << b.jsonEvent << " | "
-           << b.handler << " |\n";
+        md << "| " << idx++ << " | " << b.controlId << " | " << b.menuPath << " | "
+           << b.jsonEvent << " | " << b.handler << " |\n";
     if (!m_resourceProviders.empty()) {
         md << "\n## 资源\n\n";
         for (const auto& rp : m_resourceProviders)
@@ -8370,6 +8709,9 @@ bool CanvasPane::ImportLayout(const std::string& path) {
     std::printf("[CanvasPane] layout imported: %s\n", path.c_str());
     return true;
 }
+
+// 前向声明：菜单路径解析（定义在事件面板区）
+static const nlohmann::json* menuItemAtPath(const nlohmann::json& menus, const std::string& path);
 
 // auto=2 自测：放置 → 保存 → 打开 → 导出 → 导入 往返校验（dir 为临时目录）
 bool CanvasPane::SelfTestIo(const std::string& dir) {
@@ -8835,6 +9177,131 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
             }
         }
     }
+    // 菜单事件：绑定/更新/唯一性/separator 原始下标/收集路径/撤销
+    {
+        std::string mid;
+        for (auto& it : m_items)
+            if (it.model->props.type == "menu-bar") mid = it.model->props.id;
+        check(!mid.empty(), "menu-events: menu-bar found");
+        selectItem(mid);
+        check(addOrUpdateMenuEventBinding("menu:0/0", "onMenuNewTest"),
+              "menu-events: bind first item");
+        check(menuItemHandlerAt("menu:0/0") == "onMenuNewTest",
+              "menu-events: handler stored");
+        check(addOrUpdateMenuEventBinding("menu:0/0", "onMenuNewTest2"),
+              "menu-events: update same item (old excluded)");
+        check(menuItemHandlerAt("menu:0/0") == "onMenuNewTest2",
+              "menu-events: handler updated");
+        check(!addOrUpdateMenuEventBinding("menu:0/2", "onMenuNewTest2"),
+              "menu-events: duplicate handler across items rejected");
+        check(addOrUpdateMenuEventBinding("menu:0/2", "onMenuExitTest"),
+              "menu-events: bind separator-adjacent item (raw index)");
+        check(menuItemHandlerAt("menu:0/2") == "onMenuExitTest",
+              "menu-events: raw separator index preserved");
+        bool foundPath = false;
+        for (const auto& b : collectEventBindings())
+            if (b.controlId == mid && b.menuPath.find("文件") != std::string::npos &&
+                b.handler == "onMenuExitTest") foundPath = true;
+        check(foundPath, "menu-events: collect EventBinding menuPath");
+        // 菜单文本同结构重建：按路径保留 events（B1/B5）
+        applyMenusText(*findModel(mid),
+                       u8"文件@@@12@harmonyos-sans-sc-regular@r#12\n>新建@Ctrl+N\n>--\n>退出\n帮助\n>关于");
+        check(menuItemHandlerAt("menu:0/0") == "onMenuNewTest2",
+              "menu-events: text rebuild preserves path event");
+        check(buildEventListText().find("\"menuPath\"") != std::string::npos,
+              "menu-events: event_list includes menuPath");
+        check(removeMenuEventBinding("menu:0/2"), "menu-events: remove binding");
+        check(menuItemHandlerAt("menu:0/2").empty(), "menu-events: handler removed");
+        check(Undo(), "menu-events: remove undoable");
+        selectItem(mid);   // 撤销重建画布会清空选中，测试重新选中菜单栏
+        check(menuItemHandlerAt("menu:0/2") == "onMenuExitTest",
+              "menu-events: remove undo restores");
+        // 事件页签菜单树：懒建/节点选择/正常模式恢复
+        SetEventPanelVisible(true);
+        selectItem(mid);
+        check(m_evMenuTree.IsValid(), "menu-events: event tree created");
+        check(m_ui->TreeViewSelectNode(m_evMenuTree, "menu:0/0"),
+              "menu-events: tree item selectable");
+        check(m_evCode.IsValid() && m_evCode.GetBool(PropertyNames::kVisible) &&
+                  m_evCode.GetBool(PropertyNames::kEnabled),
+              "menu-events: code button visible for bound item");
+        check(m_evDel.IsValid() && m_evDel.GetBool(PropertyNames::kVisible) &&
+                  m_evDel.GetBool(PropertyNames::kEnabled),
+              "menu-events: delete button visible for bound item");
+        check(m_evType.IsValid() && m_evType.GetInt(PropertyNames::kSelectedIndex) == 0,
+              "menu-events: onClick shown in event type row");
+        if (m_evHandler.IsValid() && m_evMenuTree.IsValid() && m_evAdd.IsValid()) {
+            const UIRect hr = m_evHandler.GetRect();
+            const UIRect tr = m_evMenuTree.GetRect();
+            Control actions = m_ui->FindControl("ev_actions");
+            const UIRect br = actions.IsValid() ? actions.GetRect() : UIRect{0, 0, 0, 0};
+            check(tr.y >= hr.y + hr.h - 1.0f && br.y >= tr.y + tr.h - 1.0f,
+                  "menu-events: tree between handler and buttons (no overlap)");
+        }
+        SetEventPanelVisible(false);
+        selectItem("");
+    }
+    // StatusBar / ContextMenu item 事件：模型、路径、收集（设计器侧）
+    {
+        std::string sbId, ctxId;
+        for (auto& it : m_items) {
+            if (it.model->props.type == "status-bar") sbId = it.model->props.id;
+            if (it.model->props.type == "context-menu") ctxId = it.model->props.id;
+        }
+        if (!sbId.empty()) {
+            selectItem(sbId);
+            ControlModel* sm = findModel(sbId);
+            auto& items = sm->props.extended["items"];
+            if (items.is_array() && !items.empty()) {
+                const nlohmann::json old = items;
+                items[0]["events"]["onClick"] = "onStatusItemTest";
+                std::printf("[DBG] status item events after set=%s\n", items[0]["events"].dump().c_str());
+                syncStatusBarItems(*sm, old);
+                std::printf("[DBG] status item events after sync=%s\n", items[0]["events"].dump().c_str());
+                check(flatItemHandlerAt("status:0") == "onStatusItemTest",
+                      "statusbar: item onClick stored");
+                bool found = false;
+                for (const auto& b : collectEventBindings())
+                    if (b.controlId == sbId && b.handler == "onStatusItemTest" &&
+                        b.menuPath.find("状态栏") != std::string::npos) found = true;
+                check(found, "statusbar: EventBinding collected");
+            }
+            selectItem("");
+        }
+        if (!ctxId.empty()) {
+            selectItem(ctxId);
+            ControlModel* cm = findModel(ctxId);
+            applyContextMenuItemsText(*cm, u8"复制@Ctrl+C\n--\n删除");
+            auto& items = cm->props.extended["items"];
+            check(items.is_array() && items.size() == 3, "context-menu: items parsed");
+            if (items.is_array() && items.size() >= 3) {
+                const nlohmann::json old = items;
+                items[0]["events"]["onClick"] = "onCtxCopyTest";
+                syncContextMenuItems(*cm, old);
+                check(flatItemHandlerAt("ctx:0") == "onCtxCopyTest",
+                      "context-menu: item onClick stored");
+                bool okCtl = false;
+                for (auto& it : m_items)
+                    if (it.model->props.id == ctxId && it.ctl.IsValid()) okCtl = true;
+                check(okCtl, "context-menu: rebuilt control valid");
+            }
+            selectItem("");
+        }
+        // 事件页 item 树（StatusBar/ContextMenu）
+        SetEventPanelVisible(true);
+        if (!sbId.empty()) {
+            selectItem(sbId);
+            check(m_evMenuTree.IsValid() && m_ui->TreeViewSelectNode(m_evMenuTree, "status:0"),
+                  "statusbar: event tree item selectable");
+        }
+        if (!ctxId.empty()) {
+            selectItem(ctxId);
+            check(m_evMenuTree.IsValid() && m_ui->TreeViewSelectNode(m_evMenuTree, "ctx:0"),
+                  "context-menu: event tree item selectable");
+        }
+        SetEventPanelVisible(false);
+        selectItem("");
+    }
     const int n0 = (int)m_items.size();   // 全部构建完成后（含页 Panel/页内控件）
     const int childCount0 = (int)std::count_if(m_items.begin(), m_items.end(),
         [](const PlacedControl& p) { return !p.parentId.empty(); });
@@ -8926,6 +9393,12 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
     }
     selectItem("");
     check(!m_benchSelected, "bench: cleared by control-selection path");
+    {
+        const nlohmann::json dbg = serializeLayoutJson();
+        for (const auto& c : dbg["controls"])
+            if (c.value("type", "") == "status-bar")
+                std::printf("[DBG] serialized status items=%s\n", c["items"].dump().c_str());
+    }
     check(SaveProject(csd), "SaveProject");
     NewProject();
     std::fflush(stdout);
@@ -8960,6 +9433,17 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
                 evOk = ev.is_object() && ev.value("onClick", "") == "onBtn1_Click";
             }
         check(evOk, "open: event binding preserved");
+    }
+    {
+        bool menuEvOk = false;
+        for (auto& it : m_items)
+            if (it.model->props.type == "menu-bar") {
+                const auto& menus = it.model->props.extended.value("menus", nlohmann::json::object());
+                const nlohmann::json* mi = menuItemAtPath(menus, "menu:0/0");
+                menuEvOk = mi && mi->contains("events") &&
+                    (*mi)["events"].value("onClick", "") == "onMenuNewTest2";
+            }
+        check(menuEvOk, "open: menu event binding preserved");
     }
     check(m_benchBg.r == 0x11 && m_benchBg.g == 0x22 && m_benchBg.b == 0x33 && m_benchBg.a == 0x00,
           "open: bench background (transparent) preserved");
@@ -10381,6 +10865,7 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
             check(!applyComponentDelete("TestComp"), "comp: delete blocked when embedded");
             check(m_components.contains("TestComp"), "comp: embedded component kept");
             if (m_msgDlg.IsValid()) m_msgDlg.SetBool(PropertyNames::kVisible, 0);
+            if (m_aboutPopup.IsValid()) m_aboutPopup.SetBool(PropertyNames::kVisible, 0);
             m_components["ContComp"]["template"] = savedTpl;
         } else {
             check(false, "comp: embed fixture missing");
@@ -10524,6 +11009,7 @@ void CanvasPane::NewProject() {
     }
     clearCanvas();
     m_components = nlohmann::json::object();   // 组件系统：新工程无组件定义 ✗
+    m_contextMenuTargets.clear();
     m_theme = nlohmann::json::object();        // 新工程无全局主题
     syncToolboxComponents();
     m_handlerBodies.clear();   // F4.6：新工程无事件代码 ✗
@@ -10922,6 +11408,8 @@ bool CanvasPane::renameControlId(const std::string& oldId, std::string newId) {
                 if (t.is_object() && t.value("page-id", "") == oldId) t["page-id"] = newId;
     }
     if (m_placeTargetId == oldId) m_placeTargetId = newId;
+    for (auto& [menuId, targetId] : m_contextMenuTargets)
+        if (targetId == oldId) targetId = newId;
     if (m_selectedId == oldId) m_selectedId = newId;
     for (auto& s : m_selIds) if (s == oldId) s = newId;
     // 2) 引擎 id 注册（清旧 + 注册新；子视口实例表——与放置注册同一通道）
@@ -11001,12 +11489,91 @@ bool CanvasPane::isValidIdentifier(const std::string& name) const {
     return true;
 }
 
-bool CanvasPane::isHandlerNameUnique(const std::string& name) const {
+static bool parseMenuPath(const std::string& path, int& menuIndex, std::vector<int>& idx) {
+    if (path.rfind("menu:", 0) != 0) return false;
+    const char* p = path.c_str() + 5;
+    char* e = nullptr;
+    long menu = std::strtol(p, &e, 10);
+    if (e == p || menu < 0) return false;
+    menuIndex = (int)menu;
+    idx.clear();
+    p = e;
+    while (*p) {
+        if (*p != '/') return false;
+        ++p;
+        e = nullptr;
+        long v = std::strtol(p, &e, 10);
+        if (e == p || v < 0) return false;
+        idx.push_back((int)v);
+        p = e;
+    }
+    return true;
+}
+
+static const nlohmann::json* menuItemAtPath(const nlohmann::json& menus, const std::string& path) {
+    int mi = 0;
+    std::vector<int> idx;
+    if (!parseMenuPath(path, mi, idx) || idx.empty()) return nullptr;
+    if (!menus.is_array() || mi < 0 || mi >= (int)menus.size()) return nullptr;
+    const nlohmann::json* cur = &menus[(size_t)mi];
+    if (!cur->is_object() || !cur->contains("items") || !(*cur)["items"].is_array()) return nullptr;
+    for (size_t k = 0; k < idx.size(); ++k) {
+        const auto& items = (*cur)["items"];
+        if (!items.is_array() || idx[k] < 0 || idx[k] >= (int)items.size()) return nullptr;
+        cur = &items[(size_t)idx[k]];
+        if (!cur->is_object()) return nullptr;
+        if (k + 1 < idx.size()) {
+            if (!cur->contains("items") || !(*cur)["items"].is_array()) return nullptr;
+        }
+    }
+    return cur;
+}
+
+bool CanvasPane::isHandlerNameUnique(const std::string& name,
+                                     const std::string& excludeMenuPath) const {
     for (const auto& it : m_items) {
         const auto& ev = it.model->props.extended.value("events", nlohmann::json::object());
-        if (!ev.is_object()) continue;
-        for (auto e = ev.begin(); e != ev.end(); ++e)
-            if (e.value().is_string() && e.value().get<std::string>() == name) return false;
+        if (ev.is_object()) {
+            for (auto e = ev.begin(); e != ev.end(); ++e)
+                if (e.value().is_string() && e.value().get<std::string>() == name) return false;
+        }
+        if (isFlatItemType(it.model->props.type)) {
+            const auto& items = it.model->props.extended.value("items", nlohmann::json::array());
+            if (items.is_array()) {
+                for (int i = 0; i < (int)items.size(); ++i) {
+                    if (!items[(size_t)i].is_object() || items[(size_t)i].value("type", "") == "separator") continue;
+                    const std::string path = std::string(it.model->props.type == "status-bar" ? "status" : "ctx") + ":" + std::to_string(i);
+                    if (path == excludeMenuPath) continue;
+                    if (items[(size_t)i].contains("events") && items[(size_t)i]["events"].is_object()) {
+                        const auto& ie = items[(size_t)i]["events"];
+                        if (ie.value("onClick", std::string()) == name) return false;
+                    }
+                }
+            }
+        }
+        const auto& menus = it.model->props.extended.value("menus", nlohmann::json::object());
+        if (!menus.is_array()) continue;
+        std::function<bool(const nlohmann::json&, const std::string&)> has =
+            [&](const nlohmann::json& items, const std::string& base) -> bool {
+                if (!items.is_array()) return false;
+                for (size_t i = 0; i < items.size(); ++i) {
+                    const auto& item = items[i];
+                    if (!item.is_object()) continue;
+                    const std::string path = base + "/" + std::to_string(i);
+                    if (path != excludeMenuPath && item.contains("events") && item["events"].is_object()) {
+                        const auto& ie = item["events"];
+                        for (auto e = ie.begin(); e != ie.end(); ++e)
+                            if (e.value().is_string() && e.value().get<std::string>() == name) return true;
+                    }
+                    if (item.contains("items") && has(item["items"], path)) return true;
+                }
+                return false;
+            };
+        for (size_t mi = 0; mi < menus.size(); ++mi) {
+            const auto& mn = menus[mi];
+            if (mn.is_object() && mn.contains("items") &&
+                has(mn["items"], "menu:" + std::to_string(mi))) return false;
+        }
     }
     return true;
 }
@@ -11027,6 +11594,52 @@ std::string CanvasPane::suggestHandlerName(const std::string& ctrlId,
         const std::string cand = base + std::to_string(n);
         if (isHandlerNameUnique(cand)) return cand;
     }
+}
+
+std::string CanvasPane::suggestMenuHandlerName(const std::string& ctrlId,
+                                               const std::string& menuPath) const {
+    std::string caption;
+    for (const auto& it : m_items) {
+        if (it.model->props.id != ctrlId) continue;
+        const auto& menus = it.model->props.extended.value("menus", nlohmann::json::object());
+        if (const nlohmann::json* item = menuItemAtPath(menus, menuPath))
+            caption = item->value("caption", std::string());
+        break;
+    }
+    std::string base = "on";
+    bool up = true;
+    for (char c : ctrlId) {
+        if (!std::isalnum((unsigned char)c)) { up = true; continue; }
+        base += up ? (char)std::toupper((unsigned char)c) : c;
+        up = false;
+    }
+    base += "_";
+    std::string cap;
+    for (char c : caption) {
+        if (!std::isalnum((unsigned char)c)) continue;
+        cap += (char)std::tolower((unsigned char)c);
+    }
+    if (cap.empty()) cap = "item";
+    if (!cap.empty()) cap[0] = (char)std::toupper((unsigned char)cap[0]);
+    base += cap + "_Click";
+    if (isHandlerNameUnique(base, menuPath)) return base;
+    for (int n = 2;; ++n) {
+        const std::string cand = base + std::to_string(n);
+        if (isHandlerNameUnique(cand, menuPath)) return cand;
+    }
+}
+
+std::string CanvasPane::menuItemHandlerAt(const std::string& path) const {
+    for (const auto& it : m_items) {
+        if (it.model->props.id != m_selectedId) continue;
+        const auto& menus = it.model->props.extended.value("menus", nlohmann::json::object());
+        const nlohmann::json* item = menuItemAtPath(menus, path);
+        if (!item || !item->is_object() || !item->contains("events") || !(*item)["events"].is_object())
+            return std::string();
+        const auto& ev = (*item)["events"];
+        return ev.value("onClick", std::string());
+    }
+    return std::string();
 }
 
 bool CanvasPane::addEventBinding(const std::string& ctrlId, const std::string& jsonEvent,
@@ -11076,13 +11689,57 @@ std::vector<CanvasPane::EventBinding> CanvasPane::collectEventBindings() const {
     std::vector<EventBinding> out;
     for (const auto& it : m_items) {
         const auto& ev = it.model->props.extended.value("events", nlohmann::json::object());
-        if (!ev.is_object()) continue;
-        for (auto e = ev.begin(); e != ev.end(); ++e)
-            if (e.value().is_string()) {
-                const std::string h = e.value().get<std::string>();
-                if (h.rfind("_comp_", 0) == 0) continue;   // 模板占位，不生成宿主 handler ✗
-                out.push_back({ it.model->props.id, e.key(), h });
+        if (ev.is_object()) {
+            for (auto e = ev.begin(); e != ev.end(); ++e)
+                if (e.value().is_string()) {
+                    const std::string h = e.value().get<std::string>();
+                    if (h.rfind("_comp_", 0) == 0) continue;   // 模板占位，不生成宿主 handler ✗
+                    out.push_back({ it.model->props.id, e.key(), h, std::string() });
+                }
+        }
+        if (isFlatItemType(it.model->props.type)) {
+            const auto& items = it.model->props.extended.value("items", nlohmann::json::array());
+            if (items.is_array()) {
+                for (int i = 0; i < (int)items.size(); ++i) {
+                    if (!items[(size_t)i].is_object() || items[(size_t)i].value("type", "") == "separator") continue;
+                    const std::string h = items[(size_t)i].contains("events") && items[(size_t)i]["events"].is_object()
+                        ? items[(size_t)i]["events"].value("onClick", std::string()) : std::string();
+                    if (!h.empty()) {
+                        const std::string label = it.model->props.type == "status-bar"
+                            ? items[(size_t)i].value("text", "#" + std::to_string(i))
+                            : items[(size_t)i].value("caption", "#" + std::to_string(i));
+                        out.push_back({ it.model->props.id, "onClick", h,
+                                        (it.model->props.type == "status-bar" ? u8"状态栏/" : u8"右键菜单/") + label });
+                    }
+                }
             }
+        }
+        const auto& menus = it.model->props.extended.value("menus", nlohmann::json::object());
+        if (!menus.is_array()) continue;
+        std::function<void(const nlohmann::json&, const std::string&)> walk =
+            [&](const nlohmann::json& items, const std::string& base) {
+                if (!items.is_array()) return;
+                for (size_t i = 0; i < items.size(); ++i) {
+                    const auto& item = items[i];
+                    if (!item.is_object()) continue;
+                    if (item.value("type", "") == "separator") continue;
+                    std::string label = item.value("caption", "");
+                    if (label.empty()) label = "#" + std::to_string(i);
+                    const std::string path = base + "/" + label;
+                    if (item.contains("events") && item["events"].is_object()) {
+                        const std::string h = item["events"].value("onClick", std::string());
+                        if (!h.empty())
+                            out.push_back({ it.model->props.id, "onClick", h, path });
+                    }
+                    if (item.contains("items")) walk(item["items"], path);
+                }
+            };
+        for (size_t mi = 0; mi < menus.size(); ++mi) {
+            const auto& mn = menus[mi];
+            if (!mn.is_object()) continue;
+            const std::string base = mn.value("caption", "#" + std::to_string(mi));
+            if (mn.contains("items")) walk(mn["items"], base);
+        }
     }
     return out;
 }
@@ -11109,7 +11766,12 @@ void CanvasPane::SetEventPanelVisible(bool visible) {
             m_evList.Destroy();
             m_evList = Control();
         }
+        if (m_evMenuTree.IsValid()) m_evMenuTree.SetBool(PropertyNames::kVisible, false);
+        if (m_evHost.IsValid()) { const UIRect r = m_evHost.GetRect(); m_evHost.SetRect(r.x, r.y, r.w, r.h); }
         m_evListRows = 0;
+        m_selectedMenuPath.clear();
+        if (m_evCode.IsValid()) m_evCode.SetBool(PropertyNames::kVisible, false);
+        if (m_evDel.IsValid()) m_evDel.SetBool(PropertyNames::kVisible, false);
         return;
     }
     refreshEventPanel();
@@ -11125,11 +11787,385 @@ void CanvasPane::ensureEventList() {
     m_evList.SetBool(PropertyNames::kGridlines, true);
     m_evList.SetBool(PropertyNames::kCellEditing, true);
     m_evList.SetString(PropertyNames::kReadOnlyColumns, "0,1,2,3");
+    m_evList.SetString(PropertyNames::kFont, "HarmonyOS_Sans_SC_Regular");
+    m_evList.SetInt(PropertyNames::kFontSize, 18);
     m_ui->ListViewAddColumn(m_evList, u8"控件", 100);
     m_ui->ListViewAddColumn(m_evList, u8"事件", 100);
     m_ui->ListViewAddColumn(m_evList, u8"handler", 160);
     m_ui->ListViewAddColumn(m_evList, u8"操作", 100);
     m_evHost.AddChild(m_evList);
+}
+
+// 菜单事件树：menu-bar 选中时懒创建；节点 id=menu:<原始下标路径>，separator 不建节点
+void CanvasPane::ensureMenuEventTree() {
+    if (!m_evTabActive || !m_ui) return;
+    if (!m_evMenuTree.IsValid()) m_evMenuTree = m_ui->FindControl("evMenuTree");
+    if (m_evMenuTree.IsValid()) {
+        // 静态树已在 tabEvent 的 v-flow 中，位置稳定；每次菜单模式重设回调即可。
+        m_evMenuTree.SetFloat(PropertyNames::kRowHeight, 28.0f);
+        m_evMenuTree.SetString(PropertyNames::kFont, "HarmonyOS_Sans_SC_Regular");
+        m_evMenuTree.SetInt(PropertyNames::kFontSize, 18);
+        m_evMenuTree.SetCallback(PropertyNames::kEventSelect, [this](const Event& e) {
+            if (m_evMenuSync) return;
+            const std::string id = e.GetNodeId();
+            int flatIdx = 0;
+            if (parseFlatItemPath(id, "status", flatIdx) || parseFlatItemPath(id, "ctx", flatIdx)) {
+                m_selectedMenuPath = id;
+                syncFlatItemEventSelection();
+                return;
+            }
+            int mi = 0;
+            std::vector<int> idx;
+            if (!parseMenuPath(id, mi, idx) || idx.empty()) {
+                m_selectedMenuPath.clear();
+                return;
+            }
+            m_selectedMenuPath = id;
+            syncMenuEventSelection();
+        });
+        return;
+    }
+    if (!m_evHost.IsValid()) return;
+    m_evMenuTree = m_ui->CreateTreeView(0, 0, 464, 320);
+    if (!m_evMenuTree.IsValid()) return;
+    m_evMenuTree.SetFloat(PropertyNames::kRowHeight, 28.0f);
+    m_evHost.AddChild(m_evMenuTree);
+    m_evMenuTree.SetCallback(PropertyNames::kEventSelect, [this](const Event& e) {
+        if (m_evMenuSync) return;
+        const std::string id = e.GetNodeId();
+        int mi = 0;
+        std::vector<int> idx;
+        if (!parseMenuPath(id, mi, idx) || idx.empty()) {
+            m_selectedMenuPath.clear();
+            return;
+        }
+        m_selectedMenuPath = id;
+        syncMenuEventSelection();
+    });
+}
+
+void CanvasPane::syncMenuEventSelection() {
+    if (!m_evMenuTree.IsValid()) return;
+    const ControlModel* m = findModel(m_selectedId);
+    if (!m || m->props.type != "menu-bar") return;
+    const auto& menus = m->props.extended.value("menus", nlohmann::json::array());
+    const nlohmann::json* item = menuItemAtPath(menus, m_selectedMenuPath);
+    const bool hasItem = item && item->is_object() && item->value("type", "") != "separator";
+    if (m_evType.IsValid()) m_evType.SetBool(PropertyNames::kEnabled, false);
+    if (m_evHandler.IsValid()) {
+        m_evHandler.SetBool(PropertyNames::kEnabled, hasItem);
+        m_evHandler.SetString(PropertyNames::kTextContent,
+                              hasItem ? menuItemHandlerAt(m_selectedMenuPath) : "");
+    }
+    if (m_evSuggest.IsValid()) m_evSuggest.SetBool(PropertyNames::kEnabled, hasItem);
+    if (m_evAdd.IsValid()) {
+        m_evAdd.SetBool(PropertyNames::kEnabled, hasItem);
+        m_evAdd.SetString(PropertyNames::kCaption, u8"绑定/更新");
+    }
+    const std::string curHandler = hasItem ? menuItemHandlerAt(m_selectedMenuPath) : std::string();
+    if (m_evCode.IsValid()) {
+        m_evCode.SetBool(PropertyNames::kEnabled, hasItem && !curHandler.empty());
+        m_evCode.SetBool(PropertyNames::kVisible, true);
+    }
+    if (m_evDel.IsValid()) {
+        m_evDel.SetBool(PropertyNames::kEnabled, hasItem && !curHandler.empty());
+        m_evDel.SetBool(PropertyNames::kVisible, true);
+    }
+    if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption, "");
+    if (auto note = m_ui->FindControl("evtNote"); note.IsValid())
+        note.SetBool(PropertyNames::kVisible, !hasItem);
+}
+
+void CanvasPane::refreshMenuEventPanel() {
+    if (!m_ui || !m_evType.IsValid()) return;
+    ensureMenuEventTree();
+    const ControlModel* m = findModel(m_selectedId);
+    if (!m || m->props.type != "menu-bar") return;
+    if (m_evList.IsValid()) m_evList.SetBool(PropertyNames::kVisible, false);
+    if (m_evMenuTree.IsValid()) {
+        m_evMenuTree.SetBool(PropertyNames::kVisible, true);
+        // 显隐变化不会自动触发父 v-flow 重排：强制 reflow，避免按钮/注释按“树隐藏”时的位置压住树。
+        if (m_evHost.IsValid()) { const UIRect r = m_evHost.GetRect(); m_evHost.SetRect(r.x, r.y, r.w, r.h); }
+    }
+    if (m_evType.IsValid()) {
+        m_ui->ComboBoxClearItems(m_evType);
+        m_ui->ComboBoxAddItem(m_evType, "onClick", "onClick");   // 菜单项固定事件
+        m_evType.SetInt(PropertyNames::kSelectedIndex, 0);
+        m_evType.SetBool(PropertyNames::kEnabled, false);        // 仅展示，不允许切换
+    }
+    m_evTypeItems.clear();
+    if (!m_evMenuTree.IsValid()) return;
+    const auto& menus = m->props.extended.value("menus", nlohmann::json::array());
+    m_evMenuSync = true;
+    m_ui->TreeViewClearItems(m_evMenuTree);
+    std::function<void(const nlohmann::json&, const std::string&)> addNodes =
+        [&](const nlohmann::json& items, const std::string& parent) {
+            if (!items.is_array()) return;
+            for (size_t i = 0; i < items.size(); ++i) {
+                const auto& it = items[i];
+                if (!it.is_object() || it.value("type", "") == "separator") continue;
+                const std::string path = parent + "/" + std::to_string(i);
+                std::string label = it.value("caption", "");
+                const std::string h = it.contains("events") && it["events"].is_object()
+                    ? it["events"].value("onClick", std::string()) : std::string();
+                if (!h.empty()) label += "  → " + h;
+                m_ui->TreeViewAddNode(m_evMenuTree, parent, path, label);
+                if (it.contains("items")) addNodes(it["items"], path);
+            }
+        };
+    for (size_t i = 0; i < menus.size(); ++i) {
+        const auto& mn = menus[i];
+        if (!mn.is_object()) continue;
+        const std::string path = "menu:" + std::to_string(i);
+        m_ui->TreeViewAddNode(m_evMenuTree, "", path, mn.value("caption", ""));
+        if (mn.contains("items")) addNodes(mn["items"], path);
+    }
+    // 保留仍存在的选中路径；否则清空。
+    int mi = 0; std::vector<int> idx;
+    if (!m_selectedMenuPath.empty() && parseMenuPath(m_selectedMenuPath, mi, idx) && !idx.empty()) {
+        const nlohmann::json* item = menuItemAtPath(menus, m_selectedMenuPath);
+        if (item && item->is_object() && item->value("type", "") != "separator")
+            m_ui->TreeViewSelectNode(m_evMenuTree, m_selectedMenuPath);
+        else
+            m_selectedMenuPath.clear();
+    } else {
+        m_selectedMenuPath.clear();
+    }
+    m_ui->TreeViewExpandAll(m_evMenuTree);
+    m_evMenuSync = false;
+    syncMenuEventSelection();
+}
+
+static bool parseFlatItemPath(const std::string& path, const char* prefix, int& idx) {
+    const std::string pfx = std::string(prefix) + ":";
+    if (path.rfind(pfx, 0) != 0) return false;
+    const char* p = path.c_str() + pfx.size();
+    char* e = nullptr;
+    long v = std::strtol(p, &e, 10);
+    if (e == p || *e != '\0' || v < 0) return false;
+    idx = (int)v;
+    return true;
+}
+
+static bool isFlatItemType(const std::string& type) {
+    return type == "status-bar" || type == "context-menu";
+}
+
+std::string CanvasPane::flatItemHandlerAt(const std::string& path) const {
+    int idx = 0;
+    const char* prefix = path.rfind("status:", 0) == 0 ? "status" : "ctx";
+    if (!parseFlatItemPath(path, prefix, idx)) return {};
+    for (const auto& it : m_items) {
+        if (it.model->props.id != m_selectedId) continue;
+        if (!isFlatItemType(it.model->props.type)) return {};
+        const auto& items = it.model->props.extended.value("items", nlohmann::json::array());
+        if (!items.is_array() || idx >= (int)items.size() || !items[(size_t)idx].is_object()) return {};
+        const auto& item = items[(size_t)idx];
+        if (!item.contains("events") || !item["events"].is_object()) return {};
+        return item["events"].value("onClick", std::string());
+    }
+    return {};
+}
+
+std::string CanvasPane::suggestFlatItemHandlerName(const std::string& ctrlId,
+                                                    const std::string& path) const {
+    std::string caption;
+    int idx = 0;
+    const char* prefix = path.rfind("status:", 0) == 0 ? "status" : "ctx";
+    if (parseFlatItemPath(path, prefix, idx)) {
+        for (const auto& it : m_items) {
+            if (it.model->props.id != ctrlId) continue;
+            const auto& items = it.model->props.extended.value("items", nlohmann::json::array());
+            if (items.is_array() && idx < (int)items.size() && items[(size_t)idx].is_object())
+                caption = items[(size_t)idx].value(
+                    std::string(prefix) == "status" ? "text" : "caption", std::string());
+            break;
+        }
+    }
+    std::string base = "on";
+    bool up = true;
+    for (char c : ctrlId) {
+        if (!std::isalnum((unsigned char)c)) { up = true; continue; }
+        base += up ? (char)std::toupper((unsigned char)c) : c;
+        up = false;
+    }
+    base += "_";
+    std::string cap;
+    for (char c : caption) {
+        if (!std::isalnum((unsigned char)c)) continue;
+        cap += (char)std::tolower((unsigned char)c);
+    }
+    if (cap.empty()) cap = "item";
+    if (!cap.empty()) cap[0] = (char)std::toupper((unsigned char)cap[0]);
+    base += cap + "_Click";
+    if (isHandlerNameUnique(base, path)) return base;
+    for (int n = 2;; ++n) {
+        const std::string cand = base + std::to_string(n);
+        if (isHandlerNameUnique(cand, path)) return cand;
+    }
+}
+
+void CanvasPane::syncFlatItemEventSelection() {
+    if (!m_evMenuTree.IsValid()) return;
+    const ControlModel* m = findModel(m_selectedId);
+    if (!m || !isFlatItemType(m->props.type)) return;
+    int idx = 0;
+    const char* prefix = m->props.type == "status-bar" ? "status" : "ctx";
+    const auto& items = m->props.extended.value("items", nlohmann::json::array());
+    const bool hasItem = parseFlatItemPath(m_selectedMenuPath, prefix, idx) &&
+        items.is_array() && idx < (int)items.size() && items[(size_t)idx].is_object() &&
+        items[(size_t)idx].value("type", "") != "separator";
+    if (m_evHandler.IsValid()) {
+        m_evHandler.SetBool(PropertyNames::kEnabled, hasItem);
+        m_evHandler.SetString(PropertyNames::kTextContent,
+                              hasItem ? flatItemHandlerAt(m_selectedMenuPath) : "");
+    }
+    if (m_evSuggest.IsValid()) m_evSuggest.SetBool(PropertyNames::kEnabled, hasItem);
+    if (m_evAdd.IsValid()) {
+        m_evAdd.SetBool(PropertyNames::kEnabled, hasItem);
+        m_evAdd.SetString(PropertyNames::kCaption, u8"绑定/更新");
+    }
+    const std::string h = hasItem ? flatItemHandlerAt(m_selectedMenuPath) : std::string();
+    if (m_evCode.IsValid()) {
+        m_evCode.SetBool(PropertyNames::kEnabled, hasItem && !h.empty());
+        m_evCode.SetBool(PropertyNames::kVisible, true);
+    }
+    if (m_evDel.IsValid()) {
+        m_evDel.SetBool(PropertyNames::kEnabled, hasItem && !h.empty());
+        m_evDel.SetBool(PropertyNames::kVisible, true);
+    }
+    if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption, "");
+    if (auto note = m_ui->FindControl("evtNote"); note.IsValid())
+        note.SetBool(PropertyNames::kVisible, !hasItem);
+}
+
+void CanvasPane::refreshFlatItemEventPanel() {
+    if (!m_ui || !m_evType.IsValid()) return;
+    ensureMenuEventTree();
+    const ControlModel* m = findModel(m_selectedId);
+    if (!m || !isFlatItemType(m->props.type)) return;
+    if (m_evList.IsValid()) m_evList.SetBool(PropertyNames::kVisible, false);
+    if (m_evMenuTree.IsValid()) {
+        m_evMenuTree.SetBool(PropertyNames::kVisible, true);
+        if (m_evHost.IsValid()) { const UIRect r = m_evHost.GetRect(); m_evHost.SetRect(r.x, r.y, r.w, r.h); }
+    }
+    if (m_evType.IsValid()) {
+        m_ui->ComboBoxClearItems(m_evType);
+        m_ui->ComboBoxAddItem(m_evType, "onClick", "onClick");
+        m_evType.SetInt(PropertyNames::kSelectedIndex, 0);
+        m_evType.SetBool(PropertyNames::kEnabled, false);
+    }
+    m_evTypeItems.clear();
+    if (!m_evMenuTree.IsValid()) return;
+    const char* prefix = m->props.type == "status-bar" ? "status" : "ctx";
+    const auto& items = m->props.extended.value("items", nlohmann::json::array());
+    m_evMenuSync = true;
+    m_ui->TreeViewClearItems(m_evMenuTree);
+    if (items.is_array()) {
+        for (size_t i = 0; i < items.size(); ++i) {
+            const auto& it = items[i];
+            if (!it.is_object() || it.value("type", "") == "separator") continue;
+            const std::string path = std::string(prefix) + ":" + std::to_string(i);
+            const std::string label = m->props.type == "status-bar"
+                ? it.value("text", it.value("id", std::string()))
+                : it.value("caption", std::string());
+            const std::string h = it.contains("events") && it["events"].is_object()
+                ? it["events"].value("onClick", std::string()) : std::string();
+            m_ui->TreeViewAddNode(m_evMenuTree, "", path, h.empty() ? label : label + "  → " + h);
+        }
+    }
+    int idx = 0;
+    if (parseFlatItemPath(m_selectedMenuPath, prefix, idx) && items.is_array() &&
+        idx < (int)items.size() && items[(size_t)idx].is_object() &&
+        items[(size_t)idx].value("type", "") != "separator")
+        m_ui->TreeViewSelectNode(m_evMenuTree, m_selectedMenuPath);
+    else
+        m_selectedMenuPath.clear();
+    m_ui->TreeViewExpandAll(m_evMenuTree);
+    m_evMenuSync = false;
+    syncFlatItemEventSelection();
+}
+
+bool CanvasPane::addOrUpdateFlatItemEventBinding(const std::string& path,
+                                                  const std::string& handler) {
+    PlacedControl* pc = placedById(m_selectedId);
+    if (!pc || !isFlatItemType(pc->model->props.type) || path.empty()) return false;
+    int idx = 0;
+    const char* prefix = pc->model->props.type == "status-bar" ? "status" : "ctx";
+    if (!parseFlatItemPath(path, prefix, idx)) return false;
+    auto& items = pc->model->props.extended["items"];
+    if (!items.is_array() || idx >= (int)items.size() || !items[(size_t)idx].is_object()) return false;
+    auto& item = items[(size_t)idx];
+    if (item.value("type", "") == "separator") return false;
+    if (!isValidIdentifier(handler) || !isHandlerNameUnique(handler, path)) return false;
+    const std::string old = item.contains("events") && item["events"].is_object()
+        ? item["events"].value("onClick", std::string()) : std::string();
+    if (old == handler) return true;
+    const nlohmann::json oldItems = items;
+    item["events"]["onClick"] = handler;
+    if (pc->model->props.type == "status-bar") syncStatusBarItems(*pc->model, oldItems);
+    else syncContextMenuItems(*pc->model, oldItems);
+    commitUndo("item-event:" + path);
+    setStatusHint(u8"已绑定 item 事件：" + path + u8" → " + handler);
+    return true;
+}
+
+bool CanvasPane::removeFlatItemEventBinding(const std::string& path) {
+    PlacedControl* pc = placedById(m_selectedId);
+    if (!pc || !isFlatItemType(pc->model->props.type) || path.empty()) return false;
+    int idx = 0;
+    const char* prefix = pc->model->props.type == "status-bar" ? "status" : "ctx";
+    if (!parseFlatItemPath(path, prefix, idx)) return false;
+    auto& items = pc->model->props.extended["items"];
+    if (!items.is_array() || idx >= (int)items.size() || !items[(size_t)idx].is_object()) return false;
+    auto& item = items[(size_t)idx];
+    if (!item.contains("events") || !item["events"].is_object() ||
+        !item["events"].contains("onClick")) return false;
+    const nlohmann::json oldItems = items;
+    item["events"].erase("onClick");
+    if (item["events"].empty()) item.erase("events");
+    if (pc->model->props.type == "status-bar") syncStatusBarItems(*pc->model, oldItems);
+    else syncContextMenuItems(*pc->model, oldItems);
+    commitUndo("item-event-del:" + path);
+    setStatusHint(u8"已删除 item 事件：" + path);
+    return true;
+}
+
+bool CanvasPane::addOrUpdateMenuEventBinding(const std::string& path,
+                                              const std::string& handler) {
+    PlacedControl* pc = placedById(m_selectedId);
+    if (!pc || pc->model->props.type != "menu-bar" || path.empty()) return false;
+    nlohmann::json& menus = pc->model->props.extended["menus"];
+    nlohmann::json* item = const_cast<nlohmann::json*>(menuItemAtPath(menus, path));
+    if (!item || !item->is_object() || item->value("type", "") == "separator") return false;
+    if (!isValidIdentifier(handler)) return false;
+    if (!isHandlerNameUnique(handler, path)) return false;
+    const std::string oldHandler = item->contains("events") && (*item)["events"].is_object()
+        ? (*item)["events"].value("onClick", std::string()) : std::string();
+    if (oldHandler == handler) return true;
+    const nlohmann::json oldMenus = menus;
+    (*item)["events"]["onClick"] = handler;
+    syncMenus(*pc->model, oldMenus);
+    commitUndo("menu-event:" + path);
+    setStatusHint(u8"已绑定菜单事件：" + path + u8" → " + handler);
+    return true;
+}
+
+bool CanvasPane::removeMenuEventBinding(const std::string& path) {
+    PlacedControl* pc = placedById(m_selectedId);
+    if (!pc || pc->model->props.type != "menu-bar" || path.empty()) return false;
+    nlohmann::json& menus = pc->model->props.extended["menus"];
+    nlohmann::json* item = const_cast<nlohmann::json*>(menuItemAtPath(menus, path));
+    if (!item || !item->is_object() || item->value("type", "") == "separator") return false;
+    if (!item->contains("events") || !(*item)["events"].is_object() ||
+        !(*item)["events"].contains("onClick")) return false;
+    const nlohmann::json oldMenus = menus;
+    (*item)["events"].erase("onClick");
+    if ((*item)["events"].empty()) item->erase("events");
+    syncMenus(*pc->model, oldMenus);
+    commitUndo("menu-event-del:" + path);
+    setStatusHint(u8"已删除菜单事件：" + path);
+    return true;
 }
 
 // 事件面板接线：存句柄 + 隐藏样例行 + 绑定交互（下拉/建议/添加/实时校验）
@@ -11142,6 +12178,12 @@ void CanvasPane::SetEventPanel(Control typeCombo, Control handlerEdit, Control s
     m_evAdd = addBtn;
     m_evErr = errLabel;
     m_evHost = listHost;
+    m_evMenuTree = m_ui->FindControl("evMenuTree");   // 静态树：v-flow 固定顺序，避免 resize 跳动
+    if (m_evMenuTree.IsValid()) m_evMenuTree.SetBool(PropertyNames::kVisible, false);
+    m_evCode = m_ui->FindControl("ev_code");
+    if (m_evCode.IsValid()) m_evCode.SetBool(PropertyNames::kVisible, false);
+    m_evDel = m_ui->FindControl("ev_del");
+    if (m_evDel.IsValid()) m_evDel.SetBool(PropertyNames::kVisible, false);
     ensureIdConfirmDialog();   // 预创建：首次改名不再临时建窗 ✗
     if (auto row = m_ui->FindControl("bd_row"); row.IsValid())
         row.SetBool(PropertyNames::kVisible, false);   // 旧样例行隐藏
@@ -11165,11 +12207,12 @@ void CanvasPane::SetEventPanel(Control typeCombo, Control handlerEdit, Control s
     if (m_evHandler.IsValid())
         m_evHandler.SetCallback(PropertyNames::kEventTextChanged, [this](const Event& e) {
             if (!m_evErr.IsValid()) return;
+            const ControlModel* sel = findModel(m_selectedId);
             const std::string v = sanitizePropValue("caption", e.GetTextChanged());
             if (v.empty()) { m_evErr.SetString(PropertyNames::kCaption, ""); return; }
             if (!isValidIdentifier(v))
                 m_evErr.SetString(PropertyNames::kCaption, u8"handler 非 C 标识符（A-Za-z_ 开头）");
-            else if (!isHandlerNameUnique(v))
+            else if (!isHandlerNameUnique(v, (sel && (sel->props.type == "menu-bar" || isFlatItemType(sel->props.type))) ? m_selectedMenuPath : std::string()))
                 m_evErr.SetString(PropertyNames::kCaption, u8"handler 已存在（须唯一）");
             else
                 m_evErr.SetString(PropertyNames::kCaption, "");
@@ -11177,6 +12220,21 @@ void CanvasPane::SetEventPanel(Control typeCombo, Control handlerEdit, Control s
     if (m_evSuggest.IsValid())
         m_evSuggest.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
             if (m_selectedId.empty() || !m_evHandler.IsValid()) return;
+            const ControlModel* sel = findModel(m_selectedId);
+            if (sel && sel->props.type == "menu-bar") {
+                if (m_selectedMenuPath.empty()) return;
+                m_evHandler.SetString(PropertyNames::kTextContent,
+                                      suggestMenuHandlerName(m_selectedId, m_selectedMenuPath));
+                if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption, "");
+                return;
+            }
+            if (sel && isFlatItemType(sel->props.type)) {
+                if (m_selectedMenuPath.empty()) return;
+                m_evHandler.SetString(PropertyNames::kTextContent,
+                                      suggestFlatItemHandlerName(m_selectedId, m_selectedMenuPath));
+                if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption, "");
+                return;
+            }
             const int idx = m_evType.GetInt(PropertyNames::kSelectedIndex);
             const std::string json = (idx >= 0 && idx < (int)m_evTypeItems.size())
                                          ? m_evTypeItems[(size_t)idx] : std::string();
@@ -11189,6 +12247,44 @@ void CanvasPane::SetEventPanel(Control typeCombo, Control handlerEdit, Control s
         m_evAdd.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
             if (m_selectedId.empty()) {
                 setStatusHint(u8"请先选中一个控件再绑定事件");
+                return;
+            }
+            const ControlModel* sel = findModel(m_selectedId);
+            if (sel && sel->props.type == "menu-bar") {
+                if (m_selectedMenuPath.empty()) {
+                    setStatusHint(u8"请先选择菜单项");
+                    return;
+                }
+                const std::string h = m_evHandler.IsValid()
+                    ? sanitizePropValue("caption", m_evHandler.GetString(PropertyNames::kTextContent))
+                    : std::string();
+                if (!isValidIdentifier(h)) {
+                    if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption,
+                                                             u8"handler 非 C 标识符（A-Za-z_ 开头）");
+                    setStatusHint(u8"菜单事件绑定失败：handler 名不合法");
+                    return;
+                }
+                if (!addOrUpdateMenuEventBinding(m_selectedMenuPath, h)) {
+                    if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption,
+                                                             u8"handler 已存在（须唯一）");
+                    setStatusHint(u8"菜单事件绑定失败：handler 重名");
+                    return;
+                }
+                refreshEventPanel();
+                return;
+            }
+            if (sel && isFlatItemType(sel->props.type)) {
+                if (m_selectedMenuPath.empty()) { setStatusHint(u8"请先选择事件项"); return; }
+                const std::string h = m_evHandler.IsValid()
+                    ? sanitizePropValue("caption", m_evHandler.GetString(PropertyNames::kTextContent))
+                    : std::string();
+                if (!isValidIdentifier(h) || !addOrUpdateFlatItemEventBinding(m_selectedMenuPath, h)) {
+                    if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption,
+                                                             u8"handler 非法或已存在（须唯一）");
+                    setStatusHint(u8"item 事件绑定失败");
+                    return;
+                }
+                refreshEventPanel();
                 return;
             }
             const int idx = m_evType.GetInt(PropertyNames::kSelectedIndex);
@@ -11220,11 +12316,45 @@ void CanvasPane::SetEventPanel(Control typeCombo, Control handlerEdit, Control s
                 refreshEventPanel();
             }
         });
+    if (m_evCode.IsValid())
+        m_evCode.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+            const ControlModel* sel = findModel(m_selectedId);
+            if (!sel || m_selectedMenuPath.empty()) return;
+            std::string h;
+            if (sel->props.type == "menu-bar") h = menuItemHandlerAt(m_selectedMenuPath);
+            else if (isFlatItemType(sel->props.type)) h = flatItemHandlerAt(m_selectedMenuPath);
+            if (!h.empty()) ShowHandlerCodeDialog(h);
+        });
+    if (m_evDel.IsValid())
+        m_evDel.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+            const ControlModel* sel = findModel(m_selectedId);
+            if (!sel || m_selectedMenuPath.empty()) return;
+            if (isFlatItemType(sel->props.type)) {
+                if (removeFlatItemEventBinding(m_selectedMenuPath)) refreshEventPanel();
+            } else if (sel->props.type == "menu-bar" && removeMenuEventBinding(m_selectedMenuPath)) {
+                refreshEventPanel();
+            }
+        });
 }
 
 // 刷新事件面板：事件下拉（按类型过滤、扣除已绑定）+ 建议命名预填 + 已绑定动态行
 void CanvasPane::refreshEventPanel() {
     if (!m_ui || !m_evType.IsValid()) return;
+    const ControlModel* selModel = findModel(m_selectedId);
+    if (m_evTabActive && selModel && selModel->props.type == "menu-bar") {
+        refreshMenuEventPanel();
+        return;
+    }
+    if (m_evTabActive && selModel && isFlatItemType(selModel->props.type)) {
+        refreshFlatItemEventPanel();
+        return;
+    }
+    // 隐藏菜单树不强制重排：普通选中/打开工程避免整页 SetRect 触发重绘（P0-104 闪动回归）。
+    if (m_evMenuTree.IsValid()) m_evMenuTree.SetBool(PropertyNames::kVisible, false);
+    if (m_evList.IsValid()) m_evList.SetBool(PropertyNames::kVisible, true);
+    if (m_evCode.IsValid()) m_evCode.SetBool(PropertyNames::kVisible, false);
+    if (m_evDel.IsValid()) m_evDel.SetBool(PropertyNames::kVisible, false);
+    m_selectedMenuPath.clear();
     if (m_evTabActive) ensureEventList();
     for (auto& r : m_evRows)
         if (r.IsValid()) r.Destroy();
@@ -11240,7 +12370,10 @@ void CanvasPane::refreshEventPanel() {
         if (!hasSel) m_evHandler.SetString(PropertyNames::kTextContent, "");
     }
     if (m_evSuggest.IsValid()) m_evSuggest.SetBool(PropertyNames::kEnabled, hasSel);
-    if (m_evAdd.IsValid()) m_evAdd.SetBool(PropertyNames::kEnabled, hasSel);
+    if (m_evAdd.IsValid()) {
+        m_evAdd.SetBool(PropertyNames::kEnabled, hasSel);
+        m_evAdd.SetString(PropertyNames::kCaption, u8"添加绑定");
+    }
     if (m_evErr.IsValid()) m_evErr.SetString(PropertyNames::kCaption, "");
     if (auto note = m_ui->FindControl("evtNote"); note.IsValid())
         note.SetBool(PropertyNames::kVisible, true);
@@ -11389,6 +12522,12 @@ void CanvasPane::deleteSelected() {
         m_ghostFallback.erase(*rit);   // C4：随实例面板销毁（勿再 Destroy ✗）
         m_ghostSig.erase(*rit);
         syncTreeRemove(*rit);
+    }
+    for (auto it = m_contextMenuTargets.begin(); it != m_contextMenuTargets.end();) {
+        if (std::find(toRemove.begin(), toRemove.end(), it->first) != toRemove.end() ||
+            std::find(toRemove.begin(), toRemove.end(), it->second) != toRemove.end())
+            it = m_contextMenuTargets.erase(it);
+        else ++it;
     }
     if (m_dragId == m_selectedId || !m_dragParentId.empty()) {   // 拖动状态清理
         m_dragId.clear();
@@ -12597,6 +13736,13 @@ void TextEditorDialog::EnsureCreated() {
             m_dlg.AddChild(m_top);
         }
     }
+    m_sig = m_ui->CreateLabel("", 14.0f, 12, m_showTop ? 84 : 12, 736, 28);
+    if (m_sig.IsValid()) {
+        m_sig.SetString(PropertyNames::kFont, "maplemono-nf-cn-regular");
+        m_sig.SetColor(PropertyNames::kText, UIColor{0x9A, 0xA7, 0xB8, 0xFF});
+        m_sig.SetBool(PropertyNames::kVisible, 0);
+        m_dlg.AddChild(m_sig);
+    }
     m_body = m_ui->CreateTextArea(12, m_showTop ? 84 : 12, 736, 424);
     if (!m_body.IsValid()) return;
     m_body.SetString(PropertyNames::kFont, "maplemono-nf-cn-regular");
@@ -12668,8 +13814,14 @@ void TextEditorDialog::Layout() {
     m_dlg.SetBool(PropertyNames::kVisible, 0);   // 重开触发 Dialog 按钮重排 ✓
     m_dlg.SetBool(PropertyNames::kVisible, 1);
     if (m_top.IsValid()) m_top.SetRect(12, 12, W - 24, 64);
+    const bool hasSig = m_sig.IsValid() && !m_sig.GetString(PropertyNames::kCaption).empty();
+    if (m_sig.IsValid()) {
+        m_sig.SetRect(12, m_showTop ? 84 : 12, W - 24, 28);
+        m_sig.SetBool(PropertyNames::kVisible, hasSig);
+    }
+    const float bodyY = hasSig ? ((m_showTop ? 84 : 12) + 32) : (m_showTop ? 84 : 12);
     if (m_body.IsValid())
-        m_body.SetRect(12, m_showTop ? 84 : 12, W - 24, H - (m_showTop ? 84 : 12) - 64);
+        m_body.SetRect(12, bodyY, W - 24, H - bodyY - 64);
     if (m_zoom.IsValid()) {
         m_zoom.SetRect(12, H - 40, 96, 28);
         m_zoom.SetString(PropertyNames::kCaption, m_expanded ? u8"还原" : u8"放大");
@@ -12687,7 +13839,8 @@ void TextEditorDialog::Layout() {
 void TextEditorDialog::Open(
     UICornerstone::UICornerstone* ui, bool showTop, const std::string& topText,
     const std::string& bodyText,
-    std::function<bool(const std::string&, const std::string&)> onApply) {
+    std::function<bool(const std::string&, const std::string&)> onApply,
+    const std::string& signature) {
     m_ui = ui;
     m_showTop = showTop;
     m_onApply = std::move(onApply);
@@ -12701,6 +13854,10 @@ void TextEditorDialog::Open(
         m_body.SetInt(PropertyNames::kScrollY, 0);
     }
     m_lastBody = bodyText;
+    if (m_sig.IsValid()) {
+        m_sig.SetString(PropertyNames::kCaption, signature);
+        m_sig.SetBool(PropertyNames::kVisible, !signature.empty());
+    }
     if (m_statusLabel.IsValid()) m_statusLabel.SetBool(PropertyNames::kVisible, 0);
     ApplyFontSize(m_fontSize);
     Layout();
@@ -12716,6 +13873,31 @@ bool TextEditorDialog::IsOpen() const {
 
 void TextEditorDialog::Close() {
     if (m_dlg.IsValid()) m_dlg.SetBool(PropertyNames::kVisible, 0);
+}
+
+void TextEditorDialog::Drag(float x, float y, bool down) {
+    if (!m_dlg.IsValid() || !m_dlg.GetBool(PropertyNames::kPopupVisible)) return;
+    const UIRect r = m_dlg.GetRect();
+    auto contains = [](const Control& c, float px, float py) {
+        if (!c.IsValid()) return false;
+        const UIRect cr = c.GetRect();
+        return px >= cr.x && px < cr.x + cr.w && py >= cr.y && py < cr.y + cr.h;
+    };
+    if (!down) { m_dragging = false; return; }
+    if (!m_dragging) {
+        if (x < r.x || x > r.x + r.w || y < r.y || y > r.y + r.h) return;
+        // 文本区/按钮是可交互区，其余空白区都可拖动（含标题与边距）。
+        if (contains(m_body, x, y) || contains(m_top, x, y) ||
+            contains(m_zoom, x, y) || contains(m_slider, x, y) ||
+            contains(m_applyBtn, x, y) || contains(m_confirmBtn, x, y) ||
+            contains(m_statusLabel, x, y))
+            return;
+        m_dragging = true;
+        m_dragOffX = x - r.x;
+        m_dragOffY = y - r.y;
+        return;
+    }
+    m_dlg.SetRect(x - m_dragOffX, y - m_dragOffY, r.w, r.h);
 }
 
 // F3.5：原始 JSON 视图——展示所选控件节点（无选中=整布局），应用时替换并重建 ✓
@@ -12953,7 +14135,8 @@ void CanvasPane::ShowHandlerCodeDialog(const std::string& handler) {
                       [this, handler](const std::string& top, const std::string& b) {
                           applyHandlerCodeText(handler, top, b);
                           return true;
-                      });
+                      },
+                      "void " + handler + "(UIControlHandle ctl, void* user)");
     setStatusHint(u8"编辑事件代码（函数体）：" + handler);
 }
 
@@ -13567,12 +14750,27 @@ void CanvasPane::ShowMessageDialog(const std::string& msg) {
         }
     }
     m_msgDlg.SetRect(0, 0, W, H);
+    // 通知/提示弹窗统一居中（Popup::setRect 会切回 Absolute，须在 SetRect 后再设）
+    m_msgDlg.SetEnum(PropertyNames::kCenteredMode, PropertyNames::kCentered);
     if (m_msgLabel.IsValid()) {
         m_msgLabel.SetRect(20, 28, W - 40, H - 60);
         m_msgLabel.SetString(PropertyNames::kCaption, wrapped);
     }
     m_msgDlg.SetBool(PropertyNames::kVisible, 0);
     m_msgDlg.SetBool(PropertyNames::kVisible, 1);   // 重开触发按钮/内容重排 ✗
+}
+
+void CanvasPane::ShowAboutPopup(const std::string& msg) {
+    if (!m_ui) return;
+    // 关于弹层由 main_layout.json 的 aboutPopup/aboutLabel 声明（居中、外部点击/Esc 关闭）。
+    if (!m_aboutPopup.IsValid()) {
+        m_aboutPopup = m_ui->FindControl("aboutPopup");
+        m_aboutLabel = m_ui->FindControl("aboutLabel");
+    }
+    if (!m_aboutPopup.IsValid() || !m_aboutLabel.IsValid()) return;
+    m_aboutLabel.SetString(PropertyNames::kCaption, msg);
+    m_aboutPopup.SetBool(PropertyNames::kVisible, 0);
+    m_aboutPopup.SetBool(PropertyNames::kVisible, 1);
 }
 
 // C2：组件编辑条——独占工具栏下方第二行（不遮挡设计项；视口下移 36px ✓）

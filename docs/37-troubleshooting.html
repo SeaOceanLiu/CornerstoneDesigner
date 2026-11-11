@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>37 故障排查与 FAQ - CornerstoneDesigner 用户手册</title>
+<title>43 故障排查与 FAQ - CornerstoneDesigner 用户手册</title>
 <link rel="stylesheet" href="css/style.css">
 <script id="nav-data" src="assets/nav.js" data-current="37-troubleshooting.html"></script>
 </head>
@@ -12,11 +12,11 @@
 <div id="sidebar"></div>
 <div id="content">
 
-<h1>37 故障排查与 FAQ</h1>
+<h1>43 故障排查与 FAQ</h1>
 
 <p>遇到问题时按“现象 → 可能原因 → 处理”排查。设计器会在控制台输出日志；开发构建下终端窗口中的日志是首要线索。</p>
 
-<h2>37.1 程序无法启动</h2>
+<h2>43.1 程序无法启动</h2>
 
 <table>
 <tr><th>现象</th><th>可能原因</th><th>处理</th></tr>
@@ -25,7 +25,7 @@
 <tr><td>启动后立即退出</td><td>主布局 main_layout.json 缺失或非法</td><td>确认 exe 同目录有 main_layout.json；恢复默认布局</td></tr>
 </table>
 
-<h2>37.2 布局加载失败</h2>
+<h2>43.2 布局加载失败</h2>
 
 <ul>
   <li>JSON 语法错误：用原始 JSON 或外部编辑器检查括号、逗号、引号。</li>
@@ -34,7 +34,7 @@
   <li>工程版本不兼容：尝试从备份恢复，或在新版本中重新导入 JSON。</li>
 </ul>
 
-<h2>37.3 画布点不中 / 拖不动</h2>
+<h2>43.3 画布点不中 / 拖不动</h2>
 
 <ol class="steps">
   <li>检查预览窗口是否在最前并抢走焦点；关闭/切回主窗口。</li>
@@ -44,7 +44,7 @@
   <li>检查是否有模态对话框打开；先关闭对话框。</li>
 </ol>
 
-<h2>37.4 字体或图片不显示</h2>
+<h2>43.4 字体或图片不显示</h2>
 
 <ul>
   <li>确认资源提供者名称和路径正确。</li>
@@ -54,7 +54,7 @@
   <li>检查导出目录中是否包含资源和 provider 映射。</li>
 </ul>
 
-<h2>37.5 事件不生效</h2>
+<h2>43.5 事件不生效</h2>
 
 <ol class="steps">
   <li>确认事件面板中确实有绑定，handler 名称合法且无冲突。</li>
@@ -64,7 +64,7 @@
   <li>查看运行时控制台是否有未注册动作/回调错误。</li>
 </ol>
 
-<h2>37.6 主题不生效</h2>
+<h2>43.6 主题不生效</h2>
 
 <ul>
   <li>设计画布主要显示显式样式；请在预览/导出中查看主题。</li>
@@ -75,7 +75,7 @@
   <li>用“主题 JSON…”检查结构。</li>
 </ul>
 
-<h2>37.7 设计器主题不生效</h2>
+<h2>43.7 设计器主题不生效</h2>
 
 <ul>
   <li>确认修改的是 exe 同目录的 <code>designer_theme.json</code>，不是源码目录里的文件。</li>
@@ -84,7 +84,7 @@
   <li>设计器主题只影响设计器 UI，不影响项目画布/预览。</li>
 </ul>
 
-<h2>37.8 最近文件/路径问题</h2>
+<h2>43.8 最近文件/路径问题</h2>
 
 <ul>
   <li>最近文件失效：打开时会自动移除；检查文件是否被移动/删除。</li>
@@ -92,7 +92,7 @@
   <li>文件对话框打不开：确认系统对话框可用，目标目录存在。</li>
 </ul>
 
-<h2>37.9 导出失败</h2>
+<h2>43.9 导出失败</h2>
 
 <ul>
   <li>事件命名冲突或非法：先修正事件面板。</li>
@@ -101,7 +101,7 @@
   <li>资源缺失：导出仍可能成功，但运行会缺资源。</li>
 </ul>
 
-<h2>37.10 如何提供有效反馈</h2>
+<h2>43.10 如何提供有效反馈</h2>
 
 <p>报告问题时请附：</p>
 
@@ -114,8 +114,8 @@
 </ul>
 
 <div class="chapter-nav">
-  <a href="36-shortcuts.html">← 上一章：36 快捷键与效率</a>
-  <a href="38-tutorials.html">下一章：38 实战教程 →</a>
+  <a href="36-shortcuts.html">← 上一章：42 快捷键与效率</a>
+  <a href="38-tutorials.html">下一章：44 实战教程 →</a>
 </div>
 
 </div>

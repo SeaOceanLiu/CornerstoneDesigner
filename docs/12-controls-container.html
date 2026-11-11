@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>14 容器与布局控件 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="12-controls-container.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>14 容器与布局控件</h1>
+
+<p>容器决定子控件放在哪里、如何随父级变化。先在画布上搭好容器关系，再放置表单和列表，通常比先堆控件再改父级更稳定。</p>
+
+<h2>14.1 面板 Panel</h2>
+
+<ul>
+  <li><strong>用途</strong>：分组、卡片、侧栏、表单区域，也是最常用的通用容器。</li>
+  <li><strong>放置</strong>：从工具箱拖入 Panel，再向 Panel 内容区拖入子控件。</li>
+  <li><strong>常用属性</strong>：背景色、边框、内边距、是否裁剪子控件（<code>clip-children</code>）。</li>
+  <li><strong>布局</strong>：子控件可设置锚点；需要多层嵌套时控制好每层的内容区尺寸。</li>
+</ul>
+
+<div class="tip">如果子控件超出 Panel 却仍然显示，检查 <code>clip-children</code> 和父链上的面板设置；设计画布与预览可能因裁剪路径不同出现差异。</div>
+
+<h2>14.2 窗口 WinFrame</h2>
+
+<table>
+<tr><th>项目</th><th>说明</th></tr>
+<tr><td>用途</td><td>带标题栏/边框的窗口式容器，适合模拟独立窗口或面板组</td></tr>
+<tr><td>子控件位置</td><td>挂到客户端内容区，坐标相对内容区而不是整个窗口边框</td></tr>
+<tr><td>常用属性</td><td>标题、标题栏高度、背景、边框、阴影、关闭按钮行为（以 schema 为准）</td></tr>
+<tr><td>注意</td><td>标题栏本身通常不作为普通内容区放置子控件；内容布局要扣除标题栏高度</td></tr>
+</table>
+
+<h2>14.3 分割条 Splitter</h2>
+
+<div class="shot">
+  <img src="assets/screenshots/09-splitter-preview.png" alt="左右分栏的 Splitter 示例">
+  <div class="cap">图 14-1 Splitter 分隔左右两个 Panel；拖动中间蓝色把手调整比例</div>
+</div>
+
+<p>Splitter 用来在左右或上下两个区域之间提供可拖动的分隔条。它不是普通装饰线：需要指定方向、关联两侧容器，并在布局中占据实际空间。</p>
+
+<h3>14.3.1 在 Designer 中搭建</h3>
+
+<ol class="steps">
+  <li>先放置两个 Panel（或其它容器），例如 <code>leftPanel</code> 和 <code>rightPanel</code>，并设置好初始位置/尺寸。</li>
+  <li>在两者之间放置 Splitter，调整宽度和高度；左右分栏时高度与两侧 Panel 对齐，上下分栏时宽度对齐。</li>
+  <li>设置 Splitter 的方向：左右分栏为 vertical，上下分栏为 horizontal。</li>
+  <li>把 <code>first-linked</code> 设为左侧/上方 Panel 的 ID，把 <code>second-linked</code> 设为右侧/下方 Panel 的 ID。</li>
+  <li>设置初始 ratio、把手厚度和最小尺寸；在预览中拖动分隔条检查两侧内容跟随。</li>
+</ol>
+
+<h3>14.3.2 常用字段</h3>
+
+<table>
+<tr><th>字段</th><th>说明</th></tr>
+<tr><td><code>orientation</code></td><td><code>vertical</code>：左右分栏；<code>horizontal</code>：上下分栏</td></tr>
+<tr><td><code>first-linked</code></td><td>第一侧容器 ID；左右分栏时为左侧，上下分栏时为上方</td></tr>
+<tr><td><code>second-linked</code></td><td>第二侧容器 ID；左右分栏时为右侧，上下分栏时为下方</td></tr>
+<tr><td><code>ratio</code></td><td>初始分割比例，通常 0～1；例如 0.3 表示第一侧约占 30%</td></tr>
+<tr><td><code>thickness</code></td><td>分隔条把手的厚度（像素）；太窄会难以命中</td></tr>
+<tr><td>最小尺寸</td><td>限制拖动时两侧容器的尺寸，具体字段以属性面板/schema 为准</td></tr>
+</table>
+
+<p>引擎还支持“邻居模式”：把 Splitter 放在 h-flow/v-flow 的兄弟面板之间，可省略 <code>first-linked/second-linked</code>，由前后邻居自动推导两侧区域。Designer 当前主界面布局仍显式保留这两个字段；用户工程两种方式都可使用。</p>
+
+<p>对应的布局片段示例：</p>
+
+<pre><code>{
+  "type": "splitter",
+  "id": "splitter1",
+  "orientation": "vertical",
+  "thickness": 6,
+  "ratio": 0.3,
+  "first-linked": "leftPanel",
+  "second-linked": "rightPanel"
+}</code></pre>
+
+<h3>14.3.3 使用建议</h3>
+
+<ul>
+  <li>两侧 Panel 必须已在同一父容器中，否则关联不会生效。</li>
+  <li>Splitter 的 rect 要和两侧容器的边缘对齐；先确认布局稳定，再微调 thickness。</li>
+  <li>需要随窗口拉伸时，让父容器使用 h-flow/v-flow 或锚点布局，而不是把三者的绝对坐标写死。</li>
+  <li>拖动时由引擎实时重排两侧尺寸；不要在拖动事件中再手动改两侧坐标，避免重复计算。</li>
+  <li>鼠标移出分隔条后双向光标应恢复；若仍残留，检查引擎 Splitter 光标生命周期（CR20261111001）。</li>
+</ul>
+
+<h3>14.3.4 常见问题</h3>
+
+<table>
+<tr><th>现象</th><th>检查</th></tr>
+<tr><td>拖动没有反应</td><td>方向、first/second-linked ID、控件是否启用/可见</td></tr>
+<tr><td>两侧大小不跟随</td><td>关联的两个 ID 是否指向同一父容器下的容器</td></tr>
+<tr><td>拖动后布局错位</td><td>父容器是否已由布局引擎管理；避免同时手工设置两侧坐标</td></tr>
+<tr><td>光标离开后仍是双向箭头</td><td>引擎光标 owner 问题，见 CR20261111001；不是布局数据问题</td></tr>
+</table>
+
+<h2>14.4 页签 TabControl</h2>
+
+<table>
+<tr><th>操作</th><th>结果</th></tr>
+<tr><td>编辑 tabs/页签行</td><td>每个页创建一个页面 Panel，标题显示在页签上</td></tr>
+<tr><td>切换到某个页签</td><td>当前页成为放置目标；隐藏页不接收新控件</td></tr>
+<tr><td>向当前页放置控件</td><td>控件成为该页 Panel 的子控件</td></tr>
+<tr><td>调整页签尺寸</td><td>通常通过 TabControl 的尺寸/字体等属性控制，不直接缩放页 Panel</td></tr>
+</table>
+
+<p>页签数据属于结构化字段，建议用属性面板的行式编辑器维护；批量修改时可使用原始 JSON。每页的标题、页 ID 和页面子树会随工程保存。</p>
+
+<h2>14.5 嵌套与布局建议</h2>
+
+<ul>
+  <li>用 Panel 做分组，用 WinFrame 做“窗口感”外壳，用 Splitter 做可拖动分栏，用 TabControl 做多页工作区。</li>
+  <li>容器越深，命中、裁剪和坐标换算越复杂；能用一层 Panel 解决时不要嵌套三层。</li>
+  <li>需要随窗口拉伸的区域优先使用锚点或父级布局，不写死每个子控件的绝对坐标。</li>
+  <li>重复的容器结构封装成组件，参见面板与 <a href="13-components.html">组件系统</a>。</li>
+</ul>
+
+<h2>14.6 删除与改动父级</h2>
+
+<ul>
+  <li>删除容器会删除整棵子树，操作前先确认选中层级。</li>
+  <li>把控件拖到另一个容器后，坐标基准会改变；需要重新检查位置。</li>
+  <li>组件实例内部通常不要直接添加子控件，应编辑组件模板。</li>
+</ul>
+
+<div class="chapter-nav">
+  <a href="12-controls-basic.html">← 上一章：13 基础与输入控件</a>
+  <a href="12-controls-list.html">下一章：15 列表、树与选择控件 →</a>
+</div>
+
+</div>
+</body>
+</html>

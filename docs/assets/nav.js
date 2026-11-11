@@ -18,40 +18,48 @@
       ["09-properties.html", "10 属性面板"],
       ["10-events.html", "11 事件面板"]
     ]],
+    ["控件使用", [
+      ["12-controls-general.html", "12 控件通用操作"],
+      ["12-controls-basic.html", "13 基础与输入控件"],
+      ["12-controls-container.html", "14 容器与布局控件"],
+      ["12-controls-list.html", "15 列表、树与选择控件"],
+      ["12-controls-menu.html", "16 菜单、状态栏与右键菜单"],
+      ["12-controls-media.html", "17 图片、动画与绘制"]
+    ]],
     ["预览与复用", [
-      ["11-preview.html", "12 预览"],
-      ["12-resources.html", "13 资源管理"],
-      ["13-components.html", "14 组件系统"]
+      ["11-preview.html", "18 预览"],
+      ["12-resources.html", "19 资源管理"],
+      ["13-components.html", "20 组件系统"]
     ]],
     ["主题", [
-      ["15-theme-system.html", "15 主题系统"],
-      ["16-first-theme.html", "16 第一次使用主题"],
-      ["17-theme-manager.html", "17 主题管理器"],
-      ["18-theme-selectors.html", "18 选择器"],
-      ["19-theme-declarations.html", "19 声明"],
-      ["20-theme-variables.html", "20 变量"],
-      ["21-theme-classes.html", "21 类"],
-      ["22-theme-variants.html", "22 变体"],
-      ["23-theme-media.html", "23 媒体条件"],
-      ["24-theme-containers.html", "24 容器条件"],
-      ["25-theme-example.html", "25 完整示例"],
-      ["26-theme-notes.html", "26 其它说明"]
+      ["15-theme-system.html", "21 主题系统"],
+      ["16-first-theme.html", "22 第一次使用主题"],
+      ["17-theme-manager.html", "23 主题管理器"],
+      ["18-theme-selectors.html", "24 选择器"],
+      ["19-theme-declarations.html", "25 声明"],
+      ["20-theme-variables.html", "26 变量"],
+      ["21-theme-classes.html", "27 类"],
+      ["22-theme-variants.html", "28 变体"],
+      ["23-theme-media.html", "29 媒体条件"],
+      ["24-theme-containers.html", "30 容器条件"],
+      ["25-theme-example.html", "31 完整示例"],
+      ["26-theme-notes.html", "32 其它说明"]
     ]],
     ["交付", [
-      ["27-export.html", "27 导出与集成"],
-      ["28-find-control.html", "28 在程序代码中找到控件"],
-      ["29-read-write-controls.html", "29 读写控件数据"],
-      ["30-json-actions.html", "30 注册 JSON 动作"],
-      ["31-bind-events.html", "31 绑定控件事件"],
-      ["32-event-differences.html", "32 JSON 动作与事件绑定的区别"],
-      ["33-runtime-switch.html", "33 运行时切换事件逻辑"],
-      ["34-access-in-callback.html", "34 回调中访问控件"],
-      ["35-minimal-example.html", "35 最小完整示例"]
+      ["27-export.html", "33 导出与集成"],
+      ["28-find-control.html", "34 在程序代码中找到控件"],
+      ["29-read-write-controls.html", "35 读写控件数据"],
+      ["30-json-actions.html", "36 注册 JSON 动作"],
+      ["31-bind-events.html", "37 绑定控件事件"],
+      ["32-event-differences.html", "38 JSON 动作与事件绑定的区别"],
+      ["33-runtime-switch.html", "39 运行时切换事件逻辑"],
+      ["34-access-in-callback.html", "40 回调中访问控件"],
+      ["35-minimal-example.html", "41 最小完整示例"]
     ]],
     ["效率与支持", [
-      ["36-shortcuts.html", "36 快捷键与效率"],
-      ["37-troubleshooting.html", "37 故障排查与 FAQ"],
-      ["38-tutorials.html", "38 实战教程"]
+      ["36-shortcuts.html", "42 快捷键与效率"],
+      ["37-troubleshooting.html", "43 故障排查与 FAQ"],
+      ["38-tutorials.html", "44 实战教程"]
     ]],
     ["附录", [
       ["appendix-a-controls.html", "A 控件参考"],

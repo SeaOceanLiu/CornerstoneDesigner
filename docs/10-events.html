@@ -77,7 +77,28 @@
 
 <p>详见 <a href="13-components.html">组件系统</a>。</p>
 
-<h2>11.6 事件与导出的关系</h2>
+<h2>11.6 菜单、状态栏与右键菜单条目事件</h2>
+
+<p>MenuBar、StatusBar、ContextMenu 的条目不是普通画布控件，事件页签会显示对应的条目树：</p>
+
+<table>
+<tr><th>控件</th><th>事件树</th><th>绑定位置</th></tr>
+<tr><td>MenuBar</td><td>菜单/子菜单层级</td><td><code>menus[].items[].events.onClick</code></td></tr>
+<tr><td>StatusBar</td><td>状态栏分区</td><td><code>items[].events.onClick</code>（状态栏条目树）</td></tr>
+<tr><td>ContextMenu</td><td>右键菜单条目</td><td><code>items[].events.onClick</code>（右键菜单条目树）</td></tr>
+</table>
+
+<ol class="steps">
+  <li>选中 MenuBar、StatusBar 或 ContextMenu 控件。</li>
+  <li>切换到事件页签，在条目树中选择具体条目；分隔符不可绑定。</li>
+  <li>填写或建议 handler，点击“绑定/更新”；已有绑定可按“代码/删除”维护。</li>
+  <li>ContextMenu 还需在属性面板的“目标控件”中选择响应右键的控件 id 或画布根。</li>
+  <li>预览/导出后点击条目，确认 action 执行。</li>
+</ol>
+
+<div class="tip">条目文本修改后，事件按结构路径/数组下标保留；插入、删除或重排条目可能导致路径失效，设计器会提示重新检查。</div>
+
+<h2>11.7 事件与导出的关系</h2>
 
 <table>
 <tr><th>操作</th><th>结果</th></tr>
@@ -91,7 +112,7 @@
 
 <div class="chapter-nav">
   <a href="09-properties.html">← 上一章：10 属性面板</a>
-  <a href="11-preview.html">下一章：12 预览 →</a>
+  <a href="12-controls-general.html">下一章：12 控件通用操作 →</a>
 </div>
 
 </div>

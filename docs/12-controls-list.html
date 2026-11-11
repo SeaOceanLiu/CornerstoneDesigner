@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>15 列表、树与选择控件 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="12-controls-list.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>15 列表、树与选择控件</h1>
+
+<p>这类控件的数据量通常大于普通输入控件，重点不是逐个摆放，而是维护 items、columns、rows 等结构化数据。属性面板提供行式编辑器；数据很多时可用原始 JSON 批量修改。</p>
+
+<h2>15.1 下拉框 ComboBox</h2>
+
+<table>
+<tr><th>项目</th><th>说明</th></tr>
+<tr><td>典型用途</td><td>从固定候选集中选择一个值</td></tr>
+<tr><td>items 格式</td><td>一行一项；空行忽略。需要值和显示文本不同时，以属性面板/schema 的字段为准</td></tr>
+<tr><td>常用属性</td><td>items、selected-index、可编辑、字体和颜色</td></tr>
+<tr><td>常用事件</td><td>选择变化；实际事件名以事件页签为准</td></tr>
+</table>
+
+<ol class="steps">
+  <li>放置 ComboBox，先调整尺寸，确保展开列表不会被父容器裁掉。</li>
+  <li>在属性面板的 items 行填写选项，一行一个。</li>
+  <li>设置默认 selected-index；不需要默认项时留空或设为 -1。</li>
+  <li>在预览中展开列表，确认文字宽度、行高和滚动行为。</li>
+</ol>
+
+<p>例如“状态”下拉框的 items：</p>
+
+<pre><code>待办
+进行中
+已完成</code></pre>
+
+<p>这三项对应的索引依次是 0、1、2；selected-index 设为 1 时初始选中“进行中”。</p>
+
+<div class="warn">ComboBox 的下拉列表是浮层，父 Panel 若设置了裁剪，可能影响显示位置或可见区域；优先放在未被裁剪的层级。</div>
+
+<h2>15.2 列表 ListView</h2>
+
+<div class="shot">
+  <img src="assets/screenshots/07-listview-preview.png" alt="ListView 三列四行示例">
+  <div class="cap">图 15-1 ListView 示例：三列（名称/状态/说明）和四行数据</div>
+</div>
+
+<p>ListView 的数据由两个独立的结构化字段组成：<code>columns</code> 定义列，<code>rows</code> 定义行。先写 columns，再写 rows；列数改变后要重新检查每一行的单元格数量。</p>
+
+<h3>15.2.1 在 Designer 中编辑</h3>
+
+<ol class="steps">
+  <li>放置 ListView，调整控件尺寸，给列头和行留出足够的可视区域。</li>
+  <li>选中 ListView，在右侧属性面板向下滚动，找到 <code>columns</code> 和 <code>rows</code> 两个行式编辑框。</li>
+  <li>先编辑 columns：一行一列；填写标题和宽度，需要颜色/字体时再追加属性。</li>
+  <li>编辑 rows：一行一条记录；单元格之间用 <code>|</code> 分隔，单元格内容和可选样式之间用 <code>@</code> 分隔。</li>
+  <li>失焦/提交后画布立即重放列和行；按 <span class="kbd">F5</span> 预览检查滚动、选中和编辑效果。</li>
+</ol>
+
+<h3>15.2.2 每列怎么定义</h3>
+
+<p>columns 的行格式为：</p>
+
+<pre><code>标题@宽度@背景色@文字色@字号@字体名@阴影色@阴影偏移X@阴影偏移Y</code></pre>
+
+<table>
+<tr><th>字段</th><th>是否必填</th><th>说明</th></tr>
+<tr><td>标题</td><td>必填</td><td>列头显示文字</td></tr>
+<tr><td>宽度</td><td>可选</td><td>数字，缺省 100；小于 20 按 20 处理</td></tr>
+<tr><td>背景色</td><td>可选</td><td>列头背景，<code>#RRGGBB</code> 或 <code>#RRGGBBAA</code></td></tr>
+<tr><td>文字色</td><td>可选</td><td>列头文字颜色</td></tr>
+<tr><td>字号</td><td>可选</td><td>列头字号；0 或省略表示继承控件字号</td></tr>
+<tr><td>字体名</td><td>可选</td><td>引擎支持的字体 token，例如 <code>muyao-softbrush</code></td></tr>
+<tr><td>阴影色</td><td>可选</td><td>列头文字阴影颜色；不需要阴影时省略</td></tr>
+<tr><td>阴影偏移 X/Y</td><td>可选</td><td>跟随阴影色使用，缺省为 1/1</td></tr>
+</table>
+
+<p>最简三列示例（只定义标题和宽度）：</p>
+
+<pre><code>名称@180
+状态@100
+说明@380</code></pre>
+
+<p>带列头样式的示例（背景色、文字色、字号）：</p>
+
+<pre><code>名称@180@#1F3A5FFF@#FFFFFFFF@18
+状态@100@#1F3A5FFF@#FFFFFFFF@18
+说明@380@#1F3A5FFF@#FFFFFFFF@18</code></pre>
+
+<div class="tip">属性字段按上面的顺序解析；只填到“字号”时可以省略后面的字体/阴影字段。空字段表示跳过该位置，不要用空格代替颜色或数字。</div>
+
+<h3>15.2.3 每行怎么定义</h3>
+
+<p>rows 的行格式为：</p>
+
+<pre><code>单元格1|单元格2|单元格3
+单元格1@背景色@文字色@字号@字体名|单元格2|单元格3</code></pre>
+
+<p>规则：</p>
+
+<ul>
+  <li><strong>一行一条记录</strong>；空行忽略。</li>
+  <li>单元格之间用 <code>|</code> 分隔；建议单元格数量与 columns 列数一致。</li>
+  <li>每个单元格先写内容，再用 <code>@</code> 追加可选样式；样式顺序为背景色 → 文字色 → 字号 → 字体名 → 阴影色 → 阴影偏移 X/Y。</li>
+  <li>单元格悬停背景色使用 <code>hb#RRGGBBAA</code>，例如 <code>正常@hb#335577FF</code>。</li>
+  <li>内容中需要出现 <code>|</code>、<code>@</code> 或反斜杠时，用反斜杠转义，例如 <code>路径\@home</code>、<code>甲\|乙</code>。</li>
+  <li>Designer 会为每行生成 <code>row_0</code>、<code>row_1</code> 等内部 ID；行 ID 一般不需要在行式文本中手写。</li>
+</ul>
+
+<p>最简四行示例：</p>
+
+<pre><code>登录窗口|正常|主窗口，启动后显示
+设置窗口|正常|主题、快捷键和资源设置
+日志窗口|停用|只在调试模式打开
+关于窗口|正常|版本和构建信息</code></pre>
+
+<p>带单元格样式的示例：</p>
+
+<pre><code>登录窗口@#223344FF@#FFFFFFFF@16|正常@hb#335577FF|主窗口，启动后显示
+设置窗口|正常|主题、快捷键和资源设置
+日志窗口@#443333FF|停用@#FFFF00FF|只在调试模式打开
+关于窗口|正常|版本和构建信息</code></pre>
+
+<h3>15.2.4 列和行的对应关系</h3>
+
+<table>
+<tr><th>columns</th><th>rows 中的一行</th><th>结果</th></tr>
+<tr><td>名称、状态、说明（3 列）</td><td><code>登录窗口|正常|主窗口</code></td><td>三个单元格依次填入三列</td></tr>
+<tr><td>3 列</td><td><code>登录窗口|正常</code></td><td>缺少的“说明”单元格为空</td></tr>
+<tr><td>3 列</td><td><code>登录窗口|正常|主窗口|额外</code></td><td>多出的单元格不应依赖；请保持与列数一致</td></tr>
+</table>
+
+<div class="warn">修改 columns 后，已有行会按新列数重放。增加/删除列后请重新检查所有 rows，避免列错位或内容被截断。大量数据建议先用外部表格整理成 rows 文本，再粘贴到属性面板。</div>
+
+<h3>15.2.5 事件与预览</h3>
+
+<ul>
+  <li>在事件页签选择 ListView 的实际事件：选择变化、单元格开始/完成编辑、列排序、行点击等。</li>
+  <li>需要单元格编辑时，确认控件的“单元格编辑”开关已启用，并在预览中双击单元格测试。</li>
+  <li>事件 handler 中读取行/列索引或单元格文本，再更新业务状态；具体 API 参考 <a href="29-read-write-controls.html">读写控件数据</a>。</li>
+</ul>
+
+<h2>15.3 树 TreeView</h2>
+
+<div class="shot">
+  <img src="assets/screenshots/08-treeview-preview.png" alt="TreeView 层级示例">
+  <div class="cap">图 15-2 TreeView 示例：两层分组、叶子节点和展开/折叠状态</div>
+</div>
+
+<p>TreeView 的 <code>items</code> 使用缩进式文本描述层级。行首每多一个 <code>&gt;</code>，节点就深一层；节点属性和 ListView 的单元格一样，用 <code>@</code> 追加。</p>
+
+<h3>15.3.1 在 Designer 中编辑</h3>
+
+<ol class="steps">
+  <li>放置 TreeView，在属性面板找到 <code>items</code> 行式编辑框。</li>
+  <li>按“根节点 → 子节点 → 孙节点”的顺序逐行填写，每行开头用 <code>&gt;</code> 表示层级。</li>
+  <li>需要节点颜色、字号或字体时，在节点文本后追加 <code>@属性</code>。</li>
+  <li>设置默认展开、行高和是否允许节点编辑。</li>
+  <li>在事件页签绑定选择/展开/编辑事件，并在预览中逐节点检查。</li>
+</ol>
+
+<h3>15.3.2 items 行格式</h3>
+
+<pre><code>项目
+&gt;基础控件
+&gt;&gt;按钮 Button
+&gt;&gt;列表 ListView
+&gt;高级控件
+&gt;&gt;菜单 MenuBar</code></pre>
+
+<table>
+<tr><th>部分</th><th>说明</th></tr>
+<tr><td>行首 <code>&gt;</code></td><td>层级标记；一个 <code>&gt;</code> 一层，可连续写多个</td></tr>
+<tr><td>节点标签</td><td>显示文字；行首空格会保留</td></tr>
+<tr><td><code>@属性</code></td><td>可选节点样式，顺序：背景色 → 文字色 → 字号 → 字体名 → 阴影色 → 阴影偏移 X/Y</td></tr>
+<tr><td>节点 ID</td><td>Designer 自动生成 <code>tn_1</code>、<code>tn_2</code>……，行式文本不需要手写</td></tr>
+<tr><td>展开状态</td><td>由控件默认展开/展开全部属性控制；节点自己的展开状态由运行时交互决定</td></tr>
+</table>
+
+<p>带节点颜色的示例：</p>
+
+<pre><code>项目@#223344FF@#FFFFFFFF@16
+&gt;基础控件@#2B3D55FF@#E8F0FFFF
+&gt;&gt;按钮 Button
+&gt;&gt;列表 ListView
+&gt;高级控件@#2B3D55FF@#E8F0FFFF
+&gt;&gt;菜单 MenuBar</code></pre>
+
+<div class="tip">节点文字本身以 <code>&gt;</code> 开头时，需要写成 <code>\&gt;</code>；文字中的 <code>@</code> 和反斜杠也要用反斜杠转义。</div>
+
+<h3>15.3.3 层级与父子关系</h3>
+
+<table>
+<tr><th>上一行</th><th>下一行</th><th>结果</th></tr>
+<tr><td><code>项目</code></td><td><code>&gt;基础控件</code></td><td>“基础控件”是“项目”的子节点</td></tr>
+<tr><td><code>&gt;基础控件</code></td><td><code>&gt;&gt;按钮 Button</code></td><td>“按钮 Button”是“基础控件”的子节点</td></tr>
+<tr><td><code>&gt;&gt;按钮 Button</code></td><td><code>&gt;高级控件</code></td><td>回到上一层，“高级控件”与“基础控件”同级</td></tr>
+</table>
+
+<p>编辑时要保证父节点出现在子节点之前；Designer 会按行顺序构建父子关系，无法把节点挂到后面才出现的父节点上。</p>
+
+<h3>15.3.4 常用属性与事件</h3>
+
+<table>
+<tr><th>项目</th><th>说明</th></tr>
+<tr><td>items</td><td>节点层级文本，见上</td></tr>
+<tr><td>row-height</td><td>节点行高</td></tr>
+<tr><td>default-expand</td><td>打开工程时是否默认展开根节点</td></tr>
+<tr><td>label-editing</td><td>是否允许在运行时编辑节点文字</td></tr>
+<tr><td>选择事件</td><td>选中节点变化时触发；handler 中按节点 ID/标签区分</td></tr>
+<tr><td>展开/折叠事件</td><td>节点展开状态变化时触发</td></tr>
+<tr><td>节点编辑完成</td><td>编辑节点文字提交时触发；只有启用编辑时才有意义</td></tr>
+</table>
+
+<h3>15.3.5 常见问题</h3>
+
+<table>
+<tr><th>现象</th><th>检查</th></tr>
+<tr><td>层级全平</td><td>行首是否真的写了 <code>&gt;</code>，而不是用空格模拟</td></tr>
+<tr><td>节点跑到错误父级</td><td>上一行的 <code>&gt;</code> 数量和节点顺序</td></tr>
+<tr><td>节点样式不生效</td><td>属性字段顺序、颜色格式和字体名是否受引擎支持</td></tr>
+<tr><td>编辑后事件丢失</td><td>改变节点数量/顺序后重新检查事件绑定，事件路径可能随索引变化</td></tr>
+</table>
+
+<h2>15.4 批量数据与原始 JSON</h2>
+
+<ul>
+  <li>行式编辑器适合几十条以内的数据；大量数据优先用外部工具生成后粘贴。</li>
+  <li>原始 JSON 可编辑 items/columns/rows 的完整结构，但不会替你校验业务字段。</li>
+  <li>修改列数后要同步检查所有 rows 的单元格数量。</li>
+  <li>数据中的颜色、字体名和资源路径要使用当前工程可解析的格式。</li>
+</ul>
+
+<h2>15.5 常见问题</h2>
+
+<table>
+<tr><th>现象</th><th>检查</th></tr>
+<tr><td>ComboBox 展开后被裁掉</td><td>父容器裁剪、层级和可用空间</td></tr>
+<tr><td>ListView 列错位</td><td>columns 数量、宽度与 rows 的单元格分隔符</td></tr>
+<tr><td>TreeView 层级不对</td><td>行首 <code>&gt;</code> 的数量；不要用空格模拟层级</td></tr>
+<tr><td>数据修改后预览无变化</td><td>是否提交了结构化编辑、是否在预览中重新加载工程</td></tr>
+</table>
+
+<div class="chapter-nav">
+  <a href="12-controls-container.html">← 上一章：14 容器与布局控件</a>
+  <a href="12-controls-menu.html">下一章：16 菜单、状态栏与右键菜单 →</a>
+</div>
+
+</div>
+</body>
+</html>

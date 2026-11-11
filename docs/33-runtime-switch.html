@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>33 运行时切换事件处理逻辑 - CornerstoneDesigner 用户手册</title>
+<title>39 运行时切换事件处理逻辑 - CornerstoneDesigner 用户手册</title>
 <link rel="stylesheet" href="css/style.css">
 <script id="nav-data" src="assets/nav.js" data-current="33-runtime-switch.html"></script>
 </head>
@@ -12,7 +12,7 @@
 <div id="sidebar"></div>
 <div id="content">
 
-<h1>33 运行时切换事件处理逻辑</h1>
+<h1>39 运行时切换事件处理逻辑</h1>
 
 <p>运行中改变事件处理逻辑，优先使用控件级 <code>SetCallback</code>，不要依赖对已加载布局重新 <code>RegisterAction</code>。有两种稳定做法：</p>
 
@@ -81,8 +81,8 @@ UICornerstone_SetCallback(inst, saveBtn, "click", on_admin_save, &amp;app);</cod
 <p>回调在 UI 线程的 <code>ProcessEvents</code> 中执行；如果切换逻辑来自其他线程，请先把状态安全地传到 UI 线程，不要在工作线程直接调用 <code>SetCallback</code> 或修改控件。</p>
 
 <div class="chapter-nav">
-  <a href="32-event-differences.html">← 上一章：32 JSON 动作与绑定事件的区别</a>
-  <a href="34-access-in-callback.html">下一章：34 在事件回调中访问其他控件 →</a>
+  <a href="32-event-differences.html">← 上一章：38 JSON 动作与绑定事件的区别</a>
+  <a href="34-access-in-callback.html">下一章：40 在事件回调中访问其他控件 →</a>
 </div>
 
 </div>

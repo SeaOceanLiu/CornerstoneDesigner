@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>27 导出与集成 - CornerstoneDesigner 用户手册</title>
+<title>33 导出与集成 - CornerstoneDesigner 用户手册</title>
 <link rel="stylesheet" href="css/style.css">
 <script id="nav-data" src="assets/nav.js" data-current="27-export.html"></script>
 </head>
@@ -12,11 +12,11 @@
 <div id="sidebar"></div>
 <div id="content">
 
-<h1>27 导出与集成</h1>
+<h1>33 导出与集成</h1>
 
 <p>导出把设计器中的工程转成运行时可用的产物。不同导出方式适合不同阶段：先导出 JSON 给现有宿主，或直接导出可编译 C/C++ 工程做完整验证。</p>
 
-<h2>27.1 导出方式一览</h2>
+<h2>33.1 导出方式一览</h2>
 
 <table>
 <tr><th>方式</th><th>菜单</th><th>典型用途</th></tr>
@@ -27,7 +27,7 @@
 <tr><td>导出报告</td><td>文件 → 导出项目报告</td><td>项目说明、控件/事件清单、布局截图</td></tr>
 </table>
 
-<h2>27.2 导出 JSON</h2>
+<h2>33.2 导出 JSON</h2>
 
 <ol class="steps">
   <li>选择 <span class="menu-path">文件 → 导出 JSON</span>。</li>
@@ -38,7 +38,7 @@
 
 <div class="note">导出 JSON 不包含设计器专用的元数据（例如 handler 代码编辑内容），需要事件代码时请使用 C/C++ 工程导出。</div>
 
-<h2>27.3 导出 C 工程</h2>
+<h2>33.3 导出 C 工程</h2>
 
 <p>选择 <span class="menu-path">文件 → 导出为可编译C项目</span>，然后选择空目录。设计器生成 C11 宿主工程，典型文件：</p>
 
@@ -53,7 +53,7 @@
 <tr><td><code>README.md</code></td><td>导出工程的使用说明</td></tr>
 </table>
 
-<h2>27.4 导出 C++ 工程</h2>
+<h2>33.4 导出 C++ 工程</h2>
 
 <p>选择 <span class="menu-path">文件 → 导出为可编译C++项目</span>。与 C 工程类似，但宿主是 C++ Binding，并包含 <code>binding/</code> 包。典型文件：</p>
 
@@ -64,7 +64,7 @@
   <li><code>CMakeLists.txt</code>、<code>README.md</code>、<code>binding/</code>。</li>
 </ul>
 
-<h2>27.5 编译和运行导出工程</h2>
+<h2>33.5 编译和运行导出工程</h2>
 
 <ol class="steps">
   <li>进入导出目录，阅读 <code>README.md</code>。</li>
@@ -76,11 +76,11 @@
 
 <p>导出工程按“exe 同目录/工作目录”解析 DLL、<code>layout.json</code> 和 <code>assets</code>；从任意目录启动时请确保工作目录正确。</p>
 
-<h2>27.6 资源和 provider</h2>
+<h2>33.6 资源和 provider</h2>
 
 <p>布局中的 <code>provider:名称/路径</code> 引用会随 layout.json 的 <code>resourceProviders</code> 块保留。导出时请把对应资源目录一并交给宿主，或在导出目录中补齐资源。资源缺失不会使设计器崩溃，但运行界面可能缺图/缺字体。</p>
 
-<h2>27.7 导出项目报告</h2>
+<h2>33.7 导出项目报告</h2>
 
 <p>选择 <span class="menu-path">文件 → 导出项目报告</span>，选择输出目录。报告包含：</p>
 
@@ -91,7 +91,7 @@
 
 <p>报告适合评审、交付说明和问题复现。截图不包含设计器网格与选中框。</p>
 
-<h2>27.8 导出前检查</h2>
+<h2>33.8 导出前检查</h2>
 
 <ul>
   <li>事件 handler 名称合法、无冲突。</li>
@@ -103,11 +103,11 @@
 
 <div class="warn">导出工程中的 <code>events.c</code>、<code>layout.json</code> 等文件由设计器生成。需要长期修改业务逻辑时，建议在导出工程中维护；再次导出可能覆盖这些文件。</div>
 
-<div class="tip">需要在代码里按控件 ID 读取数据、设置属性或绑定回调查看 <a href="28-find-control.html">28 在程序代码中找到控件</a>，其中包含 C++ Binding、C ABI、SetCallback 与 RegisterAction 的完整示例。</div>
+<div class="tip">需要在代码里按控件 ID 读取数据、设置属性或绑定回调查看 <a href="28-find-control.html">34 在程序代码中找到控件</a>，其中包含 C++ Binding、C ABI、SetCallback 与 RegisterAction 的完整示例。</div>
 
 <div class="chapter-nav">
-  <a href="26-theme-notes.html">← 上一章：26 其它说明</a>
-  <a href="28-find-control.html">下一章：28 在程序代码中找到控件 →</a>
+  <a href="26-theme-notes.html">← 上一章：32 其它说明</a>
+  <a href="28-find-control.html">下一章：34 在程序代码中找到控件 →</a>
 </div>
 
 </div>

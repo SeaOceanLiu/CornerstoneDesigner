@@ -46,7 +46,9 @@ class TextEditorDialog {
 public:
     void Open(UICornerstone::UICornerstone* ui, bool showTop, const std::string& topText,
               const std::string& bodyText,
-              std::function<bool(const std::string& top, const std::string& body)> onApply);
+              std::function<bool(const std::string& top, const std::string& body)> onApply,
+              const std::string& signature = std::string());
+    void Drag(float x, float y, bool down);   // 拖动标题区移动编辑器窗口
     bool IsOpen() const;
     void Close();
     void ApplyFontSize(int px);
@@ -63,7 +65,7 @@ private:
     void EnsureCreated();
     void Layout();
     UICornerstone::UICornerstone* m_ui = nullptr;
-    Control m_dlg, m_top, m_body, m_zoom, m_slider, m_label;
+    Control m_dlg, m_top, m_body, m_zoom, m_slider, m_label, m_sig;
     Control m_confirmBtn, m_applyBtn;   // 隐藏内置确认 → 自定义“应用”（失败不关闭 ✗）
     Control m_statusLabel;              // 应用失败提示（窗口内可见，非模态 ✗）
     bool m_showTop = false;
@@ -71,6 +73,8 @@ private:
     int m_fontSize = 16;
     std::function<bool(const std::string&, const std::string&)> m_onApply;
     std::string m_lastBody;   // 光标跟随启发式：上次正文（末尾追加/退格 → 滚到底 ✗）
+    bool m_dragging = false;
+    float m_dragOffX = 0.0f, m_dragOffY = 0.0f;
 };
 
 class ThemeVariablesDialog {
@@ -233,15 +237,35 @@ public:
                        Control addBtn, Control errLabel, Control listHost);
     void SetEventPanelVisible(bool visible);   // 事件 Tab 激活/离开：懒建/销毁 ListView
     void refreshEventPanel();      // 选中变化 / 绑定增删后刷新（下拉 + 列表）
+    // 菜单事件（方案 2+菜单树）：menu-bar 选中时事件页显示菜单树
+    void ensureMenuEventTree();
+    void refreshMenuEventPanel();
+    void syncMenuEventSelection();
+    bool addOrUpdateMenuEventBinding(const std::string& path, const std::string& handler);
+    bool removeMenuEventBinding(const std::string& path);
+    std::string menuItemHandlerAt(const std::string& path) const;
+    // StatusBar/ContextMenu 扁平 item 事件（status:<n> / ctx:<n>）
+    void refreshFlatItemEventPanel();
+    void syncFlatItemEventSelection();
+    bool addOrUpdateFlatItemEventBinding(const std::string& path, const std::string& handler);
+    bool removeFlatItemEventBinding(const std::string& path);
+    std::string flatItemHandlerAt(const std::string& path) const;
+    std::string suggestFlatItemHandlerName(const std::string& ctrlId, const std::string& path) const;
     bool addEventBinding(const std::string& ctrlId, const std::string& jsonEvent,
                          const std::string& handler);
     bool removeEventBinding(const std::string& ctrlId, const std::string& jsonEvent);
     bool addInstanceEventBinding(const std::string& instanceId, const std::string& eventKey,
                                  const std::string& handler);   // C3：实例 _comp_ 事件 ✗
     bool isValidIdentifier(const std::string& name) const;      // C 标识符规范
-    bool isHandlerNameUnique(const std::string& name) const;    // 全体绑定中唯一
+    // 全体绑定中唯一；excludeMenuPath 用于更新当前菜单项时排除其旧值
+    bool isHandlerNameUnique(const std::string& name,
+                             const std::string& excludeMenuPath = std::string()) const;
     std::string suggestHandlerName(const std::string& ctrlId, const std::string& jsonEvent) const;
-    struct EventBinding { std::string controlId, jsonEvent, handler; };
+    std::string suggestMenuHandlerName(const std::string& ctrlId, const std::string& menuPath) const;
+    struct EventBinding {
+        std::string controlId, jsonEvent, handler;
+        std::string menuPath;   // 菜单项路径（普通控件为空）；仅导出/报告区分同 control+event
+    };
     std::vector<EventBinding> collectEventBindings() const;     // 先序遍历全树（导出用）
     // 画布设置对话框（P0-84 绕过：对话框输入通道已证可用——id/窗口标题）
     void ShowBenchSettingsDialog();
@@ -292,10 +316,12 @@ public:
     void applyInstanceStateProps(const std::string& text);
     void setCompBarVisible(bool on, const std::string& name);   // C2 模式条（独占第二行 ✗）
     void ShowMessageDialog(const std::string& msg);   // C2：阻断性提示（模态对话框 ✗）
+    void ShowAboutPopup(const std::string& msg);      // 关于：UICornerstone 弹层（点外部关闭）
     void ensureCompBar();
     bool applyComponentPropsText(const std::string& text);
     bool applyRawJsonText(const std::string& text, const std::string& targetId, bool whole);
     void ShowHandlerCodeDialog(const std::string& handler);   // F4.6：编辑事件生成代码（函数体 ✗）
+    void DragCodeEditor(float x, float y, bool down) { m_codeEditor.Drag(x, y, down); }
     void applyHandlerCodeText(const std::string& handler, const std::string& includes,
                               const std::string& body);
     bool createComponentFromSelection(const std::string& name,
@@ -525,8 +551,14 @@ private:
     void syncTreeItems(ControlModel& m);
     void applyMenusText(ControlModel& m, const std::string& text);         // 结构化：menu-bar menus（> 层级/@快捷键/-- 分隔）
     void syncMenus(ControlModel& m, const nlohmann::json& oldMenus);
+    void bindMenuEvents(ControlModel& m, Control panel, const nlohmann::json& items,
+                        const std::string& basePath);   // 递归回放 events.onClick
     void applyTabsText(ControlModel& m, const std::string& text);          // 结构化：tab-control tabs（一行一页签标题）
     void syncTabs(ControlModel& m, const nlohmann::json& oldTabs);
+    void applyContextMenuItemsText(ControlModel& m, const std::string& text); // 结构化：context-menu items
+    void syncContextMenuItems(ControlModel& m, const nlohmann::json& oldItems);
+    void bindContextMenuTarget(const std::string& menuId);
+    std::map<std::string, std::string> m_contextMenuTargets;   // ContextMenu id -> target control id
     void removePlacedSubtree(const std::string& rootId);                   // 销毁放置控件子树（引擎/模型/树）
     std::string resolvedParentIdOf(const std::string& targetId);
     void syncTabCurrentToPage(const std::string& pageId);   // 树选页 Panel → 切换所属 TabControl 当前页
@@ -698,6 +730,7 @@ private:
     Control m_compBarProps;
     Control m_compBarExit;
     Control m_msgDlg, m_msgLabel;   // 阻断提示对话框（懒建复用）
+    Control m_aboutPopup, m_aboutLabel;   // 关于弹层（懒建复用；无按钮）
     float m_compBarH = 0.0f;        // 0=隐藏；36=占用第二行（视口下移 ✓）
     float m_pressX = 0.0f, m_pressY = 0.0f;   // 双击判定：按下位置（画布逻辑坐标）
     std::string m_lastClickId;            // 双击判定：上次点击控件 id
@@ -761,6 +794,12 @@ private:
     bool m_evTabActive = false;       // 事件页可见才创建 ListView（避免隐藏 ListView 重置全局光标）
     std::vector<Control> m_evRows;    // 旧动态绑定行（保留清理兼容）
     std::vector<std::string> m_evTypeItems;   // 事件下拉值平行表（选中索引 → JSON 事件名）
+    Control m_evMenuTree;             // 菜单事件树（menu-bar 选中时）
+    Control m_evCode;                 // 菜单事件代码按钮（普通事件模式隐藏）
+    Control m_evDel;                  // 菜单事件删除按钮（普通事件模式隐藏）
+    std::string m_selectedMenuPath;   // 当前菜单项路径（menu:<i>/<j>...）
+    bool m_evMenuSync = false;        // 程序化树选中/刷新中
+    bool m_ctxMenuSyncing = false;    // ContextMenu items 重建中（防 applyModel 递归）
     // 控件 id 行待提交状态（编辑完成再改名）
     std::string m_idRenameTarget, m_idRenameText;
     std::chrono::steady_clock::time_point m_idRenameDeadline;

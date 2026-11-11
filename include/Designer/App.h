@@ -28,9 +28,13 @@ public:
     bool init();
     int  run(int autoSeconds = 0);   // autoSeconds>0 时无人值守渲染指定秒数后干净退出
     void setOpenPathArg(const std::string& p) { m_openPathArg = p; }   // 命令行路径参数（启动即打开；长路径不经对话框）
+    void setStartupOptions(bool hidden, bool progressStdio) { m_startupHidden = hidden; m_startupProgressStdio = progressStdio; }
+    void setStartupProgressFile(const std::string& path) { m_startupProgressFile = path; }
     void shutdown();
 
 private:
+    void emitStartupProgress(const char* phase, int progress) const;
+    void presentCleanFrame();   // P0-104：菜单关闭/模态前后呈现干净帧
     void registerActions();
     bool loadSkeleton();
     void syncRootToWindow();            // 检测窗口尺寸变化 → root SetRect 触发布局重排
@@ -117,12 +121,22 @@ private:
     std::string m_pendingDropPath;            // OS 拖入待打开路径（P0-100：泵内仅轻量记录，泵后处理）
     bool m_dirty = false;                     // 未保存标记（编辑提交/撤销/重做置位；保存/打开/新建清零）
     void refreshRecentMenu();                 // 动态重建"最近文件"子菜单（无预留空槽——仅实际项）
-    void recordRecentFile(const std::string& path, bool persist);   // 去重提升 + 上限；persist=false 免写盘（自测）
+    void recordRecentFile(const std::string& path, bool persist,
+                          bool deferRefresh = false);   // 去重提升 + 上限；persist=false 免写盘（自测）
+    bool m_pendingRecentRefresh = false;      // 最近文件打开后延迟重建 Recent 子菜单
+    int m_pendingRecentRefreshWait = 0;
     void openRecentFile(size_t idx);          // 最近项打开（失效路径清理 + 状态栏提示）
     void updateWindowTitle();                 // 窗口标题：项目名 + 未保存 *
     void openResourceDialog(bool editMode);   // 插入（editMode=false）/修改（true，选中行回填）
     std::string m_lastError;
     std::string m_openPathArg;             // 命令行待打开项目路径（启动时打开）
+    bool m_startupHidden = false;           // Launcher 启动：主窗口 ready 前隐藏
+    bool m_startupProgressStdio = false;   // Launcher 启动：stdout 阶段进度
+    std::string m_startupProgressFile;      // Launcher 启动：文件阶段进度
+    bool m_startupReadyPending = false;    // ready 延迟到首帧 Present 后发送
+    bool m_startupBringFrontPending = false; // ready 后延迟把主窗口带到前台
+    int m_pendingRecentOpen = -1;            // 最近文件：延迟打开索引
+    int m_pendingRecentWait = 0;             // 额外等待帧（菜单关闭/Recent 面板收起）
     int m_lastWinW = 0, m_lastWinH = 0;    // 上次已同步的窗口尺寸
 };
 

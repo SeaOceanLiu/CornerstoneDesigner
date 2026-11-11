@@ -4,15 +4,15 @@
 <meta charset="UTF-8">
 <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>26 其它说明 - CornerstoneDesigner 用户手册</title>
+<title>32 其它说明 - CornerstoneDesigner 用户手册</title>
 <link rel="stylesheet" href="css/style.css">
 <script id="nav-data" src="assets/nav.js" data-current="26-theme-notes.html"></script>
 </head>
 <body>
 <div id="sidebar"></div>
-<div id="content"><h1>26 其它说明</h1>
+<div id="content"><h1>32 其它说明</h1>
 
-<h2>26.1 常见主题配方</h2>
+<h2>32.1 常见主题配方</h2>
 
 <table>
 <tr><th>目标</th><th>选择器</th><th>主要声明</th></tr>
@@ -25,7 +25,7 @@
 <tr><td>侧栏紧凑</td><td><code>panel.sidebar</code> + 容器条件</td><td>font-size、content-padding</td></tr>
 <tr><td>深色模式</td><td>变体 <code>dark</code></td><td>背景/文字变量覆盖</td></tr>
 </table>
-<h2>26.2 内置主题模板与独立加载</h2>
+<h2>32.2 内置主题模板与独立加载</h2>
 
 <p>设计器自带两套可直接使用的项目主题模板：<strong>明亮</strong>和<strong>暗黑</strong>。模板是独立的 JSON 文件，不依赖当前画布结构；应用后只设置项目主题，不会删除控件、改布局或清空已分配的类。</p>
 
@@ -61,7 +61,7 @@
 <div class="note"><strong>设计器放置控件时写入的默认外观不算“用户显式样式”。</strong>应用模板后，预览/导出会自动忽略按钮 <code>#FAFAFA</code>、标签 <code>#333333</code> 这类设计器缺省颜色，让模板生效；你手动改过的颜色仍会保留并继续覆盖模板。设计画布本身仍显示设计态默认外观，请以预览/导出为准。</div>
 
 <div class="note">“加载主题文件…”接受直接的主题对象，也接受带 <code>"theme"</code> 字段的布局 JSON；如果文件不是合法 JSON 对象，状态栏会提示，当前主题不变。预览已经打开时，通过菜单应用模板会自动重建预览；直接修改主题 JSON 后仍建议刷新预览。</div>
-<h2>26.3 设计器自身 UI 主题</h2>
+<h2>32.3 设计器自身 UI 主题</h2>
 
 <p>设计器界面（菜单、工具箱、属性面板）使用另一份主题文件：exe 同目录的 <code>designer_theme.json</code>。它和项目主题<strong>完全分离</strong>：</p>
 
@@ -73,7 +73,7 @@
 </ul>
 
 <p>文件缺失或 JSON 非法时只输出诊断，不阻止启动。</p>
-<h2>26.4 排查：为什么主题没生效</h2>
+<h2>32.4 排查：为什么主题没生效</h2>
 
 <ol class="steps">
   <li><strong>看的是设计画布还是预览？</strong> 当前设计画布主要显示显式样式和设计态；请在预览或导出界面看完整主题。</li>
@@ -85,7 +85,7 @@
   <li><strong>是否用了变量？</strong> 检查 <code>var(--name)</code> 拼写和变量是否存在；未定义变量会回退。</li>
   <li><strong>box-shadow 是合法 JSON 对象吗？</strong> 管理器的 box-shadow 字段需要对象文本。</li>
 </ol>
-<h2>26.5 当前限制</h2>
+<h2>32.5 当前限制</h2>
 
 <ul>
   <li>设计画布不是项目主题的完整预览；以预览/导出为准。</li>
@@ -98,8 +98,8 @@
 </ul>
 
 <div class="chapter-nav">
-  <a href="25-theme-example.html">← 上一章：25 完整示例</a>
-  <a href="27-export.html">下一章：27 导出与集成 →</a>
+  <a href="25-theme-example.html">← 上一章：31 完整示例</a>
+  <a href="27-export.html">下一章：33 导出与集成 →</a>
 </div>
 
 </div>

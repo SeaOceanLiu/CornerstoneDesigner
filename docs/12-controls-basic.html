@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>13 基础与输入控件 - CornerstoneDesigner 用户手册</title>
+<link rel="stylesheet" href="css/style.css">
+<script id="nav-data" src="assets/nav.js" data-current="12-controls-basic.html"></script>
+</head>
+<body>
+<div id="sidebar"></div>
+<div id="content">
+
+<h1>13 基础与输入控件</h1>
+
+<p>本章把工具箱中的基础控件和常用的输入类高级控件放在一起介绍。它们大多只需要“文本/值 + 事件”两类配置，适合先完成界面骨架，再逐步补主题和校验逻辑。</p>
+
+<h2>13.1 按钮 Button</h2>
+
+<table>
+<tr><th>项目</th><th>说明</th></tr>
+<tr><td>典型用途</td><td>提交、确认、打开弹窗、执行动作</td></tr>
+<tr><td>常用属性</td><td>文本、字体、字号、文字色、背景色、圆角、边框</td></tr>
+<tr><td>常用事件</td><td>点击事件（在事件页签选择实际列表项）</td></tr>
+<tr><td>注意</td><td>按钮文字过长时先调整尺寸或字号；不要把业务状态只放在颜色上，需同时修改文本</td></tr>
+</table>
+
+<p>绑定点击事件后，handler 在点击触发时执行。需要根据按钮来源区分多个按钮时，可在代码中读取控件的 ID 或为每个按钮使用独立 handler。</p>
+
+<h2>13.2 标签 Label</h2>
+
+<table>
+<tr><th>项目</th><th>说明</th></tr>
+<tr><td>典型用途</td><td>标题、说明文字、只读数据显示</td></tr>
+<tr><td>常用属性</td><td>文本、字体、字号、对齐、颜色、是否可点击</td></tr>
+<tr><td>事件</td><td>只有启用可点击行为时才需要点击事件</td></tr>
+<tr><td>注意</td><td>Label 不是输入控件；需要用户修改内容时使用 EditBox 或 TextArea</td></tr>
+</table>
+
+<h2>13.3 复选框 CheckBox</h2>
+
+<ul>
+  <li>文本说明选项含义，勾选状态表示布尔值。</li>
+  <li>在属性面板设置初始勾选状态；运行时可通过事件或代码读取/修改。</li>
+  <li>需要“一组只能选一个”时改用单选按钮或 ComboBox，不要用多个 CheckBox 模拟。</li>
+  <li>常用事件：勾选状态变化；实际事件名以事件页签为准。</li>
+</ul>
+
+<h2>13.4 输入框 EditBox</h2>
+
+<table>
+<tr><th>项目</th><th>说明</th></tr>
+<tr><td>典型用途</td><td>单行文本、名称、路径、搜索关键词</td></tr>
+<tr><td>常用属性</td><td>文本、placeholder、字体/字号、只读、密码模式、最大长度（如 schema 提供）</td></tr>
+<tr><td>常用事件</td><td>文本变化、回车确认、失焦提交</td></tr>
+<tr><td>注意</td><td>placeholder 不是默认值；需要初始文本时填写“文本”属性</td></tr>
+</table>
+
+<p>输入类控件要配合 Tab 焦点顺序使用。设计器中可以直接在属性面板修改文本；运行时是否提交由宿主事件逻辑决定。</p>
+
+<h2>13.5 多行文本 TextArea</h2>
+
+<ul>
+  <li>用于备注、日志、配置等长文本输入。</li>
+  <li>属性面板设置初始文本、字体和滚动相关字段；运行时由用户输入。</li>
+  <li>需要严格行数/字数限制时，在事件 handler 或运行时逻辑中校验，不要只依赖控件外观。</li>
+  <li>TextArea 与 EditBox 的事件不同，绑定前先确认事件页签列表。</li>
+</ul>
+
+<h2>13.6 数字框 NumericUpDown</h2>
+
+<table>
+<tr><th>项目</th><th>说明</th></tr>
+<tr><td>典型用途</td><td>数量、比例、坐标、阈值等数值输入</td></tr>
+<tr><td>常用属性</td><td>最小值、最大值、步长、小数位、当前值、只读</td></tr>
+<tr><td>常用事件</td><td>值变化；需要“输入完成后提交”时用失焦/回车事件（以控件事件列表为准）</td></tr>
+<tr><td>注意</td><td>范围和步长要在设计期设好，运行时再改会增加状态同步成本</td></tr>
+</table>
+
+<h2>13.7 取色器 ColorPicker</h2>
+
+<ul>
+  <li>用于让用户选择颜色，常用于主题编辑、绘图和样式配置界面。</li>
+  <li>属性面板可设置初始颜色；运行时通过颜色变化事件读取新值。</li>
+  <li>颜色统一使用 <code>#RRGGBBAA</code> 或设计器提供的 RGBA 控件；导出到代码时注意颜色类型转换。</li>
+  <li>取色器弹出面板的尺寸/定位由控件内部处理；给它留出足够的父容器空间。</li>
+</ul>
+
+<h2>13.8 进度条 ProgressBar</h2>
+
+<ul>
+  <li>显示任务进度，通常只读；不要把它当作 Slider 使用。</li>
+  <li>常用字段：当前值、最小值/最大值、方向、填充色。</li>
+  <li>进度变化由代码或外部事件驱动；设计期可设置一个示例值查看外观。</li>
+</ul>
+
+<h2>13.9 滑块 Slider</h2>
+
+<ul>
+  <li>用于在连续范围内选择数值，例如音量、缩放、透明度。</li>
+  <li>常用字段：最小值、最大值、当前值、步长、方向。</li>
+  <li>滑动事件的触发频率可能很高；handler 中避免做重资源加载或同步导出。</li>
+</ul>
+
+<h2>13.10 滚动条 ScrollBar</h2>
+
+<ul>
+  <li>通常作为滚动容器或自定义滚动区域的组成部分，不建议单独用来表达数值。</li>
+  <li>配置方向、范围、页面步长和当前值；与可滚动内容联动时需要宿主逻辑。</li>
+  <li>如果只是滚动 ListView/TextArea，优先使用控件自带的滚动条，不要重复叠加。</li>
+</ul>
+
+<h2>13.11 输入控件共同问题</h2>
+
+<table>
+<tr><th>现象</th><th>检查</th></tr>
+<tr><td>运行时无法输入</td><td>控件是否启用、是否只读、是否被上层透明控件遮挡</td></tr>
+<tr><td>文字被裁切</td><td>控件高度、字号、内边距和字体是否匹配</td></tr>
+<tr><td>点击不触发</td><td>是否绑定到了错误的事件；父容器是否拦截了事件</td></tr>
+<tr><td>主题后颜色不对</td><td>显式属性与项目主题的覆盖关系，见 <a href="15-theme-system.html">主题系统</a></td></tr>
+</table>
+
+<div class="chapter-nav">
+  <a href="12-controls-general.html">← 上一章：12 控件通用操作</a>
+  <a href="12-controls-container.html">下一章：14 容器与布局控件 →</a>
+</div>
+
+</div>
+</body>
+</html>
