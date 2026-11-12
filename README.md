@@ -1,5 +1,7 @@
 ﻿# CornerstoneDesigner
 
+当前发布：**CornerstoneDesigner v0.1.0**，同步 **UICornerstone v1.2.0**。
+
 CornerstoneDesigner 是 [UICornerstone](https://github.com/SeaOceanLiu/UICornerstone) 的可视化 UI 设计器。它采用 Dogfooding 方式：设计器自身就是 UICornerstone 应用（SDL3 后端），用同一套控件、布局、主题和事件体系完成 UI 设计，并导出可直接运行的 JSON 布局或 C/C++ 宿主工程。
 
 ![CornerstoneDesigner 主界面](docs/assets/screenshots/01-main-annotated.png)
@@ -40,7 +42,7 @@ cd CornerstoneDesigner
 git submodule update --init --recursive
 ```
 
-UICornerstone 以发布目录形式同步到 `subModules/UICornerstone`。升级引擎时，将该目录中的 DLL、`assets/`、`binding/` 和 `tools/` 同步到设计器子模块目录。
+UICornerstone 通过 `subModules/UICornerstone` 子模块（`UICornerstone-release` 发布仓）同步。升级引擎时，更新发布子模块提交，再更新设计器父仓中的 submodule 指针。
 
 ### 构建
 
@@ -77,6 +79,24 @@ CornerstoneLauncher.exe
 ```
 
 或直接运行 `CornerstoneDesigner.exe`（跳过启动界面）。
+
+### 发布包
+
+```batch
+build_scripts\make_release.bat
+```
+
+脚本会先构建 Release，然后把运行文件、`assets/`、`themes/`、`schema/`、`sdk/`、用户手册、README 和 LICENSE 归档到项目根目录的 `release/`。`release/` 已加入 `.gitignore`，不会进入版本库。
+
+发布包不包含 `designer_settings.json`、运行日志或 `Temp/` 测试产物。Release 版 Designer/Launcher 使用 Windows GUI 子系统，不打开新的 Console 窗口；Designer 日志写入 exe 同目录 `designer.log`，Launcher 写入 `launcher.log`。发布前请在干净的 Windows 环境验证启动、预览和导出流程。
+
+发布包同时包含：
+
+- `vc_redist.x64.exe`：微软官方 Microsoft Visual C++ 2015–2022 x64 运行库安装程序
+- `install_vc_runtime.bat`：自动请求管理员权限并静默安装
+- `VC_Runtime_README_zh-CN.txt`：安装、静默命令、退出码和注意事项
+
+> Release 版使用 MSVC 动态运行库。目标机器需要安装 **Microsoft Visual C++ 2015–2022 x64 运行库**；建议运行随包提供的 `install_vc_runtime.bat`，不要只手工复制单个 `MSVCP140.dll` 运行库文件。
 
 ### 验证
 

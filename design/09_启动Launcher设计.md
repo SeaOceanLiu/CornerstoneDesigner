@@ -276,6 +276,6 @@ sequenceDiagram
 - 窗口外观：Launcher 自身显示期间 `SetWindowAlwaysOnTop(true)` + `SetWindowForeground()`；Designer ready 后 frame 30 调 `SetWindowAlwaysOnTop(false)` + `SetWindowForeground()`，不保留永久置顶；不再使用 DWM/EnumWindows/SetWindowLongPtr/SetWindowRgn 样式兜底；Utility 负责任务栏/窗口列表隐藏。
 - 启动：Windows `CreateProcessW` + `PROCESS_INFORMATION` PID；Designer `--startup-hidden` + `--startup-progress-file`。
 - 进度：`launcher_progress.log` 文件轮询；`launcher.log` 记录 pid/ready/错误。
-- Console：Launcher attach 已有控制台或创建 Console，并把 stdio 重定向到 `CONOUT$`；Designer 继承 Console 句柄，Launcher 退出后 Designer 日志仍可继续输出。
+- Console：Launcher 若从已有控制台启动则 attach 并重定向 stdio；Debug 无控制台时 AllocConsole，Release 不创建新 Console。Designer Release 日志写入 `designer.log`，Launcher 日志写入 `launcher.log`。
 - ready：Designer 先显示并发送 ready；Launcher 收到后关闭，不再枚举/抢占子窗口；Designer 在 frame 30 通过引擎 `SetWindowForeground` 抢前台（不置顶）。
 - 后续：`LauncherPlatform` 抽象、SDL3 Process（跨平台）；进程/路径仍保留 Win32（CreateProcessW/Toolhelp/路径转换）。

@@ -36,6 +36,14 @@ target_link_libraries(CornerstoneDesigner PRIVATE UICornerstoneBinding)
 target_compile_definitions(CornerstoneDesigner PRIVATE
     CORNERSTONE_BUILD_TIMESTAMP="${CORNERSTONE_BUILD_TIMESTAMP}")
 
+if(WIN32)
+    # Release 不打开 Console；日志由 main.cpp 重定向到 exe 同目录 designer.log。
+    # Debug 保留控制台便于开发。
+    target_link_options(CornerstoneDesigner PRIVATE
+        $<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS>
+        $<$<CONFIG:Release>:/ENTRY:mainCRTStartup>)
+endif()
+
 # Launcher：独立进程启动器 + 代码创建加载界面（不加载 JSON）
 add_executable(CornerstoneLauncher WIN32
     src/Launcher.cpp

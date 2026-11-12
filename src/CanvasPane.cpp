@@ -1090,8 +1090,6 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
 }
 
 void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, bool fromDrag) {
-    std::printf("[Place] placeControl tool=%s at=(%.0f,%.0f) drag=%d\n",
-                toolboxId.c_str(), cx, cy, fromDrag ? 1 : 0);
     if (!m_viewport) return;
     float w = 120, h = 32;
     const char* caption = "";
@@ -1112,7 +1110,6 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
         }
         prefix = "comp";
     } else if (!controlSpec(toolboxId, w, h, caption, prefix)) {
-        std::printf("[Place]   spec-miss tool=%s\n", toolboxId.c_str());
         return;
     }
 
@@ -1180,7 +1177,6 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
     Control ctl = isComp ? createComponentPlaceholder(toolboxId, x, y, w, h)
                          : createViewportControl(toolboxId, x, y, w, h, *model);
     if (!ctl.IsValid()) {
-        std::printf("[Place]   create-invalid tool=%s\n", toolboxId.c_str());
         return;
     }
     if (!isComp)
@@ -1225,9 +1221,6 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
         }
     }
     refreshStatusRight();   // 状态栏控件数同步
-    std::printf("[Canvas] placed %s id=%s at (%.0f,%.0f)\n",
-                m_items.back().model->props.type.c_str(),
-                m_items.back().model->props.id.c_str(), x, y);
 
     // 记录逻辑基础字号（引擎字号属性存逻辑值，缩放由 refreshScaleWith 自动跟随）；
     // 供动态行 getter 读失败时的回填兜底
@@ -3721,15 +3714,11 @@ Control CanvasPane::takePoolRow(const std::string& kind, const std::function<Con
     if (it != m_rowPool.end() && it->second.IsValid()) {
         m_rowPoolUsed.insert(kind);
         it->second.SetBool(PropertyNames::kVisible, true);
-        if (m_ui && !m_ui->DebugValidateHandle(it->second))   // P0-84c：Release 归属自检
-            std::printf("[CanvasPane] row handle NOT owned by main instance: %s\n", kind.c_str());
         return it->second;
     }
     Control c = create();
     if (c.IsValid()) {
         m_propDynamic.AddChild(c);   // 仅首次创建入容器
-        if (m_ui && !m_ui->DebugValidateHandle(c))   // P0-84c：Release 归属自检
-            std::printf("[CanvasPane] row handle NOT owned by main instance (new): %s\n", kind.c_str());
         m_rowPool[kind] = c;
         m_rowPoolUsed.insert(kind);
     }
@@ -4005,7 +3994,6 @@ void CanvasPane::buildBenchRows() {
     m_dynScroll.SetFloat(PropertyNames::kValue, 0.0f);
     m_dynScroll.SetBool(PropertyNames::kVisible, m_dynScrollMax > 0);
     applyDynScroll(0.0f);
-    std::printf("[CanvasPane] bench rows built: %d (%s)\n", rows, genKeys.c_str());
 }
 
 // 画布背景 → 网格瓦片底色（WYSIWYG：纸面=设计区、底色=Bench 背景、网格线取对比色）。
@@ -5717,8 +5705,6 @@ void CanvasPane::rebuildDynamicRows() {
     m_dynScroll.SetFloat(PropertyNames::kValue, 0.0f);
     m_dynScroll.SetBool(PropertyNames::kVisible, m_dynScrollMax > 0);
     applyDynScroll(0.0f);
-    std::printf("[CanvasPane] dynamic rows for '%s': %d (%s)\n",
-                m_schemaType.c_str(), rows, genKeys.c_str());
 }
 
 // 滚动 → 行偏移（超界裁剪由 propDynamic 的 clip-children 承担，纯偏移）。
@@ -6074,8 +6060,6 @@ void CanvasPane::tickInput() {
     // 工具拖放（拖放模式）：工具箱项按下（kEventSelect）→ 拖到画布松开 → 放置于松开处；
     // 在工具箱内松开（普通单击）→ 不放置、仅清除候选
     if (!m_pendingPlaceTool.empty() && !down) {
-        std::printf("[Place] pending-drop tool=%s inVp=%d at=(%.0f,%.0f)\n",
-                    m_pendingPlaceTool.c_str(), inVp ? 1 : 0, cx, cy);
         if (inVp) placeControl(m_pendingPlaceTool, cx, cy, true);   // 拖放：左上角=落点
         m_pendingPlaceTool.clear();
     }
@@ -6301,8 +6285,6 @@ void CanvasPane::tickInput() {
                                     m_tabDragGhost.SetBool(PropertyNames::kVisible, 1);
                                     m_tabDragGhost.SetRect(cx + 12.0f, cy + 12.0f, 32.0f, 32.0f);
                                 }
-                                std::printf("[tab-click] item=%d -> page=%s (canvas+tree synced)\n",
-                                            itemIdx, pid.c_str());
                                 m_mouseWasDown = down;
                                 return;
                             }
@@ -6320,9 +6302,6 @@ void CanvasPane::tickInput() {
             // 视口根 rect=窗口全局位置）→ 全局域，传 SDL 窗口坐标原样
             const bool hh = m_viewport->HandleHitTest(m_selHandle, wx, wy, ht);
             if (hh) {
-                if (PlacedControl* hsel = placedById(m_selectedId);
-                    hsel && hsel->model->props.type == "tab-control")
-                    std::printf("[tab-click] handle-hit ht=%d on selected tab (event consumed by handle)\n", ht);
                 // 多选 + 主选本体移动区（HandleType::Move=1）→ 组拖动（引擎路径增量）
                 if (m_selIds.size() > 1 && ht == 1) beginGroupDrag(m_selectedId);
                 m_mouseWasDown = down;
@@ -6651,17 +6630,13 @@ void CanvasPane::selectTreeRow(const std::string& id) {
 // 拖拽事件分发中，同步改树/控件会造成重入挂死 ✗），下一帧 TickInput 再回写模型/画布。
 void CanvasPane::onTreeReordered(const Event& e) {
     if (m_treeSync) return;
-    std::printf("[P0105] reordered(1) getters...\n");
     const std::string dsrc = e.GetDragId();
     const int dkind = e.GetHintKind();
     const std::string dtgt = e.GetHintTargetId();
-    std::printf("[P0105] reordered(2) src=%s kind=%d target=%s\n",
-                dsrc.c_str(), dkind, dtgt.c_str());
     m_treeReorderSrc = dsrc;
     m_treeReorderHintKind = dkind;
     m_treeReorderHintTarget = dtgt;
     m_treeReorderPending = !m_treeReorderSrc.empty();
-    std::printf("[P0105] reordered(3) pending=%d\n", m_treeReorderPending ? 1 : 0);
 }
 
 // 落点回写（引擎 §1 口径 ✗）：INTO→target（页解析）；BEFORE/AFTER→target 父 + 目标序
@@ -6692,7 +6667,6 @@ void CanvasPane::applyTreeReorder(const std::string& srcId, int hintKind,
     Control parentCtl;
     float parentGx = 0.0f, parentGy = 0.0f;
     if (!engineParentOf(newParent, parentCtl, parentGx, parentGy)) {
-        std::printf("[P0105] apply aborted: engine parent '%s' unresolved\n", newParent.c_str());
         setStatusHint(u8"目标容器不可用：" + newParent);
         return;
     }
@@ -6757,8 +6731,6 @@ void CanvasPane::applyTreeReorder(const std::string& srcId, int hintKind,
         m_ui->TreeViewMoveNode(m_canvasTree, srcId, kBenchTreeNode, -1);
         m_treeSync = false;
     }
-    std::printf("[P0105] apply src=%s parent='%s' benchEdge=%d\n",
-                srcId.c_str(), newParent.c_str(), benchEdge ? 1 : 0);
     syncZOrder(newParent);   // P0-107：绘制顺序同步（树底=最前 ✗）
     selectItem(srcId);
     commitUndo("tree-reparent");
@@ -7843,7 +7815,6 @@ bool CanvasPane::OpenProject(const std::string& path) {
         for (auto it = csd["metadata"]["contextMenuTargets"].begin();
              it != csd["metadata"]["contextMenuTargets"].end(); ++it)
             if (it.value().is_string()) m_contextMenuTargets[it.key()] = it.value().get<std::string>();
-    std::printf("[CanvasPane] contextMenuTargets loaded=%zu\n", m_contextMenuTargets.size());
     if (!buildFromLayoutJson(csd["layout"], false)) {
         setStatusHint(u8"打开失败：layout 无效");
         return false;
@@ -7941,7 +7912,6 @@ std::string CanvasPane::buildMainCText() const {
     char wbuf[16], hbuf[16];
     std::snprintf(wbuf, sizeof(wbuf), "%d", (int)m_designW);
     std::snprintf(hbuf, sizeof(hbuf), "%d", (int)m_designH);
-    std::printf("[CanvasPane] contextMenuTargets export=%zu\n", m_contextMenuTargets.size());
     std::string ctxBind;
     for (const auto& [mid, tid] : m_contextMenuTargets) {
         if (mid.empty() || tid.empty()) continue;
@@ -8261,7 +8231,6 @@ std::string CanvasPane::buildMainCppText() const {
     char wbuf[16], hbuf[16];
     std::snprintf(wbuf, sizeof(wbuf), "%d", (int)m_designW);
     std::snprintf(hbuf, sizeof(hbuf), "%d", (int)m_designH);
-    std::printf("[CanvasPane] contextMenuTargets export=%zu\n", m_contextMenuTargets.size());
     std::string ctxBind;
     for (const auto& [mid, tid] : m_contextMenuTargets) {
         if (mid.empty() || tid.empty()) continue;
@@ -9255,9 +9224,7 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
             if (items.is_array() && !items.empty()) {
                 const nlohmann::json old = items;
                 items[0]["events"]["onClick"] = "onStatusItemTest";
-                std::printf("[DBG] status item events after set=%s\n", items[0]["events"].dump().c_str());
                 syncStatusBarItems(*sm, old);
-                std::printf("[DBG] status item events after sync=%s\n", items[0]["events"].dump().c_str());
                 check(flatItemHandlerAt("status:0") == "onStatusItemTest",
                       "statusbar: item onClick stored");
                 bool found = false;
@@ -9393,12 +9360,6 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
     }
     selectItem("");
     check(!m_benchSelected, "bench: cleared by control-selection path");
-    {
-        const nlohmann::json dbg = serializeLayoutJson();
-        for (const auto& c : dbg["controls"])
-            if (c.value("type", "") == "status-bar")
-                std::printf("[DBG] serialized status items=%s\n", c["items"].dump().c_str());
-    }
     check(SaveProject(csd), "SaveProject");
     NewProject();
     std::fflush(stdout);
@@ -11280,8 +11241,6 @@ void CanvasPane::ensureIdConfirmDialog() {
         m_idApplyNew = m_idConfirmNew;
         m_idApplyReplace = (e.GetCloseResult() == 1);   // 1=同步；2/X/ESC=仅改名
         m_idApplyPending = true;
-        std::printf("[IdRename] dialog result=%d replace=%d%c",
-                    e.GetCloseResult(), (int)m_idApplyReplace, 10);
     });
     m_idDlg.SetBool(PropertyNames::kVisible, 0);   // 预创建后立即隐藏（Startup 不显示 ✗）
 }
@@ -11294,8 +11253,6 @@ void CanvasPane::showIdRenameConfirm(int refs, const std::string& oldId,
     ensureIdConfirmDialog();
     if (!m_idDlg.IsValid()) return;
     m_idConfirmAwaiting = true;
-    std::printf("[IdRename] dialog refs=%d old=%s new=%s%c", refs,
-                oldId.c_str(), newId.c_str(), 10);
     std::string msg = u8"发现 " + std::to_string(refs) + u8" 处 handler 代码引用旧 id：\n" +
                       oldId + u8"\n是否一并替换为 " + newId +
                       u8"？\n（替换与改名可一次撤销）";
@@ -11340,8 +11297,6 @@ void CanvasPane::processIdApply() {
         return;
     }
     const int n = replace ? replaceHandlerRefs(oldId, newId) : 0;
-    std::printf("[IdRename] apply old=%s new=%s replace=%d n=%d%c", oldId.c_str(),
-                newId.c_str(), (int)replace, n, 10);
     commitUndo("id:rename");   // 改名 + 代码替换为同一撤销步 ✓
     rebuildDynamicRows();
     refreshEventPanel();
@@ -11362,8 +11317,6 @@ void CanvasPane::commitPendingIdRename() {
     ControlModel* m = findModel(target);
     if (!m || text == m->props.id) return;
     const int refs = countHandlerRefs(target);
-    std::printf("[IdRename] commit old=%s new=%s refs=%d%c", target.c_str(),
-                text.c_str(), refs, 10);
     if (refs > 0) {
         // 不在 UpdateViewport 链路内建窗；延迟到 tickInput（首次修改稳定 ✗）
         m_idConfirmPendingOld = target;
@@ -12547,7 +12500,6 @@ void CanvasPane::SetToolboxTree(Control tree) {
         if (m_toolboxSearchSelecting) return;   // F1.3：搜索定位高亮不布防放置候选 ✗
         const std::string id = e.GetNodeId();
         if (id.rfind("grp", 0) == 0) return;    // 组节点（grpBasic/grpComponents…）不布防 ✗
-        std::printf("[Toolbox] select node=%s\n", id.c_str());
         if (id.empty()) return;
         const auto now = std::chrono::steady_clock::now();
         if (id == m_lastToolId) {
@@ -12556,8 +12508,6 @@ void CanvasPane::SetToolboxTree(Control tree) {
             m_lastToolId.clear();
             if (ms < 500) {
                 // 双击：画布中央放置（逻辑坐标）；清放置待定（双击流程第一击已设 pending）
-                std::printf("[Place] dblclick tool=%s center=(%.0f,%.0f)\n",
-                            id.c_str(), m_vpW / (2 * m_zoom), m_vpH / (2 * m_zoom));
                 placeControl(id, m_vpW / (2 * m_zoom), m_vpH / (2 * m_zoom));
                 m_pendingPlaceTool.clear();
                 return;

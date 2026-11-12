@@ -51,10 +51,18 @@ std::string exeRelative(const std::string& rel) {
 
 #ifdef _WIN32
 static void ensureLauncherConsole() {
-    // Launcher 为 WIN32 子系统；从 Explorer 启动时没有 Console。附着调用方 Console，
-    // 没有则创建，并把 stdio 指到 CONOUT$/CONIN$。子进程继承该 Console 后日志可持续输出。
+    // Launcher 为 WIN32 子系统。Debug 从 Explorer 启动时创建 Console 便于诊断；
+    // Release 不创建新 Console，日志由 launcherLog 写入 launcher.log。
+    // 若从已有 Console 启动，则附着并把 stdio 指到 CONOUT$/CONIN$。
     if (!GetConsoleWindow()) {
-        if (!AttachConsole(ATTACH_PARENT_PROCESS)) AllocConsole();
+        if (!AttachConsole(ATTACH_PARENT_PROCESS)) {
+#ifdef NDEBUG
+            // Release：不创建新的 Console 窗口；日志由 launcherLog 写入 launcher.log。
+            return;
+#else
+            AllocConsole();
+#endif
+        }
     }
     FILE* f = nullptr;
     freopen_s(&f, "CONOUT$", "w", stdout);
