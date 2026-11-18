@@ -70,13 +70,15 @@
 <tr><td>字体名称</td><td class="status-part">从列表选择</td><td>使用主题管理器字体下拉中的名称，或引擎支持的字体枚举名；不是任意字体文件路径。</td></tr>
 <tr><td>字体样式</td><td class="status-part">固定枚举</td><td><code>normal</code> / <code>bold</code> / <code>italic</code> / <code>underline</code> / <code>strikethrough</code>。</td></tr>
 <tr><td>颜色值</td><td class="status-part">固定格式</td><td><code>#RRGGBB</code>、<code>#RRGGBBAA</code>、<code>rgb()</code>、<code>rgba()</code> 或颜色名。</td></tr>
-<tr><td>box-shadow 字段名</td><td class="status-no">固定</td><td><code>color</code>、<code>offset-x</code>、<code>offset-y</code>、<code>blur</code>、<code>spread</code>；值必须是 JSON 对象。</td></tr>
+<tr><td>box-shadow 字段名</td><td class="status-no">固定</td><td>normal 字段为 <code>color</code>、<code>offset-x</code>、<code>offset-y</code>、<code>blur</code>、<code>spread</code>；可再嵌套 <code>hover</code>/<code>pressed</code>/<code>disabled</code> 状态对象（同字段部分覆盖）。值必须是 JSON 对象。</td></tr>
 <tr><td>作用域下拉</td><td class="status-part">只能选现有项</td><td>基主题、已有变体、已有媒体条件、已有容器条件；不能手写未知作用域。</td></tr>
 </table>
 
 <div class="tip">简单记：<strong>名字可以自己起，语法不能自己编，枚举只能从清单里选。</strong>条件 ID、变体名、类名、控件 ID 是名字；选择器、查询、声明和容器字段是语法。</div>
 
 <div class="tip">主题管理器已把<strong>选择器、查询、容器、box-shadow</strong>做成“可编辑下拉框”：常用值可以直接选，也可以手动输入。新增规则/应用时会检查格式；选择器、query、容器或 box-shadow 不合法时，底部状态栏会提示原因并阻止保存。字号、圆角、内边距使用数值控件，字体使用下拉，颜色使用取色器。</div>
+
+<div class="tip"><strong>状态柔光阴影：</strong>可以在 normal 的 <code>box-shadow</code> 对象中嵌套 <code>hover</code>/<code>pressed</code>/<code>disabled</code>，也可以新增 <code>button.primary:hover</code> 规则，在声明中写 <code>box-shadow</code>。状态对象只覆盖写出的字段，其余继承 normal；状态 color 的 alpha=0 表示该状态关闭阴影。示例和四态截图见 <a href="19-theme-declarations.html">19.4 阴影</a>。</div>
 
 <h3>选择器与属性表单</h3>
 
@@ -86,7 +88,7 @@
 <tr><td>背景色 / 文字色 / 边框色 / 文字阴影</td><td>规则的颜色声明；当前表单编辑的是常态值</td></tr>
 <tr><td>字体 / 字号 / 圆角</td><td>字体名、字号 px、圆角 px</td></tr>
 <tr><td>内边距(上/右/下/左)</td><td>控件内容区的内边距，写入 <code>content-padding</code></td></tr>
-<tr><td>box-shadow</td><td>需要填写 JSON 对象，见 25.4</td></tr>
+<tr><td>box-shadow</td><td>需要填写 JSON 对象，normal 可嵌套 hover/pressed/disabled 状态对象，见 19.4</td></tr>
 </table>
 
 <h3>按钮</h3>

@@ -14,7 +14,7 @@
 
 <h1>10 属性面板</h1>
 
-<p>右侧属性面板编辑当前选中控件的属性。动态表单按属性语义分为<strong>背景色、边框色、字体及阴影、常规</strong>四组；布局、外观、行为是使用上的分类，字段会归入对应组。事件单独放在“事件”页签。</p>
+<p>右侧属性面板编辑当前选中控件的属性。动态表单按属性语义分为<strong>背景色、边框色、字体及阴影、轮廓阴影、常规</strong>五组；布局、外观、行为是使用上的分类，字段会归入对应组。事件单独放在“事件”页签。</p>
 
 <div class="shot">
   <img src="assets/screenshots/02-workspace.png" alt="属性面板">
@@ -31,11 +31,12 @@
 <tr><th>分组</th><th>包含内容</th></tr>
 <tr><td>背景色</td><td>控件背景的 normal/hover/pressed/disabled 色槽、背景相关开关</td></tr>
 <tr><td>边框色</td><td>边框四态颜色、边框可见性等</td></tr>
-<tr><td>字体及阴影</td><td>文本、字体、字号、文字色、文字阴影及偏移</td></tr>
+<tr><td>字体及阴影</td><td>文本、字体、字号、文字色、文字阴影及偏移；<code>text-shadow.blur</code> 为 Label 字形柔光半径</td></tr>
+<tr><td>轮廓阴影</td><td>控件外框的 <code>box-shadow</code>：normal 的颜色/偏移/柔光/扩散，以及 hover/pressed/disabled 状态子组</td></tr>
 <tr><td>常规</td><td>控件 ID、布局位置/尺寸/锚点、可见/启用、控件专有行为和结构化字段</td></tr>
 </table>
 
-<p>分组标题默认折叠，点击标题展开；切换控件时同一类型会复用已展开状态。分组内没有的字段通常表示该控件类型不支持，或字段属于组件实例 props。</p>
+<p>分组标题默认折叠，点击标题展开；标题前的 <code>[-]</code> / <code>[+]</code> 表示当前是展开/收起状态。切换控件时同一类型会复用已展开状态。分组内没有的字段通常表示该控件类型不支持，或字段属于组件实例 props。</p>
 
 <h2>10.3 布局</h2>
 
@@ -60,6 +61,26 @@
 
 <p>颜色使用 <code>#RRGGBBAA</code> 格式；支持直接输入十六进制色值。取色器可以拾取屏幕颜色，也可以在右侧输入 RGBA 数值。</p>
 
+<p>Label 的“字体及阴影”组还提供 <code>text-shadow.blur</code>（字形柔光半径）。当数值大于 0 而文字阴影尚未启用或阴影色透明时，设计器会自动启用文字阴影并补一个默认阴影色，避免“只改 blur 看不到效果”。</p>
+
+<h3>10.4.1 轮廓阴影（box-shadow）</h3>
+
+<p>“轮廓阴影”组用于编辑控件外框的柔光阴影：normal 显示 5 个字段；hover / pressed / disabled 是三个默认折叠的子组，每个子组同样有颜色、偏移、柔光和扩散 5 行。</p>
+
+<ul>
+  <li>状态行显示的是<strong>生效值</strong>：状态字段未设置时回退到 normal，便于直接看到继承结果。</li>
+  <li>编辑状态字段后，该字段写入状态覆盖；没有改动的字段继续继承 normal。</li>
+  <li>状态颜色的 alpha=0 表示该状态明确关闭阴影；不要用“留空”表达关闭。</li>
+  <li>修改状态数值时，如果颜色仍透明且没有显式状态色，设计器会补一个可见的默认阴影色，避免“改了数值但看不见”。</li>
+</ul>
+
+<div class="shot">
+  <img src="assets/screenshots/13-box-shadow-states.png" alt="box-shadow normal / hover / pressed / disabled 四态对比">
+  <div class="cap">图 10-2 轮廓阴影的四态效果（同一主题与尺寸，仅状态不同）</div>
+</div>
+
+<p>主题中的写法和状态规则见 <a href="19-theme-declarations.html">主题声明：阴影</a>。支持范围：普通控件、Popup/Dialog、MenuBar 支持四态；MenuPanel 支持 normal；ContextMenu/MenuItem/HandleControl 不绘制 box-shadow。Shape 的 box-shadow V1 按包围盒绘制，不沿轮廓发光。</p>
+
 <h2>10.5 行为与控件专有属性</h2>
 
 <p>“行为”区域根据控件类型和 schema 显示不同字段，例如：</p>
@@ -73,6 +94,8 @@
 </ul>
 
 <p>字段来源是 UICornerstone schema；当 schema 更新时，属性面板会提供新的可用属性。未知字段会保留在原始 JSON 中，不会因为面板暂不支持而丢失。</p>
+
+<p>Shape 的属性行会按当前“图形类型”过滤：只生成该类型真正生效的字段（例如 radius 仅 round-rect、ring-width 仅 circle/ellipse、points 仅 polyline/polygon）。切换图形类型后属性行会自动重建，下拉框下方同时显示当前类型的生效属性提示。Shape 还提供“多图元”分组：通过“＋ 添加图元”逐个添加图形，每个图元有独立的形状、矩形、颜色、线宽等字段控件；<code>primitives</code> 非空时替代顶层单图元绘制，详见 <a href="12-controls-media.html">媒体控件：Shape</a>。</p>
 
 <h2>10.6 多选编辑</h2>
 

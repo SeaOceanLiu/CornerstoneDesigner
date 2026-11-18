@@ -1034,6 +1034,8 @@ Control CanvasPane::createViewportControl(const std::string& tb, float x, float 
             ctl.SetBool("close-on-click-outside", 0);
             ctl.SetBool("close-on-esc", 0);
             ctl.SetBool(PropertyNames::kVisible, 1);
+            // CR20261113001：CreateContextMenu 已显式 setRect，引擎保持 Absolute；
+            // 设计态 visible=1 不再居中，无需额外 SetRect 兜底。
         }
     } else if (tb == "tMenu")   ctl = m_viewport->CreateMenuBar(x, y, w, h);
     else if (tb == "tWin")
@@ -1155,7 +1157,18 @@ void CanvasPane::placeControl(const std::string& toolboxId, float cx, float cy, 
     float casc = fromDrag ? 0.0f : (float)(m_seq % kCascMod) * kCascStep;
     float x = fromDrag ? cx : (cx - w / 2 + casc);
     float y = fromDrag ? cy : (cy - h / 2 + casc);
-    if (m_snapEnabled) {
+    if (toolboxId == "tStatus") {
+        // StatusBar 是贴底横条：缺省铺满目标内容区底缘，不跟随落点/网格吸附。
+        // 这样双击/拖放/轻微点击都不会把它留在网格线上；后续尺寸变化由锚定保持。
+        const float areaX = targetParent.IsValid() ? contentRect.x : 0.0f;
+        const float areaY = targetParent.IsValid() ? contentRect.y : 0.0f;
+        const float areaW = targetParent.IsValid() ? contentRect.w : m_designW;
+        const float areaH = targetParent.IsValid() ? contentRect.h : m_designH;
+        w = areaW > 0.0f ? areaW : w;
+        x = areaX;
+        y = areaY + areaH - h;
+        if (y < areaY) y = areaY;
+    } else if (m_snapEnabled) {
         x = std::round(x / m_gridCell) * m_gridCell;
         y = std::round(y / m_gridCell) * m_gridCell;
     }
@@ -1607,6 +1620,31 @@ Control CanvasPane::anchorParentOf(const PlacedControl& pc) {
         return (p && p->ctl.IsValid()) ? p->ctl : Control();
     }
     return m_viewport ? m_viewport->Root() : Control();
+}
+
+// StatusBar 的几何由底缘决定：允许通过手柄进入拖动/缩放路径，但释放后
+// 统一回吸到目标内容区底部并铺满宽度，避免停留在网格线或半途位置。
+void CanvasPane::snapStatusBarToDock(PlacedControl& pc) {
+    if (!pc.model || pc.model->props.type != "status-bar") return;
+    float w = pc.model->props.rect.w;
+    const float h = pc.model->props.rect.h;
+    float x = 0.0f;
+    float y = 0.0f;
+    if (pc.parentId.empty()) {
+        if (m_designW > 0.0f) w = m_designW;
+        y = m_designH - h;
+    } else {
+        Control parent;
+        SRect cr{};
+        if (!resolveContainer(pc.parentId, parent, cr)) return;
+        w = cr.w;
+        y = cr.h - h;
+    }
+    if (y < 0.0f) y = 0.0f;
+    pc.model->props.rect = SRect{ x, y, w, h };
+    if (pc.ctl.IsValid()) pc.ctl.SetRect(x, y, w, h);
+    if (pc.model->props.id == m_selectedId) fillPropertyPanel();
+    updateSelOutlines();
 }
 
 // P0-59：引擎重排（布局切换/锚点应用/容器挂载）后同步全部模型 rect——
@@ -2145,7 +2183,14 @@ void CanvasPane::syncContextMenuItems(ControlModel& m, const nlohmann::json& old
     PlacedControl* pc = placedById(m.props.id);
     if (!pc || !m_viewport || m_ctxMenuSyncing) return;
     m_ctxMenuSyncing = true;
-    if (pc->ctl.IsValid()) pc->ctl.Destroy();
+    // items 重建会销毁旧 ContextMenu；先以引擎当前外框回写模型，避免拖动后
+    // 因模型尚未同步而把菜单重建回旧位置。
+    if (pc->ctl.IsValid()) {
+        const UIRect cur = pc->ctl.GetRect();
+        if (cur.w > 0.0f && cur.h > 0.0f)
+            m.props.rect = SRect{ cur.x, cur.y, cur.w, cur.h };
+        pc->ctl.Destroy();
+    }
     const auto r = m.props.rect;
     pc->ctl = m_viewport->CreateContextMenu(r.x, r.y, r.w, r.h);
     if (pc->ctl.IsValid()) {
@@ -2190,6 +2235,20 @@ void CanvasPane::syncContextMenuItems(ControlModel& m, const nlohmann::json& old
         }
     }
     m_ctxMenuSyncing = false;
+    // CR20261112002：引擎负责 MenuPanel → ContextMenu 外框同步；设计器只把
+    // 最终外框尺寸回写模型，保留 x/y（不再用临时 MenuPanel 测量）。
+    if (pc->ctl.IsValid()) {
+        m_viewport->ContextMenuSyncSize(pc->ctl);
+        const UIRect cur = pc->ctl.GetRect();
+        if (cur.w > 0.0f && cur.h > 0.0f) {
+            // CR20261113001：显式 setRect 后引擎保持 Absolute，visible=1 不再
+            // 居中；只同步内容尺寸，x/y 由引擎保留，无需再次 SetRect 恢复。
+            m.props.rect.w = cur.w;
+            m.props.rect.h = cur.h;
+            if (m_selectedId == m.props.id) fillPropertyPanel();
+            updateSelOutlines();
+        }
+    }
     bindContextMenuTarget(m.props.id);
 }
 
@@ -3294,6 +3353,127 @@ void CanvasPane::syncShapePoints(ControlModel& m) {
     m_viewport->ShapeSetPoints(pc->ctl, out);
 }
 
+// ── Shape 多图元：结构化模型操作（UI 每行字段控件 → 模型 → 引擎）──
+// 图元键与引擎 parser 一致：shape / rect:[x,y,w,h] / fill / stroke / line-width /
+// radius / ring-width / points:[{x,y}]。primitives 非空时替代单图元渲染。
+
+int CanvasPane::addShapePrimitive(ControlModel& m, const std::string& shape) {
+    auto& arr = m.props.extended["primitives"];
+    if (!arr.is_array()) arr = nlohmann::json::array();
+    const float w = m.props.rect.w > 0.0f ? m.props.rect.w * 0.5f : 40.0f;
+    const float h = m.props.rect.h > 0.0f ? m.props.rect.h * 0.5f : 40.0f;
+    nlohmann::json o = { { "shape", shape },
+                         { "rect", { 0.0f, 0.0f, w, h } },
+                         { "fill", "#4A90D9FF" } };
+    arr.push_back(std::move(o));
+    const int idx = (int)arr.size() - 1;
+    syncShapePrimitives(m);
+    commitUndo("prim:add:" + m.props.id);
+    m_pendingPropRowsRebuild = true;   // 新图元 → 字段行重建
+    return idx;
+}
+
+bool CanvasPane::removeShapePrimitive(ControlModel& m, size_t idx) {
+    auto& arr = m.props.extended["primitives"];
+    if (!arr.is_array() || idx >= arr.size()) return false;
+    arr.erase(arr.begin() + (long)idx);
+    if (arr.empty()) m.props.extended.erase("primitives");
+    // 删除后序号整体前移：清空该控件的逐图元收起状态，避免折叠错位
+    const std::string prefix = m.props.id + "#";
+    for (auto it = m_collapsedPrims.begin(); it != m_collapsedPrims.end();) {
+        if (it->rfind(prefix, 0) == 0) it = m_collapsedPrims.erase(it);
+        else ++it;
+    }
+    syncShapePrimitives(m);
+    commitUndo("prim:del:" + m.props.id);
+    m_pendingPropRowsRebuild = true;
+    return true;
+}
+
+void CanvasPane::setShapePrimitiveField(ControlModel& m, size_t idx, const std::string& key,
+                                        const nlohmann::json& value) {
+    auto& arr = m.props.extended["primitives"];
+    if (!arr.is_array() || idx >= arr.size() || !arr[idx].is_object()) return;
+    arr[idx][key] = value;
+    syncShapePrimitives(m);
+    commitUndo("prim:" + m.props.id + ":" + std::to_string(idx));
+}
+
+void CanvasPane::setShapePrimitiveRect(ControlModel& m, size_t idx, int slot, float value) {
+    if (slot < 0 || slot > 3) return;
+    auto& arr = m.props.extended["primitives"];
+    if (!arr.is_array() || idx >= arr.size() || !arr[idx].is_object()) return;
+    nlohmann::json& o = arr[idx];
+    if (!o.contains("rect") || !o["rect"].is_array() || o["rect"].size() < 4)
+        o["rect"] = nlohmann::json::array({ 0.0f, 0.0f, 0.0f, 0.0f });
+    o["rect"][slot] = value;
+    syncShapePrimitives(m);
+    commitUndo("prim:" + m.props.id + ":" + std::to_string(idx) + ":rect");
+}
+
+void CanvasPane::applyShapePrimitivePointsText(ControlModel& m, size_t idx,
+                                               const std::string& text) {
+    auto& arr = m.props.extended["primitives"];
+    if (!arr.is_array() || idx >= arr.size() || !arr[idx].is_object()) return;
+    nlohmann::json pts = nlohmann::json::array();
+    for (const auto& ln : splitNonEmptyLines(text)) {
+        const size_t comma = ln.find(',');
+        if (comma == std::string::npos) continue;
+        float x = 0, y = 0;
+        try { x = std::stof(ln.substr(0, comma)); } catch (...) { continue; }
+        try { y = std::stof(ln.substr(comma + 1)); } catch (...) { continue; }
+        pts.push_back({ { "x", x }, { "y", y } });
+    }
+    arr[idx]["points"] = std::move(pts);
+    syncShapePrimitives(m);
+    commitUndo("prim:" + m.props.id + ":" + std::to_string(idx) + ":pts");
+}
+
+int CanvasPane::syncShapePrimitives(ControlModel& m) {
+    PlacedControl* pc = placedById(m.props.id);
+    if (!pc || !pc->ctl.IsValid() || !m_viewport) return 0;
+    m_viewport->ShapeClearPrimitives(pc->ctl);
+    const nlohmann::json arr = m.props.extended.value("primitives", nlohmann::json::array());
+    if (!arr.is_array()) return 0;
+    int added = 0;
+    for (const auto& o : arr) {
+        if (!o.is_object()) continue;
+        const std::string shape = o.value("shape", std::string());
+        if (shape.empty()) continue;
+        float x = 0, y = 0, w = 0, h = 0;
+        if (o.contains("rect") && o["rect"].is_array() && o["rect"].size() >= 4) {
+            x = o["rect"][0].get<float>();
+            y = o["rect"][1].get<float>();
+            w = o["rect"][2].get<float>();
+            h = o["rect"][3].get<float>();
+        }
+        const int idx = m_viewport->ShapeAddPrimitive(pc->ctl, shape, x, y, w, h);
+        if (idx < 0) continue;
+        ++added;
+        if (o.contains("fill") && o["fill"].is_string())
+            m_viewport->ShapeSetPrimitiveColor(pc->ctl, idx, "fill",
+                                                hexToColor(o["fill"].get<std::string>()));
+        if (o.contains("stroke") && o["stroke"].is_string())
+            m_viewport->ShapeSetPrimitiveColor(pc->ctl, idx, "stroke",
+                                                hexToColor(o["stroke"].get<std::string>()));
+        auto setPrimitiveFloat = [&](const char* key, const char* prop) {
+            if (o.contains(key) && o[key].is_number())
+                m_viewport->ShapeSetPrimitiveFloat(pc->ctl, idx, prop, o[key].get<float>());
+        };
+        setPrimitiveFloat("line-width", "line-width");
+        setPrimitiveFloat("ring-width", "ring-width");
+        setPrimitiveFloat("radius", "radius");
+        if (o.contains("points") && o["points"].is_array()) {
+            std::vector<std::pair<float, float>> pts;
+            for (const auto& p : o["points"])
+                if (p.is_object() && p.contains("x") && p.contains("y"))
+                    pts.push_back({ p.value("x", 0.0f), p.value("y", 0.0f) });
+            m_viewport->ShapeSetPrimitivePoints(pc->ctl, idx, pts);
+        }
+    }
+    return added;
+}
+
 // ── Schema 驱动动态属性区 ──
 
 // JSON 键（camelCase）→ 运行时属性名（kebab-case）。
@@ -4213,6 +4393,37 @@ void CanvasPane::buildComponentPropRows(ControlModel& m) {
     applyDynScroll(0.0f);
 }
 
+// Shape 顶层属性 → 图形类型生效性（引擎 Shape::draw 语义）。
+// 不生效的行不生成：避免用户改半径/环宽/填充却看不到任何变化（用户反馈）。
+static bool shapeKeyApplies(const std::string& kind, const std::string& key) {
+    if (key != "fill" && key != "stroke" && key != "line-width" &&
+        key != "radius" && key != "ring-width" && key != "points")
+        return true;                      // 通用/自定义键不受限
+    if (kind == "filled-rect") return key == "fill";
+    if (kind == "rect")
+        return key != "radius" && key != "ring-width" && key != "points";
+    if (kind == "round-rect")
+        return key != "ring-width" && key != "points";
+    if (kind == "circle" || kind == "ellipse")
+        return key != "radius" && key != "points";
+    if (kind == "polyline")
+        return key == "stroke" || key == "line-width" || key == "points";
+    if (kind == "polygon")
+        return key == "fill" || key == "stroke" || key == "line-width" || key == "points";
+    return true;                          // 未知类型：全部保留
+}
+
+// 图形类型提示（属性面板"图形类型"行下方一行说明——当前类型哪些属性真正生效）
+static std::string shapeKindHint(const std::string& kind) {
+    if (kind == "filled-rect") return u8"生效：填充（无描边/线宽）";
+    if (kind == "rect")        return u8"生效：填充/描边/线宽";
+    if (kind == "round-rect")  return u8"生效：填充/描边/线宽/半径";
+    if (kind == "circle" || kind == "ellipse") return u8"生效：填充/描边/线宽/环宽";
+    if (kind == "polyline")    return u8"生效：描边/线宽/points（≥2 点）";
+    if (kind == "polygon")     return u8"生效：填充/描边/线宽/points（≥3 点）";
+    return u8"生效：填充/描边/线宽";
+}
+
 void CanvasPane::rebuildDynamicRows() {
     m_compPropRows.clear();   // 行池复用：仅隐藏，不销毁（销毁随界面/程序结束 ✗）
     m_dynamicRows.clear();
@@ -4258,6 +4469,13 @@ void CanvasPane::rebuildDynamicRows() {
         if (!typeSig.empty()) typeSig += ",";
         typeSig += t->model->props.type;
     }
+    // Shape：图形类型参与行集签名（圆/多边形/折线的可选属性集不同——切换即重建行）
+    if (m->props.type == "shape" && m_selIds.size() == 1 && pc->ctl.IsValid()) {
+        typeSig += "|" + pc->ctl.GetEnum(PropertyNames::kShape);
+        // 多图元：图元数量/类型/数值都参与签名——切换选中即显示对应值（免逐行 refresher）
+        typeSig += "|pr:" +
+            m->props.extended.value("primitives", nlohmann::json::array()).dump();
+    }
     if (m_schemaTargets.empty()) return;
 
     // E 方案快路径：同类型行集相同（schema 确定）——跳过销毁重建，仅执行各行
@@ -4271,6 +4489,11 @@ void CanvasPane::rebuildDynamicRows() {
         applyDynScroll(m_dynScroll.GetFloat(PropertyNames::kValue));
         return;
     }
+
+    // 行创建阶段统一静默：复用池控件回填值会触发 change 回调（旧值→新值），
+    // 不放行会写回相同值并产生虚假撤销/脏标记（多图元行尤其明显）。
+    const bool prevPropSync = m_propSync;
+    m_propSync = true;
 
     // 合并 common（allOf $ref）与类型自有属性
     // （P0-26 重构后 common 仅真通用键：id/enabled/visible/margin/scale/rect 等）
@@ -4327,6 +4550,19 @@ void CanvasPane::rebuildDynamicRows() {
     const bool textIsCaption = (m_schemaType == "label" || m_schemaType == "button" ||
                                 m_schemaType == "check-box" || m_schemaType == "image-button");
 
+    // Shape：当前图形类型（行过滤/提示用）+ 是否处于多图元模式（primitives 非空
+    // 时引擎用多图元替代单图元渲染，顶层 fill/stroke/... 不参与绘制）
+    std::string shapeKind;
+    bool shapeMultiPrim = false;
+    if (m_schemaType == "shape" && m_selIds.size() == 1) {
+        shapeKind = m_schemaTarget.GetEnum(PropertyNames::kShape);
+        if (shapeKind.empty())
+            shapeKind = m->props.extended.value("shape", std::string("rect"));
+        if (m->props.extended.contains("primitives") &&
+            m->props.extended["primitives"].is_array())
+            shapeMultiPrim = !m->props.extended["primitives"].empty();
+    }
+
     float y = kPropInsetX;
     // 动态行排版节奏（统一相对位置：描述行 22 + 2 + 控件行 26 + 组间距 8）
     const float lblFont = kPropLblFont, lblH = kPropLblH, ctlH = kPropCtlH,
@@ -4337,11 +4573,11 @@ void CanvasPane::rebuildDynamicRows() {
     std::string genKeys;
     // 分类折叠：分组标题行（扁平按钮）——点击展开/收起，收起组不创建行
     // （E 签名含折叠状态：切换组时重建、状态不变时同类 refresh 复用不受影响）
-    auto makeGroupHeader = [&](const std::string& name) {
+    auto makeGroupHeader = [&](const std::string& name, float indent = 0.0f) {
         const bool collapsed = m_collapsedGroups.count(name) != 0;
         Control hb = takePoolRow("grp:" + name + (collapsed ? ":收" : ":开"), [&] {
             return m_ui->CreateButton(
-                std::string(collapsed ? "▸ " : "▾ ") + name, 0, 0, rowW, kPropCtlH);
+                std::string(collapsed ? "[+] " : "[-] ") + name, 0, 0, rowW - indent, kPropCtlH);
         });
         hb.SetStateColor(PropertyNames::kBackground,
                          UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
@@ -4350,7 +4586,7 @@ void CanvasPane::rebuildDynamicRows() {
         hb.SetStateColor(PropertyNames::kText,
                          UIStateColor{UIColor{0xB8, 0xB8, 0xB8, 255}, UIColor{0xE8, 0xE8, 0xE8, 255},
                                       UIColor{0xE8, 0xE8, 0xE8, 255}, UIColor{0x90, 0x90, 0x90, 255}});
-        hb.SetRect(kPropInsetX, y, rowW, kPropCtlH);
+        hb.SetRect(kPropInsetX + indent, y, rowW - indent, kPropCtlH);
         hb.SetCallback(PropertyNames::kEventClick, [this, name](const Event&) {
             if (m_collapsedGroups.count(name)) m_collapsedGroups.erase(name);
             else m_collapsedGroups.insert(name);
@@ -4406,12 +4642,17 @@ void CanvasPane::rebuildDynamicRows() {
                                  [&](const auto& kv) { return !common.count(kv.first); }),
                   kvs.end());
     }
-    auto groupOf = [](const std::string& key) -> int {
+    // Shape：多图元分组优先于轮廓阴影（常用），其余控件仍为 阴影→多图元
+    const bool shapeGroupOrder = (m_schemaType == "shape");
+    auto groupOf = [shapeGroupOrder](const std::string& key) -> int {
         if (key == "colors@background") return 0;                    // 背景色
         if (key == "colors@border") return 1;                        // 边框色
         if (key == "colors@text" || key == "colors@text-shadow") return 2;  // 字体及阴影
         std::string p0 = jsonKeyToProp(key);
-        if (key == "text" || key == "font" || p0 == "font-size") return 2;
+        if (key == "text" || key == "font" || p0 == "font-size" ||
+            key == "text-shadow-blur") return 2;
+        if (key == "primitives") return 4;                           // 多图元（Shape 结构化列表）
+        if (key == "box-shadow") return shapeGroupOrder ? 5 : 4;      // 阴影
         return 3;                                                    // 常规
     };
     std::stable_sort(kvs.begin(), kvs.end(), [&](const auto& a, const auto& b) {
@@ -4450,10 +4691,16 @@ void CanvasPane::rebuildDynamicRows() {
             (key == "image" || key == "image-resource" || key == "imageResource"))
             skip = true;   // Button 无 image 运行时分发（资源入口是四态图/animation）
         if (skip) continue;
+        // Shape：图形类型不生效的属性不生成行（用户反馈"线宽/半径/颜色改了没反应"）
+        if (m_schemaType == "shape" && m_selIds.size() == 1 &&
+            !shapeKeyApplies(shapeKind, key))
+            continue;
         const nlohmann::json& spec = *kv.second;
         // 组切换：按排序组序号呈现组标题（同组连续→仅一次；折叠组跳过行创建）
         const int grp = groupOf(kv.first);
-        static const char* kGroupNames[] = { "背景色", "边框色", "字体及阴影", "常规" };
+        static const char* kGroupNamesDefault[] = { "背景色", "边框色", "字体及阴影", "常规", "轮廓阴影", "多图元" };
+        static const char* kGroupNamesShape[]   = { "背景色", "边框色", "字体及阴影", "常规", "多图元", "轮廓阴影" };
+        const char* const* kGroupNames = shapeGroupOrder ? kGroupNamesShape : kGroupNamesDefault;
         if (lastGroup != grp) {
             makeGroupHeader(kGroupNames[grp]);
             lastGroup = grp;
@@ -4810,6 +5057,303 @@ void CanvasPane::rebuildDynamicRows() {
             continue;
         }
 
+        // Shape 多图元：结构化列表编辑（添加/删除 + 每个图元一组字段控件）。
+        // 专用输入替代 JSON 行：形状下拉、rect X/Y/W/H、颜色、线宽/半径/环宽、点集。
+        if (key == "primitives" && m_schemaType == "shape") {
+            if (m_selIds.size() != 1) continue;
+            ControlModel* pm = findModel(m_selectedId);
+            if (!pm) continue;
+            nlohmann::json prims = pm->props.extended.value("primitives", nlohmann::json::array());
+            if (!prims.is_array()) prims = nlohmann::json::array();
+
+            makeLabel(u8"图元列表（非空时替代单图元绘制）");
+            {
+                Control ab = takePoolRow("prim:add", [&] {
+                    return m_ui->CreateButton(u8"＋ 添加图元", 0, 0, rowW, ctlH);
+                });
+                ab.SetRect(kPropInsetX, y, rowW, ctlH);
+                ab.SetCallback(PropertyNames::kEventClick, [this](const Event&) {
+                    ControlModel* m2 = findModel(m_selectedId);
+                    if (m2) addShapePrimitive(*m2, "rect");
+                });
+                m_dynamicRows.push_back(ab);
+                m_dynamicRowY.push_back(y);
+                y += ctlH + rowGap;
+                ++rows;
+                genKeys += " prim:add";
+            }
+            if (prims.empty()) makeLabel(u8"（暂无图元：点击上方按钮添加）");
+            // 全部收起/展开（图元多时快速折叠）
+            if (!prims.empty()) {
+                const std::string baseKey = pm->props.id + "#";
+                bool allCollapsed = true;
+                for (size_t i = 0; i < prims.size(); ++i)
+                    if (!m_collapsedPrims.count(baseKey + std::to_string(i))) {
+                        allCollapsed = false;
+                        break;
+                    }
+                Control cb2 = takePoolRow("prim:collapseAll", [&] {
+                    return m_ui->CreateButton(u8"", 0, 0, rowW, ctlH);
+                });
+                cb2.SetRect(kPropInsetX, y, rowW, ctlH);
+                cb2.SetString(PropertyNames::kCaption,
+                              allCollapsed ? u8"展开全部图元" : u8"收起全部图元");
+                cb2.SetCallback(PropertyNames::kEventClick,
+                                [this, baseKey, allCollapsed](const Event&) {
+                    ControlModel* m2 = findModel(m_selectedId);
+                    if (!m2) return;
+                    const nlohmann::json arr =
+                        m2->props.extended.value("primitives", nlohmann::json::array());
+                    if (!arr.is_array()) return;
+                    for (size_t k = 0; k < arr.size(); ++k) {
+                        const std::string kk = baseKey + std::to_string(k);
+                        if (allCollapsed) m_collapsedPrims.erase(kk);
+                        else m_collapsedPrims.insert(kk);
+                    }
+                    rebuildDynamicRows();
+                });
+                m_dynamicRows.push_back(cb2);
+                m_dynamicRowY.push_back(y);
+                y += ctlH + rowGap;
+                ++rows;
+                genKeys += " prim:collapseAll";
+            }
+
+            for (size_t i = 0; i < prims.size(); ++i) {
+                if (!prims[i].is_object()) continue;
+                const std::string pshape = prims[i].value("shape", std::string("rect"));
+                const std::string primKey = pm->props.id + "#" + std::to_string(i);
+                const bool pCollapsed = m_collapsedPrims.count(primKey) != 0;
+                const std::string hdr = std::string(pCollapsed ? "[+] " : "[-] ") +
+                                        u8"图元 " + std::to_string(i + 1) + " · " + pshape;
+                // 标题行（左，点击收起/展开）+ 删除按钮（右）
+                Control hb = takePoolRow("prim:hdr:" + std::to_string(i), [&] {
+                    return m_ui->CreateButton(u8"", 0, 0, rowW - 72.0f, kPropCtlH);
+                });
+                hb.SetRect(kPropInsetX, y, rowW - 72.0f, kPropCtlH);
+                hb.SetString(PropertyNames::kCaption, hdr);
+                hb.SetStateColor(PropertyNames::kBackground,
+                                 UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
+                hb.SetStateColor(PropertyNames::kBorder,
+                                 UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
+                hb.SetStateColor(PropertyNames::kText,
+                                 UIStateColor{UIColor{0xB8, 0xB8, 0xB8, 255}, UIColor{0xE8, 0xE8, 0xE8, 255},
+                                              UIColor{0xE8, 0xE8, 0xE8, 255}, UIColor{0x90, 0x90, 0x90, 255}});
+                hb.SetCallback(PropertyNames::kEventClick, [this, primKey](const Event&) {
+                    if (m_collapsedPrims.count(primKey)) m_collapsedPrims.erase(primKey);
+                    else m_collapsedPrims.insert(primKey);
+                    rebuildDynamicRows();
+                });
+                m_dynamicRows.push_back(hb);
+                m_dynamicRowY.push_back(y);
+                Control db = takePoolRow("prim:del:" + std::to_string(i), [&] {
+                    return m_ui->CreateButton(u8"删除", 0, 0, 64.0f, kPropCtlH);
+                });
+                db.SetRect(kPropInsetX + rowW - 64.0f, y, 64.0f, kPropCtlH);
+                db.SetCallback(PropertyNames::kEventClick, [this, i](const Event&) {
+                    ControlModel* m2 = findModel(m_selectedId);
+                    if (m2) removeShapePrimitive(*m2, i);
+                });
+                m_dynamicRows.push_back(db);
+                m_dynamicRowY.push_back(y);
+                y += kPropCtlH + rowGap;
+                ++rows;
+                genKeys += " prim:hdr:" + std::to_string(i);
+                if (pCollapsed) continue;   // 收起：只保留标题/删除行
+
+                const nlohmann::json rect = prims[i].value("rect", nlohmann::json::array());
+                auto rectVal = [&rect](int s) -> float {
+                    return (rect.is_array() && (size_t)s < rect.size() && rect[s].is_number())
+                               ? rect[s].get<float>() : 0.0f;
+                };
+
+                // 形状下拉（改变该图元的类型 → 字段适用性变化，延迟重建）
+                {
+                    static const char* kShapeVals[] = { "rect", "filled-rect", "round-rect",
+                                                        "circle", "ellipse", "polyline", "polygon" };
+                    makeLabel(u8"形状");
+                    Control scb = takePoolRow("prim:" + std::to_string(i) + ":shape", [&] {
+                        Control c = m_ui->CreateComboBox(0, 0, rowW, ctlH);
+                        for (int k2 = 0; k2 < 7; ++k2)
+                            m_ui->ComboBoxAddItem(c, kShapeVals[k2], kShapeVals[k2]);
+                        return c;
+                    });
+                    scb.SetRect(kPropInsetX, y, rowW, ctlH);
+                    int ci = 0;
+                    for (int k2 = 0; k2 < 7; ++k2)
+                        if (pshape == kShapeVals[k2]) { ci = k2; break; }
+                    scb.SetInt(PropertyNames::kSelectedIndex, ci);
+                    scb.SetCallback(PropertyNames::kEventSelectionChanged,
+                                    [this, i, scb](const Event&) mutable {
+                        if (m_propSync) return;
+                        static const char* kVals[] = { "rect", "filled-rect", "round-rect",
+                                                       "circle", "ellipse", "polyline", "polygon" };
+                        const int idx2 = scb.GetInt(PropertyNames::kSelectedIndex);
+                        if (idx2 < 0 || idx2 >= 7) return;
+                        ControlModel* m2 = findModel(m_selectedId);
+                        if (!m2) return;
+                        setShapePrimitiveField(*m2, i, "shape", kVals[idx2]);
+                        m_pendingPropRowsRebuild = true;
+                    });
+                    m_dynamicRows.push_back(scb);
+                    m_dynamicRowY.push_back(y);
+                    y += ctlH + rowGap;
+                    ++rows;
+                    genKeys += " prim:shape:" + std::to_string(i);
+                }
+
+                // 数值字段行（rect X/Y/W/H + 线宽/半径/环宽）
+                auto addPrimNumRow = [&](const std::string& field, const std::string& label,
+                                         float value, bool isRect, int slot) {
+                    makeLabel(label);
+                    Control nud = takePoolRow("prim:" + std::to_string(i) + ":" + field, [&] {
+                        return m_ui->CreateNumericUpDown(0, 0, rowW, kPropCtlH);
+                    });
+                    nud.SetRect(kPropInsetX, y, rowW, kPropCtlH);
+                    nud.SetFloat(PropertyNames::kStep, 1.0f);
+                    nud.SetInt(PropertyNames::kDecimals, 1);
+                    nud.SetFloat(PropertyNames::kValue, value);
+                    nud.SetCallback(PropertyNames::kEventValueChanged,
+                                    [this, i, isRect, slot, field](const Event& e) {
+                        if (m_propSync) return;
+                        ControlModel* m2 = findModel(m_selectedId);
+                        if (!m2) return;
+                        if (isRect) setShapePrimitiveRect(*m2, i, slot, e.GetValueChanged());
+                        else setShapePrimitiveField(*m2, i, field, e.GetValueChanged());
+                    });
+                    m_dynamicRows.push_back(nud);
+                    m_dynamicRowY.push_back(y);
+                    y += ctlH + rowGap;
+                    ++rows;
+                    genKeys += " prim:" + std::to_string(i) + ":" + field;
+                };
+                addPrimNumRow("rect-x", u8"X（相对 Shape 左上角）", rectVal(0), true, 0);
+                addPrimNumRow("rect-y", u8"Y", rectVal(1), true, 1);
+                addPrimNumRow("rect-w", u8"宽", rectVal(2), true, 2);
+                addPrimNumRow("rect-h", u8"高", rectVal(3), true, 3);
+
+                // 颜色行（fill/stroke）
+                auto addPrimColorRow = [&](const std::string& field, const std::string& label) {
+                    makeLabel(label);
+                    std::string hex = prims[i].value(field, std::string("#00000000"));
+                    if (hex.empty() || hex[0] != '#') hex = "#" + hex;
+                    Control cp = takePoolRow("primcolor:" + std::to_string(i) + ":" + field, [&] {
+                        return m_ui->CreateColorPicker(0, 0, kColorRowW, ctlH, hex);
+                    });
+                    cp.SetRect(kPropInsetX, y, kColorRowW, ctlH);
+                    cp.SetString(PropertyNames::kColor, hex);
+                    cp.SetString(PropertyNames::kTextContent, hex);
+                    cp.SetCallback(PropertyNames::kEventColorChanged,
+                                   [this, i, field](const Event& e) {
+                        ControlModel* m2 = findModel(m_selectedId);
+                        if (!m2) return;
+                        const UIColor c = e.GetChangedColor();
+                        char h2[12];
+                        std::snprintf(h2, sizeof(h2), "#%02X%02X%02X%02X",
+                                      c.r, c.g, c.b, c.a);
+                        setShapePrimitiveField(*m2, i, field, std::string(h2));
+                    });
+                    m_dynamicRows.push_back(cp);
+                    m_dynamicRowY.push_back(y);
+                    y += ctlH + rowGap;
+                    ++rows;
+                    genKeys += " primcolor:" + std::to_string(i) + ":" + field;
+                };
+
+                if (shapeKeyApplies(pshape, "fill")) addPrimColorRow("fill", u8"填充色");
+                if (shapeKeyApplies(pshape, "stroke")) addPrimColorRow("stroke", u8"描边色");
+                if (shapeKeyApplies(pshape, "line-width"))
+                    addPrimNumRow("line-width", u8"线宽",
+                                  prims[i].value("line-width", 1.0f), false, 0);
+                if (shapeKeyApplies(pshape, "radius"))
+                    addPrimNumRow("radius", u8"圆角半径",
+                                  prims[i].value("radius", 0.0f), false, 0);
+                if (shapeKeyApplies(pshape, "ring-width"))
+                    addPrimNumRow("ring-width", u8"环带宽度（>0 空心）",
+                                  prims[i].value("ring-width", 0.0f), false, 0);
+
+                // 点集（仅 polyline/polygon）：一行一点 x,y
+                if (shapeKeyApplies(pshape, "points")) {
+                    makeLabel(u8"顶点（一行一点 x,y）");
+                    std::string ptxt;
+                    if (prims[i].contains("points") && prims[i]["points"].is_array()) {
+                        for (const auto& p : prims[i]["points"]) {
+                            if (!p.is_object()) continue;
+                            char b[48];
+                            std::snprintf(b, sizeof(b), "%g,%g",
+                                          p.value("x", 0.0f), p.value("y", 0.0f));
+                            if (!ptxt.empty()) ptxt += "\n";
+                            ptxt += b;
+                        }
+                    }
+                    Control pta = takePoolRow("prim:pts:" + std::to_string(i), [&] {
+                        return m_ui->CreateTextArea(0, 0, rowW, kPropItemsH);
+                    });
+                    pta.SetRect(kPropInsetX, y, rowW, kPropItemsH);
+                    pta.SetBool(PropertyNames::kAutoScroll, false);
+                    pta.SetStateColor(PropertyNames::kBackground,
+                                      UIStateColor{kPropPanelBg, kPropPanelBg, kPropPanelBg, kPropPanelBg});
+                    pta.SetStateColor(PropertyNames::kText,
+                                      UIStateColor{kPropPanelText, kPropPanelText, kPropPanelText, kPropPanelText});
+                    pta.SetStateColor(PropertyNames::kBorder,
+                                      UIStateColor{kPropPanelBorder, kPropPanelBorderFocus, kPropPanelBorderFocus, kPropPanelBorder});
+                    pta.SetString(PropertyNames::kTextContent, ptxt);
+                    pta.SetCallback(PropertyNames::kEventTextChanged,
+                                    [this, i](const Event& e) {
+                        if (m_propSync) return;
+                        ControlModel* m2 = findModel(m_selectedId);
+                        if (m2) applyShapePrimitivePointsText(*m2, i, e.GetTextChanged());
+                    });
+                    m_dynamicRows.push_back(pta);
+                    m_dynamicRowY.push_back(y);
+                    y += kPropItemsH + rowGap;
+                    ++rows;
+                    genKeys += " prim:pts:" + std::to_string(i);
+                }
+            }
+            // 溢出提示：当前引擎尚不裁剪图元（CR20261117001 待交付）——提醒避免影响相邻控件
+            {
+                bool overflow = false;
+                const float cw = pm->props.rect.w, ch = pm->props.rect.h;
+                for (const auto& o : prims) {
+                    if (!o.is_object()) continue;
+                    const nlohmann::json r = o.value("rect", nlohmann::json::array());
+                    if (r.is_array() && r.size() >= 4) {
+                        const float x = r[0].get<float>(), y2 = r[1].get<float>();
+                        const float w2 = r[2].get<float>(), h2 = r[3].get<float>();
+                        if (x < -0.01f || y2 < -0.01f ||
+                            x + w2 > cw + 0.01f || y2 + h2 > ch + 0.01f)
+                            overflow = true;
+                    }
+                    if (o.contains("points") && o["points"].is_array()) {
+                        for (const auto& p : o["points"]) {
+                            if (!p.is_object()) continue;
+                            const float px = p.value("x", 0.0f), py = p.value("y", 0.0f);
+                            if (px < 0.0f || py < 0.0f || px > cw || py > ch) {
+                                overflow = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (overflow) {
+                    Control ow = takePoolRow("prim:overflow", [&] {
+                        return m_ui->CreateLabel(
+                            u8"⚠ 有图元超出控件范围（当前会画到控件外）",
+                            lblFont, 0, 0, rowW, lblH);
+                    });
+                    ow.SetRect(kPropInsetX, y, rowW, lblH);
+                    ow.SetColor(PropertyNames::kText, UIColor{0xF0, 0xA0, 0x40, 255});
+                    m_dynamicRows.push_back(ow);
+                    m_dynamicRowY.push_back(y);
+                    y += lblH + 4.0f;
+                    ++rows;
+                    genKeys += " prim:overflow";
+                }
+            }
+            continue;
+        }
+
         // 结构化：行式列表编辑（combo-box.items / status-bar.items / list-view.columns；
         // 模型持有 + 引擎同步；单选——结构化数据不做批量写；一行一项，空行忽略）
         const bool structItems = (key == "items" && (m_schemaType == "combo-box" ||
@@ -4821,7 +5365,8 @@ void CanvasPane::rebuildDynamicRows() {
         const bool structPts   = (key == "points" && m_schemaType == "shape");
         const bool structMenus = (key == "menus" && m_schemaType == "menu-bar");
         const bool structTabs  = (key == "tabs" && m_schemaType == "tab-control");
-        if (structItems || structCols || structRows || structPts || structMenus || structTabs) {
+        if (structItems || structCols || structRows || structPts ||
+            structMenus || structTabs) {
             if (m_selIds.size() != 1) continue;
             makeLabel(structTabs ? u8"tabs（一行一页签标题）"
                                  : structMenus ? u8"menus（菜单行；项 > 层级，项@快捷键，-- 分隔）"
@@ -4920,6 +5465,7 @@ void CanvasPane::rebuildDynamicRows() {
                     pc2->ctl.SetColor(cprop.c_str(), c);
                     pc2->model->props.extended[cprop] = h;   // 模型同步
                 }
+                commitUndo("c:" + cprop);   // 颜色编辑入撤销栈（同键 0.7s 合并）
             });
             m_fixedWidthRows.insert(m_dynamicRows.size());
             m_dynamicRows.push_back(cp);
@@ -5129,11 +5675,305 @@ void CanvasPane::rebuildDynamicRows() {
             continue;
         }
 
+        // box-shadow：object 字段拆成独立动态行（阴影组）。
+        // 模型统一保存完整对象；引擎按 box-shadow-color/offset/radius/spread 分键实时写入。
+        if (key == "box-shadow") {
+            auto shadowField = [&](const std::string& field, const std::string& label,
+                                   const char* prop, float minV, float maxV, float step) {
+                makeLabel(label);
+                Control nud = takePoolRow("boxnud:" + field, [&] {
+                    return m_ui->CreateNumericUpDown(0, 0, rowW, ctlH);
+                });
+                nud.SetRect(kPropInsetX, y, rowW, ctlH);
+                nud.SetFloat(PropertyNames::kStep, step);
+                nud.SetFloat(PropertyNames::kRangeMin, minV);
+                nud.SetFloat(PropertyNames::kRangeMax, maxV);
+                const float v = m_schemaTarget.GetFloat(prop);
+                nud.SetFloat(PropertyNames::kValue, v);
+                m_rowRefreshers.push_back([this, nud, prop]() mutable {
+                    nud.SetFloat(PropertyNames::kValue, m_schemaTarget.GetFloat(prop));
+                });
+                nud.SetCallback(PropertyNames::kEventValueChanged,
+                                [this, field, prop](const Event& e) {
+                    if (m_propSync) return;
+                    const float v2 = e.GetValueChanged();
+                    for (const auto& id : m_selIds) {
+                        ControlModel* mm = findModel(id);
+                        PlacedControl* pc2 = placedById(id);
+                        if (!mm || !pc2 || !pc2->ctl.IsValid()) continue;
+                        auto& ex = mm->props.extended;
+                        if (!ex.contains("box-shadow") || !ex["box-shadow"].is_object())
+                            ex["box-shadow"] = nlohmann::json::object();
+                        ex["box-shadow"][field] = v2;
+                        pc2->ctl.SetFloat(prop, v2);
+                    }
+                    // 只改 blur/spread/offset 时给一个可见的默认阴影色，避免
+                    // 用户误以为字段无效（颜色 alpha=0 时引擎不会绘制）。
+                    bool hasColor = false;
+                    for (const auto& id : m_selIds) {
+                        PlacedControl* pc2 = placedById(id);
+                        if (pc2 && pc2->ctl.IsValid() &&
+                            pc2->ctl.GetColor(PropertyNames::kBoxShadowColor).a > 0) {
+                            hasColor = true;
+                            break;
+                        }
+                    }
+                    if (!hasColor) {
+                        const std::string defHex = "#00000066";
+                        for (const auto& id : m_selIds) {
+                            ControlModel* mm = findModel(id);
+                            PlacedControl* pc2 = placedById(id);
+                            if (!mm || !pc2 || !pc2->ctl.IsValid()) continue;
+                            auto& ex = mm->props.extended;
+                            if (!ex.contains("box-shadow") || !ex["box-shadow"].is_object())
+                                ex["box-shadow"] = nlohmann::json::object();
+                            ex["box-shadow"]["color"] = defHex;
+                            pc2->ctl.SetColor(PropertyNames::kBoxShadowColor, UIColor{0, 0, 0, 102});
+                        }
+                    }
+                    commitUndo("box-shadow");
+                });
+                m_dynamicRows.push_back(nud);
+                m_dynamicRowY.push_back(y);
+                y += ctlH + rowGap;
+                ++rows;
+                genKeys += " box-shadow." + field;
+            };
+
+            makeLabel(u8"box-shadow.color");
+            const UIColor bc = m_schemaTarget.GetColor(PropertyNames::kBoxShadowColor);
+            const std::string bhex = uiColorHex(bc);
+            Control cp = takePoolRow("boxcolor:color", [&] {
+                return m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, bhex.c_str());
+            });
+            cp.SetRect(kPropInsetX, y, kColorRowW, ctlH);
+            m_rowRefreshers.push_back([this, cp]() mutable {
+                cp.SetString(PropertyNames::kColor,
+                             uiColorHex(m_schemaTarget.GetColor(PropertyNames::kBoxShadowColor)));
+            });
+            cp.SetCallback(PropertyNames::kEventColorChanged, [this](const Event& e) {
+                if (m_propSync) return;
+                const UIColor c = e.GetChangedColor();
+                const std::string hex = uiColorHex(c);
+                for (const auto& id : m_selIds) {
+                    ControlModel* mm = findModel(id);
+                    PlacedControl* pc2 = placedById(id);
+                    if (!mm || !pc2 || !pc2->ctl.IsValid()) continue;
+                    auto& ex = mm->props.extended;
+                    if (!ex.contains("box-shadow") || !ex["box-shadow"].is_object())
+                        ex["box-shadow"] = nlohmann::json::object();
+                    ex["box-shadow"]["color"] = hex;
+                    pc2->ctl.SetColor(PropertyNames::kBoxShadowColor, c);
+                }
+                commitUndo("box-shadow");
+            });
+            m_dynamicRows.push_back(cp);
+            m_dynamicRowY.push_back(y);
+            y += ctlH + rowGap;
+            ++rows;
+            genKeys += " box-shadow.color";
+
+            shadowField("offset-x", u8"box-shadow.offset-x",
+                        PropertyNames::kBoxShadowOffsetX, -256.0f, 256.0f, 1.0f);
+            shadowField("offset-y", u8"box-shadow.offset-y",
+                        PropertyNames::kBoxShadowOffsetY, -256.0f, 256.0f, 1.0f);
+            shadowField("blur", u8"box-shadow.blur",
+                        PropertyNames::kBoxShadowRadius, 0.0f, 64.0f, 1.0f);
+            shadowField("spread", u8"box-shadow.spread",
+                        PropertyNames::kBoxShadowSpread, 0.0f, 64.0f, 1.0f);
+
+            // CR20261116002：hover/pressed/disabled 状态行。状态默认折叠；
+            // 每态 5 字段，未设置的字段由引擎 Get* 返回 normal 生效值。
+            const bool hasShadowStates = spec.is_object() &&
+                spec.contains("properties") && spec["properties"].is_object() &&
+                spec["properties"].contains("hover");
+            if (hasShadowStates) {
+                auto stateColorRow = [&](const std::string& st, const std::string& label) {
+                    makeLabel(label);
+                    const std::string prop = "box-shadow-color." + st;
+                    const UIColor sc = m_schemaTarget.GetColor(prop.c_str());
+                    const std::string shex = uiColorHex(sc);
+                    Control cp = takePoolRow("boxstatecolor:" + st, [&] {
+                        return m_ui->CreateColorPicker(kPropInsetX, y, kColorRowW, ctlH, shex.c_str());
+                    });
+                    cp.SetRect(kPropInsetX, y, kColorRowW, ctlH);
+                    cp.SetString(PropertyNames::kColor, shex);
+                    m_rowRefreshers.push_back([this, cp, prop]() mutable {
+                        cp.SetString(PropertyNames::kColor,
+                                     uiColorHex(m_schemaTarget.GetColor(prop.c_str())));
+                    });
+                    cp.SetCallback(PropertyNames::kEventColorChanged,
+                                   [this, st, prop](const Event& e) {
+                        if (m_propSync) return;
+                        const UIColor c = e.GetChangedColor();
+                        const std::string hex = uiColorHex(c);
+                        for (const auto& id : m_selIds) {
+                            ControlModel* mm = findModel(id);
+                            PlacedControl* pc2 = placedById(id);
+                            if (!mm || !pc2 || !pc2->ctl.IsValid()) continue;
+                            auto& ex = mm->props.extended;
+                            if (!ex.contains("box-shadow") || !ex["box-shadow"].is_object())
+                                ex["box-shadow"] = nlohmann::json::object();
+                            auto& bs = ex["box-shadow"];
+                            if (!bs.contains(st) || !bs[st].is_object())
+                                bs[st] = nlohmann::json::object();
+                            bs[st]["color"] = hex;
+                            pc2->ctl.SetColor(prop.c_str(), c);
+                        }
+                        commitUndo("box-shadow." + st);
+                    });
+                    m_dynamicRows.push_back(cp);
+                    m_dynamicRowY.push_back(y);
+                    y += ctlH + rowGap;
+                    ++rows;
+                    genKeys += " " + label;
+                };
+
+                auto stateField = [&](const std::string& st, const std::string& field,
+                                      const std::string& label, const std::string& prop,
+                                      float minV, float maxV, float step) {
+                    makeLabel(label);
+                    Control nud = takePoolRow("boxstatenud:" + st + ":" + field, [&] {
+                        return m_ui->CreateNumericUpDown(0, 0, rowW, kPropCtlH);
+                    });
+                    nud.SetRect(kPropInsetX, y, rowW, kPropCtlH);
+                    nud.SetFloat(PropertyNames::kStep, step);
+                    nud.SetFloat(PropertyNames::kRangeMin, minV);
+                    nud.SetFloat(PropertyNames::kRangeMax, maxV);
+                    const float v = m_schemaTarget.GetFloat(prop.c_str());
+                    nud.SetFloat(PropertyNames::kValue, v);
+                    m_rowRefreshers.push_back([this, nud, prop]() mutable {
+                        nud.SetFloat(PropertyNames::kValue,
+                                     m_schemaTarget.GetFloat(prop.c_str()));
+                    });
+                    nud.SetCallback(PropertyNames::kEventValueChanged,
+                                    [this, st, field, prop](const Event& e) {
+                        if (m_propSync) return;
+                        const float v2 = e.GetValueChanged();
+                        const std::string colorProp = "box-shadow-color." + st;
+                        for (const auto& id : m_selIds) {
+                            ControlModel* mm = findModel(id);
+                            PlacedControl* pc2 = placedById(id);
+                            if (!mm || !pc2 || !pc2->ctl.IsValid()) continue;
+                            auto& ex = mm->props.extended;
+                            if (!ex.contains("box-shadow") || !ex["box-shadow"].is_object())
+                                ex["box-shadow"] = nlohmann::json::object();
+                            auto& bs = ex["box-shadow"];
+                            if (!bs.contains(st) || !bs[st].is_object())
+                                bs[st] = nlohmann::json::object();
+                            bs[st][field] = v2;
+                            pc2->ctl.SetFloat(prop.c_str(), v2);
+
+                            // 数值状态字段可编辑但状态色仍透明时，补一个可见默认色；
+                            // 显式写入的 alpha=0 不覆盖（保留“该状态关闭阴影”语义）。
+                            const bool explicitColor =
+                                bs[st].contains("color") && bs[st]["color"].is_string();
+                            const UIColor eff = pc2->ctl.GetColor(colorProp.c_str());
+                            if (!explicitColor && eff.a == 0) {
+                                bs[st]["color"] = "#00000066";
+                                pc2->ctl.SetColor(colorProp.c_str(), UIColor{0, 0, 0, 102});
+                            }
+                        }
+                        commitUndo("box-shadow." + st);
+                    });
+                    m_dynamicRows.push_back(nud);
+                    m_dynamicRowY.push_back(y);
+                    y += ctlH + rowGap;
+                    ++rows;
+                    genKeys += " " + label;
+                };
+
+                auto renderStateRows = [&](const std::string& st, const std::string& display) {
+                    const std::string group = std::string(u8"轮廓阴影 · ") + display;
+                    makeGroupHeader(group, 12.0f);
+                    if (m_collapsedGroups.count(group)) return;
+                    stateColorRow(st, "box-shadow." + st + ".color");
+                    stateField(st, "offset-x", "box-shadow." + st + ".offset-x",
+                               "box-shadow-offset-x." + st, -256.0f, 256.0f, 1.0f);
+                    stateField(st, "offset-y", "box-shadow." + st + ".offset-y",
+                               "box-shadow-offset-y." + st, -256.0f, 256.0f, 1.0f);
+                    stateField(st, "blur", "box-shadow." + st + ".blur",
+                               "box-shadow-radius." + st, 0.0f, 64.0f, 1.0f);
+                    stateField(st, "spread", "box-shadow." + st + ".spread",
+                               "box-shadow-spread." + st, 0.0f, 64.0f, 1.0f);
+                };
+
+                renderStateRows("hover", u8"hover");
+                renderStateRows("pressed", u8"pressed");
+                renderStateRows("disabled", u8"disabled");
+            }
+            continue;
+        }
+
         // font 对象键特判：字体名 string 行（引擎 kFont 运行时分发——
         // P032_37 批 button/check-box/win-frame 等补齐；font 为 $ref(font-spec)
         // 无 type 字段——按 key 判定而非 type）
         std::string effT = t;
         if (key == "font") effT = "string";
+
+        // 通用枚举行（如 Shape 的 shape=rect/filled-rect/round-rect/circle/...）：
+        // schema inline enum → ComboBox；此前只处理 string/number/integer/boolean，
+        // enum 被直接 continue，导致 Shape 类型无法选择。
+        if (spec.is_object() && spec.contains("enum") && spec["enum"].is_array()) {
+            std::vector<std::string> enumVals;
+            for (const auto& ev : spec["enum"])
+                if (ev.is_string()) enumVals.push_back(ev.get<std::string>());
+            if (!enumVals.empty()) {
+                const std::string enumProp = jsonKeyToProp(key);
+                makeLabel(key == "shape" ? u8"图形类型" : key);
+                Control ecb = takePoolRow("enum:" + key, [&] {
+                    Control c = m_ui->CreateComboBox(kPropInsetX, y, rowW, ctlH);
+                    for (int i = 0; i < (int)enumVals.size(); ++i)
+                        m_ui->ComboBoxAddItem(c, enumVals[i], enumVals[i]);
+                    return c;
+                });
+                ecb.SetRect(kPropInsetX, y, rowW, ctlH);
+                auto indexOfEnum = [&]() -> int {
+                    const std::string cur = m_schemaTarget.GetEnum(enumProp.c_str());
+                    for (int i = 0; i < (int)enumVals.size(); ++i)
+                        if (ieqNoCase(cur, enumVals[i])) return i;
+                    return 0;
+                };
+                ecb.SetInt(PropertyNames::kSelectedIndex, indexOfEnum());
+                m_rowRefreshers.push_back([this, ecb, enumProp, enumVals]() mutable {
+                    const std::string cur = m_schemaTarget.GetEnum(enumProp.c_str());
+                    for (int i = 0; i < (int)enumVals.size(); ++i)
+                        if (ieqNoCase(cur, enumVals[i])) {
+                            ecb.SetInt(PropertyNames::kSelectedIndex, i);
+                            break;
+                        }
+                });
+                ecb.SetCallback(PropertyNames::kEventSelectionChanged,
+                                [this, ecb, enumProp, key, enumVals](const Event&) mutable {
+                    if (m_propSync) return;
+                    const int idx = ecb.GetInt(PropertyNames::kSelectedIndex);
+                    if (idx < 0 || idx >= (int)enumVals.size()) return;
+                    for (const auto& id : m_selIds) {
+                        PlacedControl* pc2 = placedById(id);
+                        if (!pc2 || !pc2->ctl.IsValid()) continue;
+                        pc2->ctl.SetEnum(enumProp.c_str(), enumVals[idx].c_str());
+                        pc2->model->props.extended[key] = enumVals[idx];
+                    }
+                    commitUndo("e:" + enumProp);
+                    // Shape：图形类型决定可选属性集 → 延迟重建行（回调内不销毁本控件 ✗）
+                    if (key == "shape") m_pendingPropRowsRebuild = true;
+                });
+                m_dynamicRows.push_back(ecb);
+                m_dynamicRowY.push_back(y);
+                y += ctlH + rowGap;
+                ++rows;
+                genKeys += " " + key;
+                // Shape：图形类型 → 生效属性提示（现类型哪些字段真正影响绘制）
+                if (key == "shape") {
+                    const std::string curKind = m_schemaTarget.GetEnum(PropertyNames::kShape);
+                    makeLabel(shapeKindHint(curKind.empty() ? shapeKind : curKind));
+                    if (shapeMultiPrim)
+                        makeLabel(u8"多图元模式：顶层图形属性被 primitives 替代");
+                }
+                continue;
+            }
+        }
+
         if (effT != "string" && effT != "number" && effT != "integer" && effT != "boolean") continue;
 
         // font 对象键：字体名 ComboBox（注册字体清单枚举——防手输拼写错误；
@@ -5190,7 +6030,8 @@ void CanvasPane::rebuildDynamicRows() {
         if (key == "border-visible") continue;   // 已并入边框色组（槽后开关行）——通用循环不生成
 
         // （path→animation 特判已删：引擎 P0-24 别名生效，path 即运行时键）
-        makeLabel(key);
+        // UI 标签统一使用层级点号；运行时属性仍用 kebab-case。
+        makeLabel(key == "text-shadow-blur" ? u8"text-shadow.blur" : key);
 
         if (effT == "string") {
             // TextArea：多行值（如 Label 文本含换行）直接输入真实换行，
@@ -5376,6 +6217,29 @@ void CanvasPane::rebuildDynamicRows() {
                                     else pc2->ctl.SetFloat(prop.c_str(), v2);
                                     pc2->model->props.extended[prop] =
                                         isInt ? nlohmann::json((int)v2) : nlohmann::json(v2);
+
+                                    // text-shadow.blur 单独可编辑：若文字阴影尚未启用/颜色透明，
+                                    // 自动启用并补默认色，避免“改了 blur 但看不到效果”。
+                                    if (prop == PropertyNames::kTextShadowBlur && v2 > 0.0f) {
+                                        auto& ex2 = pc2->model->props.extended;
+                                        if (ex2.contains("shadow") && ex2["shadow"].is_object())
+                                            ex2["shadow"]["enabled"] = true;
+                                        else
+                                            ex2["shadow"] = true;
+                                        pc2->ctl.SetBool(PropertyNames::kShadow, true);
+
+                                        const UIColor shc = pc2->ctl.GetColor(PropertyNames::kTextShadow);
+                                        if (shc.a == 0) {
+                                            if (!ex2.contains("colors") || !ex2["colors"].is_object())
+                                                ex2["colors"] = nlohmann::json::object();
+                                            auto& cg = ex2["colors"];
+                                            if (!cg.contains("text-shadow") || !cg["text-shadow"].is_object())
+                                                cg["text-shadow"] = nlohmann::json::object();
+                                            cg["text-shadow"]["normal"] = "#00000078";
+                                            pc2->ctl.SetColor(PropertyNames::kTextShadow,
+                                                              UIColor{0, 0, 0, 120});
+                                        }
+                                    }
                                 }
                                 commitUndo("n:" + prop);
                             });
@@ -5686,12 +6550,10 @@ void CanvasPane::rebuildDynamicRows() {
         genKeys += " ctx:target";
     }
     hideUnusedPoolRows();
-    if (!m_rowRefreshers.empty()) {
-        m_propSync = true;
+    if (!m_rowRefreshers.empty())
         for (auto& fn : m_rowRefreshers)
             if (fn) fn();
-        m_propSync = false;
-    }
+    m_propSync = prevPropSync;   // 行创建/回填完毕，恢复联动
 
     // 行集就绪：签名含折叠状态（切换折叠 → 重建展开组；状态不变同类 → refresh 快路径）
     {
@@ -5838,6 +6700,15 @@ int CanvasPane::filterRect(float& x, float& y, float& w, float& h) {
     return 1;
 }
 
+// Shape 图形类型切换的延迟行重建（回调内销毁 ComboBox 会吞事件 ✗ → tick/自测显式调用）
+void CanvasPane::processPendingPropRowsRebuild() {
+    if (!m_pendingPropRowsRebuild) return;
+    m_pendingPropRowsRebuild = false;
+    if (m_selectedId.empty()) return;
+    m_rowsBuiltSig.clear();
+    rebuildDynamicRows();
+}
+
 void CanvasPane::tickInput() {
     if (m_idConfirmShowPending) {
         m_idConfirmShowPending = false;
@@ -5845,6 +6716,8 @@ void CanvasPane::tickInput() {
                             m_idConfirmPendingNew);
     }
     processIdApply();   // id 改名确认结果（替换代码 + 改名一次撤销）
+    // Shape 图形类型切换：延迟重建属性行（新类型的生效属性集不同）
+    processPendingPropRowsRebuild();
     // C2：菜单/按钮回调内不重建画布（引擎事件分发期间销毁控件会吞事件 ✗）——延迟到 tick
     if (!m_pendingEnterComponent.empty()) {
         const std::string name = m_pendingEnterComponent;
@@ -6082,7 +6955,13 @@ void CanvasPane::tickInput() {
     }
     if (m_engineRectDirty && !down) {   // F2.5：松开 → 手柄拖拽/缩放一次撤销步
         m_engineRectDirty = false;
-        if (!m_engineRectId.empty()) commitUndo("rect:" + m_engineRectId);
+        if (!m_engineRectId.empty()) {
+            // StatusBar 允许手柄拖动/缩放，但释放后回吸到底部全宽（不保留半途位置）
+            if (PlacedControl* epc = placedById(m_engineRectId);
+                epc && epc->model && epc->model->props.type == "status-bar")
+                snapStatusBarToDock(*epc);
+            commitUndo("rect:" + m_engineRectId);
+        }
         m_engineRectId.clear();
     }
 
@@ -6198,6 +7077,11 @@ void CanvasPane::tickInput() {
                 }
             }
             if (m_dragOrigValid) {   // F2.5：拖动有位移 → 撤销步（单击未移动不记录）
+                if (ControlModel* dm = findModel(m_dragId);
+                    dm && dm->props.type == "status-bar") {
+                    if (PlacedControl* sp = placedById(m_dragId))
+                        snapStatusBarToDock(*sp);   // 释放后回吸底部全宽
+                }
                 if (ControlModel* dm = findModel(m_dragId))
                     if (dm->props.rect.x != m_dragOrigRect.x ||
                         dm->props.rect.y != m_dragOrigRect.y)
@@ -7300,6 +8184,44 @@ void CanvasPane::applyModelToEngine(PlacedControl& pc) {
             }
         }
     }
+    // box-shadow 对象（CR20261112001）：重建/撤销恢复时回放分键属性
+    if (ex.contains("box-shadow") && ex["box-shadow"].is_object()) {
+        const auto& bs = ex["box-shadow"];
+        if (bs.contains("color") && bs["color"].is_string())
+            ctl.SetColor(PropertyNames::kBoxShadowColor,
+                         hexToColor(bs["color"].get<std::string>()));
+        if (bs.contains("offset-x") && bs["offset-x"].is_number())
+            ctl.SetFloat(PropertyNames::kBoxShadowOffsetX, bs["offset-x"].get<float>());
+        if (bs.contains("offset-y") && bs["offset-y"].is_number())
+            ctl.SetFloat(PropertyNames::kBoxShadowOffsetY, bs["offset-y"].get<float>());
+        if (bs.contains("blur") && bs["blur"].is_number())
+            ctl.SetFloat(PropertyNames::kBoxShadowRadius, bs["blur"].get<float>());
+        if (bs.contains("spread") && bs["spread"].is_number())
+            ctl.SetFloat(PropertyNames::kBoxShadowSpread, bs["spread"].get<float>());
+
+        // CR20261116002：状态对象回放（hover/pressed/disabled 部分覆盖）
+        auto applyShadowState = [&](const char* st, const nlohmann::json& state) {
+            if (!state.is_object()) return;
+            const std::string colorKey = std::string("box-shadow-color.") + st;
+            if (state.contains("color") && state["color"].is_string())
+                ctl.SetColor(colorKey.c_str(), hexToColor(state["color"].get<std::string>()));
+            if (state.contains("offset-x") && state["offset-x"].is_number())
+                ctl.SetFloat((std::string("box-shadow-offset-x.") + st).c_str(),
+                             state["offset-x"].get<float>());
+            if (state.contains("offset-y") && state["offset-y"].is_number())
+                ctl.SetFloat((std::string("box-shadow-offset-y.") + st).c_str(),
+                             state["offset-y"].get<float>());
+            if (state.contains("blur") && state["blur"].is_number())
+                ctl.SetFloat((std::string("box-shadow-radius.") + st).c_str(),
+                             state["blur"].get<float>());
+            if (state.contains("spread") && state["spread"].is_number())
+                ctl.SetFloat((std::string("box-shadow-spread.") + st).c_str(),
+                             state["spread"].get<float>());
+        };
+        if (bs.contains("hover"))    applyShadowState("hover", bs["hover"]);
+        if (bs.contains("pressed"))  applyShadowState("pressed", bs["pressed"]);
+        if (bs.contains("disabled")) applyShadowState("disabled", bs["disabled"]);
+    }
     // 字体（运行时通用通道：kFont 字符串别名 + kFontSize）
     if (ex.contains("font") && ex["font"].is_string())
         ctl.SetString(PropertyNames::kFont, ex["font"].get<std::string>());
@@ -7314,6 +8236,10 @@ void CanvasPane::applyModelToEngine(PlacedControl& pc) {
     if (m.props.type == "list-view" && ex.contains("columns"))
         syncListColumns(m, 0);   // 新建控件无旧列
     if (m.props.type == "tree-view" && ex.contains("items")) syncTreeItems(m);
+    if (m.props.type == "shape" && ex.contains("primitives"))
+        syncShapePrimitives(m);   // 多图元回放（撤销/重建；空数组 = 清除图元）
+    if (m.props.type == "shape" && ex.contains("points"))
+        syncShapePoints(m);       // 单图元点集回放（打开/撤销重建路径）
     if (m.props.type == "menu-bar" && ex.contains("menus"))
         syncMenus(m, nlohmann::json::array());   // 新建控件无旧菜单
     // P0-90：Tab 页签配色回放（tab-* 单色键；extended 字符串持久化）
@@ -7369,6 +8295,8 @@ void CanvasPane::applyModelToEngine(PlacedControl& pc) {
         if (m.props.type == "status-bar" && k == "items") continue;
         if (m.props.type == "list-view" && (k == "columns" || k == "rows")) continue;
         if (m.props.type == "tree-view" && k == "items") continue;
+        if (m.props.type == "shape" && (k == "points" || k == "primitives"))
+            continue;   // 数组键：由 syncShapePoints/syncShapePrimitives 专用路径处理
         // schema 规格（类型 def → common 兜底）
         const nlohmann::json* spec = nullptr;
         if (defs.contains(m.props.type) && defs[m.props.type].contains("properties") &&
@@ -8701,6 +9629,7 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
     placeControl("tTabs", 700, 420, false);
     placeControl("tPanel", 620, 120, false);
     placeControl("tStatus", 400, 700, false);
+    placeControl("tCtx", 500, 500, false);
     placeControl("tImage", 900, 120, false);
     placeControl("tAni", 900, 320, false);
     // 容器子控件（放置目标通道）
@@ -8738,6 +9667,29 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
     for (auto& it : m_items) {
         if (it.model->props.type != "status-bar") continue;
         applyStatusBarItemsText(*it.model, u8"左段@b#11223344@hb#AABBCCDD\n右段");
+    }
+    // 状态栏缺省底吸：全宽贴画布底，不按网格落位（避免点击后漂移）
+    {
+        PlacedControl* sb = nullptr;
+        for (auto& it : m_items)
+            if (it.model->props.type == "status-bar") { sb = &it; break; }
+        check(sb && std::fabs(sb->model->props.rect.y + sb->model->props.rect.h -
+                             m_designH) < 1.0f,
+              "status-bar: default bottom-docked");
+        check(sb && std::fabs(sb->model->props.rect.x) < 1.0f &&
+                  std::fabs(sb->model->props.rect.w - m_designW) < 1.0f,
+              "status-bar: default full-width");
+        if (sb && sb->ctl.IsValid()) {
+            const float h = sb->model->props.rect.h;
+            sb->model->props.rect = SRect{ 120.0f, 120.0f, 100.0f, h };
+            sb->ctl.SetRect(120.0f, 120.0f, 100.0f, h);
+            snapStatusBarToDock(*sb);
+            check(std::fabs(sb->model->props.rect.y + h - m_designH) < 1.0f &&
+                      std::fabs(sb->model->props.rect.w - m_designW) < 1.0f,
+                  "status-bar: drag re-docks bottom");
+        } else {
+            check(false, "status-bar: drag re-docks bottom");
+        }
     }
     // 菜单结构（P0-69：层级/快捷键/分隔符 + 顺序往返；P0-72① 面板级属性：字号/字体名/阴影半径）
     for (auto& it : m_items) {
@@ -9238,6 +10190,11 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
         if (!ctxId.empty()) {
             selectItem(ctxId);
             ControlModel* cm = findModel(ctxId);
+            PlacedControl* ctxPc0 = placedById(ctxId);
+            check(cm && ctxPc0 && ctxPc0->ctl.IsValid() &&
+                      std::fabs(ctxPc0->ctl.GetRect().x - cm->props.rect.x) < 0.01f &&
+                      std::fabs(ctxPc0->ctl.GetRect().y - cm->props.rect.y) < 0.01f,
+                  "context-menu: initial position is absolute, not centered");
             applyContextMenuItemsText(*cm, u8"复制@Ctrl+C\n--\n删除");
             auto& items = cm->props.extended["items"];
             check(items.is_array() && items.size() == 3, "context-menu: items parsed");
@@ -9251,6 +10208,45 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
                 for (auto& it : m_items)
                     if (it.model->props.id == ctxId && it.ctl.IsValid()) okCtl = true;
                 check(okCtl, "context-menu: rebuilt control valid");
+            }
+            check(cm->props.rect.w > 0.0f && cm->props.rect.h > 0.0f,
+                  "context-menu: auto-sized to menu panel");
+            const float ctxW = cm->props.rect.w;
+            selectItem("");
+            check(std::fabs(cm->props.rect.w - ctxW) < 0.01f,
+                  "context-menu: width stable after clear");
+            selectItem(ctxId);
+            check(std::fabs(cm->props.rect.w - ctxW) < 0.01f,
+                  "context-menu: width stable after reselect");
+            // 模拟移动后取消/重新选择：模型与引擎位置都应保持
+            const float movedX = cm->props.rect.x + 37.0f;
+            const float movedY = cm->props.rect.y + 23.0f;
+            cm->props.rect.x = movedX;
+            cm->props.rect.y = movedY;
+            if (PlacedControl* cp = placedById(ctxId); cp && cp->ctl.IsValid())
+                cp->ctl.SetRect(movedX, movedY, cm->props.rect.w, cm->props.rect.h);
+            selectItem("");
+            selectItem(ctxId);
+            PlacedControl* movedPc = placedById(ctxId);
+            check(std::fabs(cm->props.rect.x - movedX) < 0.01f &&
+                      std::fabs(cm->props.rect.y - movedY) < 0.01f &&
+                      movedPc && movedPc->ctl.IsValid() &&
+                      std::fabs(movedPc->ctl.GetRect().x - movedX) < 0.01f &&
+                      std::fabs(movedPc->ctl.GetRect().y - movedY) < 0.01f,
+                  "context-menu: moved position persists after reselect");
+            // items 重建时模型可能尚未回写：重建前必须从引擎当前位置同步
+            if (movedPc && movedPc->ctl.IsValid()) {
+                const UIRect eng = movedPc->ctl.GetRect();
+                cm->props.rect.x = eng.x - 37.0f;   // 模拟拖动后的旧模型位置
+                cm->props.rect.y = eng.y - 23.0f;
+                syncContextMenuItems(*cm, nlohmann::json::array());
+                PlacedControl* rebuilt = placedById(ctxId);
+                check(rebuilt && rebuilt->ctl.IsValid() &&
+                          std::fabs(cm->props.rect.x - eng.x) < 0.01f &&
+                          std::fabs(cm->props.rect.y - eng.y) < 0.01f &&
+                          std::fabs(rebuilt->ctl.GetRect().x - eng.x) < 0.01f &&
+                          std::fabs(rebuilt->ctl.GetRect().y - eng.y) < 0.01f,
+                      "context-menu: rebuild preserves moved position");
             }
             selectItem("");
         }
@@ -9267,6 +10263,273 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
                   "context-menu: event tree item selectable");
         }
         SetEventPanelVisible(false);
+        selectItem("");
+    }
+    // CR20261112001 动态行：box-shadow 必须可用；Label 的 text-shadow-blur 必须可见。
+    {
+        std::string labelId;
+        for (const auto& it : m_items)
+            if (it.model->props.type == "label" && it.parentId.empty()) {
+                labelId = it.model->props.id;
+                break;
+            }
+        if (!labelId.empty()) {
+            const auto savedGroups = m_collapsedGroups;
+            m_collapsedGroups.erase(u8"常规");
+            m_collapsedGroups.erase(u8"字体及阴影");
+            m_collapsedGroups.erase(u8"轮廓阴影");
+            m_collapsedGroups.erase(u8"轮廓阴影 · hover");
+            m_collapsedGroups.erase(u8"轮廓阴影 · pressed");
+            m_collapsedGroups.erase(u8"轮廓阴影 · disabled");
+            selectItem(labelId);
+            bool hasBoxColor = false, hasBoxX = false, hasBoxY = false;
+            bool hasBoxBlur = false, hasBoxSpread = false, hasBlur = false;
+            bool hasHoverColor = false, hasHoverX = false, hasHoverY = false;
+            bool hasHoverBlur = false, hasHoverSpread = false;
+            bool hasPressedColor = false, hasDisabledColor = false;
+            for (const auto& row : m_dynamicRows) {
+                if (!row.IsValid()) continue;
+                const std::string cap = row.GetString(PropertyNames::kCaption);
+                if (cap.find("box-shadow.color") != std::string::npos) hasBoxColor = true;
+                if (cap.find("box-shadow.offset-x") != std::string::npos) hasBoxX = true;
+                if (cap.find("box-shadow.offset-y") != std::string::npos) hasBoxY = true;
+                if (cap.find("box-shadow.blur") != std::string::npos) hasBoxBlur = true;
+                if (cap.find("box-shadow.spread") != std::string::npos) hasBoxSpread = true;
+                if (cap.find("text-shadow.blur") != std::string::npos) hasBlur = true;
+                if (cap.find("box-shadow.hover.color") != std::string::npos) hasHoverColor = true;
+                if (cap.find("box-shadow.hover.offset-x") != std::string::npos) hasHoverX = true;
+                if (cap.find("box-shadow.hover.offset-y") != std::string::npos) hasHoverY = true;
+                if (cap.find("box-shadow.hover.blur") != std::string::npos) hasHoverBlur = true;
+                if (cap.find("box-shadow.hover.spread") != std::string::npos) hasHoverSpread = true;
+                if (cap.find("box-shadow.pressed.color") != std::string::npos) hasPressedColor = true;
+                if (cap.find("box-shadow.disabled.color") != std::string::npos) hasDisabledColor = true;
+            }
+            check(hasBoxColor && hasBoxX && hasBoxY && hasBoxBlur && hasBoxSpread,
+                  "designer: box-shadow field rows");
+            check(hasHoverColor && hasHoverX && hasHoverY && hasHoverBlur && hasHoverSpread &&
+                      hasPressedColor && hasDisabledColor,
+                  "designer: box-shadow state rows");
+            check(hasBlur, "designer: text-shadow.blur dynamic row");
+
+            // text-shadow.blur 行写回：先关闭文字阴影并置透明色，再通过行控件改值，
+            // 验证设计器会自动启用阴影/补默认色，而不是让用户以为 blur 无效。
+            if (ControlModel* lm = findModel(labelId)) {
+                PlacedControl* lp = placedById(labelId);
+                lm->props.extended["shadow"] = false;
+                if (!lm->props.extended.contains("colors") ||
+                    !lm->props.extended["colors"].is_object())
+                    lm->props.extended["colors"] = nlohmann::json::object();
+                auto& cg = lm->props.extended["colors"];
+                if (!cg.contains("text-shadow") || !cg["text-shadow"].is_object())
+                    cg["text-shadow"] = nlohmann::json::object();
+                cg["text-shadow"]["normal"] = "#00000000";
+                if (lp && lp->ctl.IsValid()) applyModelToEngine(*lp);
+                auto rowIt = m_rowPool.find("nud:text-shadow-blur");
+                if (rowIt != m_rowPool.end() && rowIt->second.IsValid()) {
+                    rowIt->second.SetFloat(PropertyNames::kValue, 24.0f);
+                    if (lp && lp->ctl.IsValid()) {
+                        check(lp->ctl.GetBool(PropertyNames::kShadow) &&
+                                  lp->ctl.GetColor(PropertyNames::kTextShadow).a > 0 &&
+                                  std::fabs(lp->ctl.GetFloat(PropertyNames::kTextShadowBlur) - 24.0f) < 0.01f,
+                              "designer: text-shadow.blur auto-enables visible shadow");
+                    }
+                } else {
+                    check(false, "designer: text-shadow.blur row pool");
+                }
+            }
+
+            // CR20261116002：模型状态回放 → 引擎状态键（保存/打开前置）
+            if (ControlModel* lm = findModel(labelId)) {
+                auto& ex = lm->props.extended;
+                if (!ex.contains("box-shadow") || !ex["box-shadow"].is_object())
+                    ex["box-shadow"] = nlohmann::json::object();
+                if (!ex["box-shadow"].contains("hover") || !ex["box-shadow"]["hover"].is_object())
+                    ex["box-shadow"]["hover"] = nlohmann::json::object();
+                ex["box-shadow"]["hover"]["color"] = "#00000088";
+                ex["box-shadow"]["hover"]["blur"] = 18;
+                if (PlacedControl* lp = placedById(labelId); lp && lp->ctl.IsValid()) {
+                    applyModelToEngine(*lp);
+                    check(lp->ctl.GetColor("box-shadow-color.hover").a == 0x88,
+                          "designer: box-shadow hover color applied");
+                    check(std::fabs(lp->ctl.GetFloat("box-shadow-radius.hover") - 18.0f) < 0.01f,
+                          "designer: box-shadow hover blur applied");
+                }
+            }
+            m_collapsedGroups = savedGroups;
+            selectItem("");
+        } else {
+            check(false, "designer: label for shadow rows");
+        }
+    }
+    // Shape 图形类型：schema enum 必须生成下拉行并可切换
+    {
+        std::string shapeId;
+        for (const auto& it : m_items)
+            if (it.model->props.type == "shape") { shapeId = it.model->props.id; break; }
+        if (shapeId.empty()) {
+            placeControl("tShape", 900.0f, 500.0f, false);
+            for (const auto& it : m_items)
+                if (it.model->props.type == "shape") { shapeId = it.model->props.id; break; }
+        }
+        const auto savedGroups = m_collapsedGroups;
+        m_collapsedGroups.erase(u8"常规");
+        m_collapsedGroups.erase(u8"多图元");
+        selectItem("");
+        m_rowsBuiltSig.clear();   // 强制按展开后的组重建（placeControl 可能已选中过 Shape）
+        selectItem(shapeId);
+        auto enumIt = m_rowPool.find("enum:shape");
+        if (!shapeId.empty() && enumIt != m_rowPool.end() && enumIt->second.IsValid()) {
+            ControlModel* sm = findModel(shapeId);
+            PlacedControl* sp = placedById(shapeId);
+            auto rowGen = [&](const std::string& k) { return m_rowPoolUsed.count(k) != 0; };
+            auto shapeKindIs = [&](const char* kind) {
+                return sm && sm->props.extended.value("shape", "") == kind &&
+                       sp && sp->ctl.IsValid() && sp->ctl.GetEnum(PropertyNames::kShape) == kind;
+            };
+
+            // round-rect：填充/描边/线宽/半径行生成；环宽/points 不适用 → 不生成
+            enumIt->second.SetInt(PropertyNames::kSelectedIndex, 2);   // round-rect
+            processPendingPropRowsRebuild();
+            check(shapeKindIs("round-rect"), "designer: Shape type enum row applies");
+            auto setShapeFloat = [&](const char* key, float value, const char* label) {
+                auto row = m_rowPool.find(std::string("nud:") + key);
+                if (row == m_rowPool.end() || !row->second.IsValid()) {
+                    check(false, label);
+                    return;
+                }
+                row->second.SetFloat(PropertyNames::kValue, value);
+                check(sp && sp->ctl.IsValid() &&
+                          std::fabs(sp->ctl.GetFloat(key) - value) < 0.01f,
+                      label);
+            };
+            setShapeFloat("line-width", 5.0f, "designer: Shape line-width applies");
+            setShapeFloat("radius", 12.0f, "designer: Shape radius applies");
+            check(rowGen("nud:radius") && !rowGen("nud:ring-width") && !rowGen("nud:points"),
+                  "designer: Shape round-rect applicable rows");
+            check(rowGen("xcolor:fill") && rowGen("xcolor:stroke"),
+                  "designer: Shape fill/stroke color rows");
+
+            // circle：半径不适用（不生成）；环宽可用
+            auto e2 = m_rowPool.find("enum:shape");
+            check(e2 != m_rowPool.end() && e2->second.IsValid(), "designer: Shape enum row rebuilt");
+            if (e2 != m_rowPool.end() && e2->second.IsValid()) {
+                e2->second.SetInt(PropertyNames::kSelectedIndex, 3);   // circle
+                processPendingPropRowsRebuild();
+                check(shapeKindIs("circle"), "designer: Shape enum circle");
+                check(!rowGen("nud:radius") && rowGen("nud:ring-width") && rowGen("nud:line-width"),
+                      "designer: Shape circle applicable rows");
+                setShapeFloat("ring-width", 3.0f, "designer: Shape ring-width applies");
+            }
+
+            // polyline：仅描边/线宽/points；fill/radius/ring-width 不生成
+            auto e3 = m_rowPool.find("enum:shape");
+            if (e3 != m_rowPool.end() && e3->second.IsValid()) {
+                e3->second.SetInt(PropertyNames::kSelectedIndex, 5);   // polyline
+                processPendingPropRowsRebuild();
+                check(shapeKindIs("polyline"), "designer: Shape enum polyline");
+                check(!rowGen("xcolor:fill") && rowGen("xcolor:stroke") &&
+                          rowGen("nud:line-width") && rowGen("struct:points:shape"),
+                      "designer: Shape polyline applicable rows");
+            }
+
+            // 多图元：结构化列表编辑器（添加/删除 + 每个图元一组字段控件）
+            ControlModel* sm2 = findModel(shapeId);
+            PlacedControl* sp2 = placedById(shapeId);
+            if (sm2 && sp2 && sp2->ctl.IsValid()) {
+                check(rowGen("prim:add"), "designer: Shape primitives add button");
+                const int p0 = addShapePrimitive(*sm2, "round-rect");
+                check(p0 == 0 && sm2->props.extended["primitives"].size() == 1,
+                      "designer: Shape primitives add model");
+                processPendingPropRowsRebuild();
+                check(rowGen("prim:0:shape") && rowGen("prim:0:radius") &&
+                          rowGen("primcolor:0:fill") && !rowGen("prim:0:ring-width"),
+                      "designer: Shape primitive field rows (round-rect)");
+                setShapePrimitiveRect(*sm2, 0, 2, 30.0f);
+                setShapePrimitiveRect(*sm2, 0, 3, 24.0f);
+                setShapePrimitiveField(*sm2, 0, "radius", 4.0f);
+                setShapePrimitiveField(*sm2, 0, "fill", std::string("#FF0000FF"));
+                check(std::fabs(sm2->props.extended["primitives"][0]["rect"][2].get<float>() - 30.0f) < 0.01f &&
+                          std::fabs(sm2->props.extended["primitives"][0].value("radius", 0.0f) - 4.0f) < 0.01f &&
+                          sm2->props.extended["primitives"][0].value("fill", "") == "#FF0000FF",
+                      "designer: Shape primitive fields write model");
+                // 字段控件回调（NUD → 模型）
+                if (auto nrow = m_rowPool.find("prim:0:rect-w");
+                    nrow != m_rowPool.end() && nrow->second.IsValid()) {
+                    nrow->second.SetFloat(PropertyNames::kValue, 45.0f);
+                    check(std::fabs(sm2->props.extended["primitives"][0]["rect"][2].get<float>() - 45.0f) < 0.01f,
+                          "designer: Shape primitive NUD row writes model");
+                } else {
+                    check(false, "designer: Shape primitive NUD row");
+                }
+                // 第二个图元：多边形（只出现适用字段；points 为行式文本）
+                const int p1 = addShapePrimitive(*sm2, "polygon");
+                check(p1 == 1, "designer: Shape primitive add second");
+                applyShapePrimitivePointsText(*sm2, 1, "40,4\n70,28\n40,28");
+                check(sm2->props.extended["primitives"][1]["points"].size() == 3,
+                      "designer: Shape primitive points text");
+                processPendingPropRowsRebuild();
+                check(rowGen("prim:1:shape") && rowGen("prim:pts:1") &&
+                          !rowGen("prim:1:radius") && rowGen("primcolor:1:fill"),
+                      "designer: Shape primitive rows per type");
+                check(rowGen("prim:collapseAll"),
+                      "designer: Shape primitives collapse-all row");
+                // 逐图元收起：只保留标题/删除行，字段行不生成
+                {
+                    const std::string pkey = shapeId + "#0";
+                    m_collapsedPrims.insert(pkey);
+                    m_collapsedPrims.insert(shapeId + "#1");
+                    m_rowsBuiltSig.clear();
+                    rebuildDynamicRows();
+                    check(!rowGen("prim:0:shape") && rowGen("prim:hdr:0"),
+                          "designer: Shape primitive collapsible");
+                    m_collapsedPrims.erase(pkey);
+                    m_collapsedPrims.erase(shapeId + "#1");
+                    m_rowsBuiltSig.clear();
+                    rebuildDynamicRows();
+                    check(rowGen("prim:0:shape"),
+                          "designer: Shape primitive expand restores rows");
+                }
+                // 溢出提示（引擎裁剪 CR20261117001 未交付时提醒）
+                setShapePrimitiveRect(*sm2, 0, 2, 200.0f);
+                m_rowsBuiltSig.clear();
+                rebuildDynamicRows();
+                check(rowGen("prim:overflow"),
+                      "designer: Shape primitive overflow warning");
+                setShapePrimitiveRect(*sm2, 0, 2, 30.0f);
+                m_rowsBuiltSig.clear();
+                rebuildDynamicRows();
+                check(syncShapePrimitives(*sm2) == 2,
+                      "designer: Shape primitives applied to engine");
+                // 模型回放（打开/撤销重建路径）
+                m_viewport->ShapeClearPrimitives(sp2->ctl);
+                applyModelToEngine(*sp2);
+                check(syncShapePrimitives(*sm2) == 2,
+                      "designer: Shape primitives model replay");
+                m_collapsedPrims.insert(shapeId + "#0");
+                check(removeShapePrimitive(*sm2, 1) &&
+                          sm2->props.extended["primitives"].size() == 1,
+                      "designer: Shape primitive delete");
+                check(m_collapsedPrims.count(shapeId + "#0") == 0,
+                      "designer: Shape primitive delete resets collapse state");
+                processPendingPropRowsRebuild();
+                check(!rowGen("prim:1:shape"),
+                      "designer: Shape primitive rows rebuilt after delete");
+                // 保存/打开样本：补回第二个图元
+                addShapePrimitive(*sm2, "polygon");
+                applyShapePrimitivePointsText(*sm2, 1, "40,4\n70,28\n40,28");
+                // 切换选中不应产生虚假撤销（复用池行回填静默）
+                const size_t undoBefore = m_undoStack.size();
+                selectItem("");
+                selectItem(shapeId);
+                check(m_undoStack.size() == undoBefore,
+                      "designer: Shape primitives selection is silent");
+            } else {
+                check(false, "designer: Shape primitives target");
+            }
+        } else {
+            check(false, "designer: Shape type enum row");
+        }
+        m_collapsedGroups = savedGroups;
         selectItem("");
     }
     const int n0 = (int)m_items.size();   // 全部构建完成后（含页 Panel/页内控件）
@@ -9381,6 +10644,17 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
             }
         check(tcOk, "open: tab strip color roundtrip (model + engine)");
     }
+    // Shape 多图元 save/open 往返（JSON primitives → 模型 → 引擎重放）
+    {
+        bool primOk = false;
+        for (auto& it2 : m_items)
+            if (it2.model->props.type == "shape") {
+                const auto& pv = it2.model->props.extended.value("primitives",
+                                                                 nlohmann::json::array());
+                if (pv.is_array() && pv.size() == 2) primOk = true;
+            }
+        check(primOk, "open: shape primitives preserved");
+    }
     check((int)m_items.size() == n0, "open: control count preserved");
     const int childCount1 = (int)std::count_if(m_items.begin(), m_items.end(),
         [](const PlacedControl& p) { return !p.parentId.empty(); });
@@ -9473,6 +10747,25 @@ bool CanvasPane::SelfTestIo(const std::string& dir) {
         for (auto& it2 : m_items)
             if (it2.parentId == p0 && it2.model->props.type == "label") ++inPage;
         check(inPage == 1, "open: control inside tab page preserved");
+    }
+    // CR20261116002：box-shadow 状态对象 save/open 往返 + 引擎回放
+    {
+        bool modelOk = false, engineOk = false;
+        for (auto& it : m_items) {
+            if (it.model->props.type != "label") continue;
+            const auto& ex = it.model->props.extended;
+            if (!ex.contains("box-shadow") || !ex["box-shadow"].is_object()) continue;
+            const auto& bs = ex["box-shadow"];
+            if (!bs.contains("hover") || !bs["hover"].is_object()) continue;
+            const auto& hv = bs["hover"];
+            modelOk = hv.value("color", "") == "#00000088" &&
+                      std::fabs(hv.value("blur", 0.0f) - 18.0f) < 0.01f;
+            if (!modelOk || !it.ctl.IsValid()) continue;
+            engineOk = it.ctl.GetColor("box-shadow-color.hover").a == 0x88 &&
+                       std::fabs(it.ctl.GetFloat("box-shadow-radius.hover") - 18.0f) < 0.01f;
+        }
+        check(modelOk, "open: box-shadow hover state model preserved");
+        check(engineOk, "open: box-shadow hover state applied to engine");
     }
     check(ExportLayout(js), "ExportLayout");
     // P0-92：布局导出携带 tab 配色键（schema 白名单透传——导出应用经引擎解析生效）

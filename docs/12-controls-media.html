@@ -85,18 +85,31 @@
 
 <h2>17.3 图形 Shape</h2>
 
-<h3>17.3.1 形状类型</h3>
+<h3>17.3.1 形状类型与生效属性</h3>
+
+<p>在属性面板“常规”组的“图形类型”下拉中选择形状；修改后立即写回引擎并进入撤销栈。也可以在 JSON 中写 <code>"shape": "circle"</code> 等。下拉框下方会显示当前类型实际生效的属性；切换类型后属性行会重新生成，不适用的字段不再出现，避免“改了半径却看不到变化”。</p>
 
 <table>
-<tr><th>类型</th><th>用途</th></tr>
-<tr><td><code>rect</code></td><td>普通矩形边框</td></tr>
-<tr><td><code>filled-rect</code></td><td>填充矩形</td></tr>
-<tr><td><code>round-rect</code></td><td>圆角矩形；半径配合属性设置</td></tr>
-<tr><td><code>circle</code> / <code>ellipse</code></td><td>圆/椭圆，适合图标底、状态点</td></tr>
-<tr><td><code>polyline</code> / <code>polygon</code></td><td>折线/多边形；需要点集</td></tr>
+<tr><th>类型</th><th>用途</th><th>生效属性</th></tr>
+<tr><td><code>rect</code></td><td>普通矩形边框</td><td><code>fill</code> / <code>stroke</code> / <code>line-width</code></td></tr>
+<tr><td><code>filled-rect</code></td><td>填充矩形</td><td><code>fill</code></td></tr>
+<tr><td><code>round-rect</code></td><td>圆角矩形</td><td><code>fill</code> / <code>stroke</code> / <code>line-width</code> / <code>radius</code></td></tr>
+<tr><td><code>circle</code> / <code>ellipse</code></td><td>圆/椭圆，适合图标底、状态点</td><td><code>fill</code> / <code>stroke</code> / <code>line-width</code> / <code>ring-width</code></td></tr>
+<tr><td><code>polyline</code></td><td>折线；需要点集</td><td><code>stroke</code> / <code>line-width</code> / <code>points</code></td></tr>
+<tr><td><code>polygon</code></td><td>多边形；需要点集</td><td><code>fill</code> / <code>stroke</code> / <code>line-width</code> / <code>points</code></td></tr>
 </table>
 
-<h3>17.3.2 颜色与点集</h3>
+<p>要点：</p>
+
+<ul>
+  <li><code>radius</code> 只对 <code>round-rect</code> 生效；圆/椭圆/多边形的“半径”由控件矩形决定，面板不再生成半径行。</li>
+  <li><code>ring-width</code> 只对 <code>circle</code>/<code>ellipse</code> 生效；数值大于 0 时填充变成环带（内部透明），设为 0 才是实心。</li>
+  <li><code>filled-rect</code> 不绘制描边；需要边框时用 <code>rect</code> 或 <code>round-rect</code>。</li>
+  <li><code>polyline</code> 不填充；<code>fill</code> 行不会出现。</li>
+  <li><code>points</code> 只对 <code>polyline</code>/<code>polygon</code> 生效：折线至少 2 个点，多边形至少 3 个点。</li>
+</ul>
+
+<h3>17.3.2 颜色、点集与多图元</h3>
 
 <p>Shape 的填充、描边和线宽通过属性面板设置。多边形/折线的点集一行一个点，坐标相对 Shape 控件左上角：</p>
 
@@ -106,14 +119,60 @@
 
 <p>上面的点集表示一个三角形：左下 → 顶部中间 → 右下。点集只对 polyline/polygon 有意义，矩形/圆形不需要手写点集。</p>
 
+<h4>在一个 Shape 中组合多个图元</h4>
+
+<p>Shape 支持多图元：<code>primitives</code> 非空时，引擎用图元列表替代顶层单图元绘制。属性面板的“多图元”分组提供<strong>结构化列表编辑</strong>：</p>
+
+<ul>
+  <li>“＋ 添加图元”追加一个图元（默认 rect，坐标取控件尺寸的一半）；每个图元右侧有“删除”按钮。</li>
+  <li>图元标题可点击收起/展开（标题前的 <code>[+]</code> / <code>[-]</code> 表示状态）；图元较多时用“收起全部图元 / 展开全部图元”快速折叠，只保留标题行。</li>
+  <li>每个图元一组字段控件：形状下拉、X / Y / 宽 / 高、填充色、描边色、线宽；按图形类型还会出现圆角半径、环带宽度、顶点。</li>
+  <li>字段行按该图元的形状过滤：例如 round-rect 才有圆角半径，circle/ellipse 才有环带宽度，polyline/polygon 才有顶点。</li>
+  <li>顶点使用行式文本，一行一个点 <code>x,y</code>，坐标相对 Shape 左上角。</li>
+  <li>所有修改立即写回引擎并进入撤销栈；添加/删除图元后列表自动重建。</li>
+</ul>
+
+<p>保存到布局 JSON 时仍是标准的 <code>primitives</code> 数组（便于导出/版本管理）：</p>
+
+<pre><code>"primitives": [
+  { "shape": "round-rect", "rect": [10, 50, 130, 75], "radius": 6, "fill": "#34D399" },
+  { "shape": "polygon", "fill": "#EF4444",
+    "points": [{"x":0,"y":52}, {"x":75,"y":0}, {"x":150,"y":52}] }
+]</code></pre>
+
+<ul>
+  <li>图元键与引擎 JSON 一致：<code>shape</code> / <code>rect</code>（<code>[x,y,w,h]</code>）/ <code>fill</code> / <code>stroke</code> / <code>line-width</code> / <code>radius</code> / <code>ring-width</code> / <code>points</code>；注意是 kebab-case。</li>
+  <li>坐标相对 Shape 左上角，随控件缩放；图元矩形或点集超出控件 rect 时，属性面板显示橙色警告。当前引擎绘制尚不裁剪（CR20261117001 待交付），超出部分会画到控件外，请先把坐标收进 rect；引擎交付后改为默认裁剪。</li>
+  <li><code>primitives</code> 非空时，顶层的填充/描边/线宽等单图元属性不再参与绘制；逐个删除全部图元即可回到单图元模式。</li>
+  <li>多图元与单图元共用撤销栈：同一字段连续修改按同一个键合并。</li>
+</ul>
+
 <ol class="steps">
   <li>放置 Shape，选择形状类型。</li>
   <li>设置填充色、描边色和线宽；需要透明填充时把填充 alpha 设为 0。</li>
   <li>polyline/polygon 在点集行填写坐标，每行 <code>x,y</code>。</li>
+  <li>需要组合图形时，在“多图元”分组点击“＋ 添加图元”，再逐个设置形状与字段。</li>
   <li>在预览中检查形状边界和尺寸；复杂图形建议改用 SVG/图片资源。</li>
 </ol>
 
-<h3>17.3.3 事件与使用建议</h3>
+<h3>17.3.3 柔光阴影（box-shadow，V1 包围盒）</h3>
+
+<p>Shape 可以使用通用 <code>box-shadow</code>：属性面板的“轮廓阴影”组、主题规则和 JSON 写法与其他控件一致。阴影绘制在外框外侧，不影响填充、描边、布局和命中。</p>
+
+<p><strong>V1 只按 Shape 控件的包围盒 rect 绘制阴影，不沿 polygon/polyline 点集或 circle/ellipse 轮廓生成。</strong>因此圆形、椭圆和多边形的阴影表现为控件矩形/圆角矩形周围的光晕，而不是形状边缘的轮廓发光。虚线框仅用于示意包围盒。</p>
+
+<div class="shot">
+  <img src="assets/screenshots/14-shape-bbox-shadow.png" alt="Shape box-shadow V1：阴影按控件包围盒绘制">
+  <div class="cap">图 17-2 Shape 的 box-shadow 按控件包围盒绘制；圆/多边形不会产生轮廓光</div>
+</div>
+
+<ul>
+  <li>颜色 alpha=0 关闭阴影；状态阴影按通用规则部分继承 normal。</li>
+  <li>Shape 通常没有 hover/pressed 交互态；状态阴影主要由主题或程序状态变化触发。</li>
+  <li>需要沿点集/轮廓的发光时，当前 V1 不支持；不要用 <code>box-shadow</code> 冒充轮廓光，后续应以独立的 <code>shape-glow</code>/<code>contour-glow</code> 方案评估。</li>
+</ul>
+
+<h3>17.3.4 事件与使用建议</h3>
 
 <ul>
   <li>Shape 常作为装饰或命中区域；需要点击时确认该形状是否参与普通命中。</li>
@@ -136,7 +195,10 @@
   <li>图片/动画路径是否使用 provider 相对路径。</li>
   <li>控件尺寸是否与资源宽高比匹配，是否被父容器裁切。</li>
   <li>动画是否 playing、loop 设置正确，帧是否正常显示。</li>
-  <li>Shape 的颜色、线宽和点集是否符合预期。</li>
+  <li>Shape 的颜色、线宽和点集是否符合预期；切换图形类型后确认属性行已随之变化。</li>
+  <li>Shape 的 radius 只在 round-rect 生效、ring-width 只在 circle/ellipse 生效、points 只在 polyline/polygon 生效。</li>
+  <li>使用多图元时，确认“多图元”分组中每个图元的形状、矩形、颜色和点集都正确；逐个删除可回到单图元模式。</li>
+  <li>Shape 的 box-shadow 是否按包围盒显示；圆形/多边形不要误期望轮廓发光。</li>
   <li>预览通过后再导出，并在导出目录中再运行一次。</li>
 </ol>
 

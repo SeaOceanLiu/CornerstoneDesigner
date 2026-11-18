@@ -66,36 +66,72 @@ content-padding: { "left": 16, "top": 8, "right": 16, "bottom": 8 }</code></pre>
 
 <p><code>text-shadow</code> 只需颜色；偏移由 <code>shadow-offset-x</code> / <code>shadow-offset-y</code> 控制。</p>
 
-<p><code>box-shadow</code> 是控件外框外的一层阴影，用来做“卡片浮起来”的效果。它不是必填项；不需要阴影时留空。</p>
+<p><code>box-shadow</code> 是控件外框外的一层真实柔光阴影，用来做“卡片浮起来”的效果。它由 UICornerstone 预烘焙为阴影纹理并复用，不是每帧重复绘制；<code>blur=0</code> 保持硬边，<code>blur</code> 范围 0~64，<code>spread&gt;=0</code>。阴影不覆盖内容、不改变布局和命中。</p>
 
 <table>
 <tr><th>字段</th><th>含义</th><th>示例</th></tr>
-<tr><td><code>color</code></td><td>阴影颜色，最后两位是透明度</td><td><code>#00000066</code></td></tr>
+<tr><td><code>color</code></td><td>阴影颜色，最后两位是透明度；alpha=0 表示关闭</td><td><code>#00000066</code></td></tr>
 <tr><td><code>offset-x</code></td><td>水平偏移；正数向右</td><td><code>0</code></td></tr>
 <tr><td><code>offset-y</code></td><td>垂直偏移；正数向下</td><td><code>6</code></td></tr>
-<tr><td><code>blur</code></td><td>模糊/圆角扩展量</td><td><code>16</code></td></tr>
-<tr><td><code>spread</code></td><td>阴影扩张量；正数更大</td><td><code>0</code></td></tr>
+<tr><td><code>blur</code></td><td>真实柔化半径；0 为硬边</td><td><code>16</code></td></tr>
+<tr><td><code>spread</code></td><td>阴影向外扩张量；正数更大</td><td><code>0</code></td></tr>
+<tr><td><code>hover</code> / <code>pressed</code> / <code>disabled</code></td><td>状态覆盖对象；缺省字段继承 normal，状态 color alpha=0 关闭该状态阴影</td><td><code>{"blur":24}</code></td></tr>
 </table>
 
-<p>操作步骤：</p>
+<p>在规则列表选中要加阴影的规则，例如 <code>panel.card</code>，先给它一个浅色背景，再在“box-shadow”输入框中粘贴完整对象文本：</p>
 
-<ol class="steps">
-  <li>在规则列表选中要加阴影的规则，例如 <code>panel.card</code>。</li>
-  <li>在“box-shadow”输入框中粘贴完整对象文本：</li>
-</ol>
+<pre><code>{ "selector": "panel.card",
+  "declarations": {
+    "background": "#FFFFFF",
+    "box-shadow": {
+      "color": "#00000066", "offset-x": 0, "offset-y": 6,
+      "blur": 16, "spread": 0
+    }
+  } }</code></pre>
 
-<pre><code>{"color":"#00000066","offset-x":0,"offset-y":6,"blur":16,"spread":0}</code></pre>
+<p>点击“应用”或切换到别的规则，保存这条规则；在预览中查看卡片外框是否出现柔和阴影。</p>
 
-<ol class="steps">
-  <li>点击“应用”或切换到别的规则，保存这条规则。</li>
-  <li>在预览中查看卡片外框是否出现柔和阴影。</li>
-</ol>
+<p class="tip">柔光阴影在深色背景上对比度较低；本文示例与截图使用白色背景，实际项目请保证阴影色与背景有足够对比。</p>
+
+<h4>状态阴影</h4>
+
+<p>柔光阴影支持 hover / pressed / disabled 三种状态。状态对象是<strong>部分覆盖</strong>：只写需要变化的字段，其余字段继承 normal。可以直接在 normal 对象里嵌套状态，也可以用状态选择器单独声明；两者都写入同一个状态槽。</p>
+
+<pre><code>{ "selector": "button.primary",
+  "declarations": {
+    "box-shadow": {
+      "color": "#00000033", "offset-x": 0, "offset-y": 6, "blur": 12,
+      "hover":   { "color": "#00000055", "offset-y": 10, "blur": 20 },
+      "pressed": { "color": "#00000066", "blur": 24 },
+      "disabled": { "color": "#00000022", "blur": 6 }
+    }
+  } }
+
+{ "selector": "button.primary:hover",
+  "declarations": {
+    "box-shadow": { "color": "#00000055", "offset-y": 10, "blur": 20 }
+  } }</code></pre>
+
+<div class="shot">
+  <img src="assets/screenshots/13-box-shadow-states.png" alt="box-shadow normal / hover / pressed / disabled 四态对比（同一主题与尺寸，仅状态不同）">
+  <div class="cap">图 19-1 柔光阴影四态对比：normal / hover / pressed / disabled</div>
+</div>
+
+<p>规则与优先级：</p>
+
+<ul>
+  <li>状态字段缺省时继承 normal；状态 <code>color</code> 显式 alpha=0 表示该状态关闭阴影。</li>
+  <li>优先级：<b>显式 JSON 状态 &gt; 主题状态 &gt; 显式 JSON normal &gt; 主题 normal</b>。</li>
+  <li>同一状态同时写状态对象和拆散键时，拆散键优先；状态选择器内的 <code>box-shadow</code> 再嵌套状态键会被忽略并诊断。</li>
+  <li><code>:selected</code> 等同 pressed；状态选择器与状态对象写入同一状态槽。</li>
+  <li>主题切换会重算状态槽；<code>ApplyTheme("{}")</code> / 仅变量主题是 no-op，不清阴影。normal 未声明字段沿用旧主题值，整体移除需显式 alpha=0 或完整覆盖。</li>
+</ul>
+
+<p>属性面板中的“轮廓阴影”组也提供 normal + hover/pressed/disabled 状态子组，见 <a href="09-properties.html">属性面板</a>。支持范围：普通控件、Popup/ConfirmPopup/Dialog/MenuBar 支持四态；MenuPanel 支持 normal；ContextMenu/MenuItem/HandleControl 不绘制 box-shadow。</p>
+
+<p><strong>Shape 的特殊边界：</strong>V1 的 <code>box-shadow</code> 只按 Shape 控件的包围盒 rect 绘制，不沿 polygon/polyline 点集或 circle/ellipse 轮廓发光。圆形/多边形的阴影是矩形/圆角矩形光晕；轮廓发光不在本版本范围。详见 <a href="12-controls-media.html">图片、动画与绘制</a>。</p>
 
 <div class="warn">这里需要的是<strong>JSON 对象</strong>，不是 CSS 的 <code>0 6 16 #000</code> 简写。管理器提供轻/中/强阴影三个可编辑预设，也可以手动输入；不是合法对象、含未知字段或数值字段不是数字时，会提示错误并阻止保存。</div>
-
-<p>图 15-2 的按钮规则中 <code>box-shadow</code> 填的是 <code>{"color":"#00000066","offset-x":0,"offset-y":6,"blur":16,"spread":0}</code>；它会在按钮下方形成一层淡阴影。</p>
-
-<p>当前实现用无高斯模糊的扩展近似：偏移和扩散绘制半透明圆角矩形，blur 作为圆角扩展量参与近似。</p>
 
 <h3>19.5 控件专有属性</h3>
 

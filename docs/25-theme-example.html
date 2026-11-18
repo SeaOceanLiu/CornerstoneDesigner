@@ -16,13 +16,13 @@
 
 <pre><code>{
   "variables": {
-    "--bg": "#10141C",
-    "--surface": "#1A2130",
-    "--line": "#2B3648",
-    "--text": "#F5F8FF",
-    "--muted": "#94A3B8",
+    "--bg": "#F3F6FB",
+    "--surface": "#FFFFFF",
+    "--line": "#D8E0EA",
+    "--text": "#1F2937",
+    "--muted": "#64748B",
     "--primary": "#2D7FF9",
-    "--danger": "#E06060"
+    "--danger": "#DC4C4C"
   },
   "styles": [
     { "selector": "panel.root", "declarations": {
@@ -41,7 +41,12 @@
         "background": "var(--primary)",
         "text-color": "#FFFFFFFF",
         "border-radius": 8,
-        "content-padding": "8 16" } },
+        "content-padding": "8 16",
+        "box-shadow": {
+          "color": "#00000033", "offset-y": 6, "blur": 12,
+          "hover":   { "color": "#00000055", "offset-y": 10, "blur": 20 },
+          "pressed": { "color": "#00000066", "blur": 24 }
+        } } },
     { "selector": "button.primary:hover", "declarations": {
         "background": "#4A90D9" } },
     { "selector": "button.danger", "declarations": {
@@ -49,15 +54,16 @@
         "text-color": "#FFFFFFFF",
         "border-radius": 8 } },
     { "selector": "edit-box", "declarations": {
-        "background": "#111826",
-        "border-color": "#334155",
+        "background": "#FFFFFF",
+        "border-color": "#CBD5E1",
         "text-color": "var(--text)",
         "border-radius": 8,
         "content-padding": "10 12" } }
   ],
   "variants": {
     "dark": {
-      "variables": { "--surface": "#0B0F16", "--bg": "#080B11" },
+      "variables": { "--surface": "#0B0F16", "--bg": "#080B11",
+                     "--line": "#2B3648", "--text": "#F5F8FF", "--muted": "#94A3B8" },
       "styles": [
         { "selector": "panel.card", "declarations": { "background": "var(--surface)" } }
       ]

@@ -18,6 +18,8 @@
 
 <p>主题用于统一控件外观：颜色、字体、圆角、间距、阴影，以及窗口变窄、容器变小、切换深色模式时的变化。它解决的是“同一个样式要改很多控件”的问题。</p>
 
+<p>其中柔光阴影 <code>box-shadow</code> 支持 normal / hover / pressed / disabled 四种状态；可以在 normal 对象里嵌套状态，也可以用状态选择器单独声明。示例与四态截图见 <a href="19-theme-declarations.html">主题声明：阴影</a>。</p>
+
 <div class="note">本章讲的是<strong>项目主题</strong>：它保存在工程里，作用于<strong>预览和导出的运行界面</strong>。设计器自身界面的颜色由另一份 <code>designer_theme.json</code> 控制，见 32.3。</div>
 
 <div class="note"><strong>本章导览：</strong>15–17 先理解概念并完成第一个主题；18–21 讲选择器、声明、变量和类；22–25 讲变体、媒体、容器和完整示例；26 汇总常用配方、内置模板、设计器主题、排错和限制。新手建议按顺序阅读。</div>

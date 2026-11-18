@@ -201,6 +201,7 @@ public:
     bool m_treeReorderPending = false;
     std::string m_treeReorderSrc, m_treeReorderHintTarget;
     int m_treeReorderHintKind = 0;
+    bool m_pendingPropRowsRebuild = false;   // Shape 图形类型切换：延迟重建属性行（回调内销毁本控件 ✗）
     // P0-105：控件树右键动作
     void treeDelete();
     void treeMoveInParent(int delta);
@@ -496,6 +497,7 @@ private:
                       ControlModel& model);   // 放置控件默认样式（白纸上可见；同步模型 colors）
 
     void tickInput();              // 交互轮询：放置/选中/拖动
+    void processPendingPropRowsRebuild();   // Shape 图形类型切换 → 延迟重建属性行
     void placeControl(const std::string& toolboxId, float cx, float cy, bool fromDrag = false);
     Control createViewportControl(const std::string& toolboxId, float x, float y,
                                   float w, float h, ControlModel& model) const;
@@ -506,6 +508,8 @@ private:
     void globalOriginOf(const PlacedControl& pc, float& gx, float& gy);
     // P1-b：容器 id → 挂载父控件（WinFrame 严格 ClientPanel）+ 内容区全局 rect
     bool resolveContainer(const std::string& id, Control& outParent, SRect& outContentRect);
+    // StatusBar：释放拖动/缩放后回吸到父内容区底部并铺满宽度
+    void snapStatusBarToDock(PlacedControl& pc);
     void setPlaceTarget(const std::string& id);   // 更新当前放置目标 + 状态栏提示
     void refreshPlaceTargetHint();
     void setStatusHint(const std::string& text);  // 状态栏 statusHint 段写入 + 重排（P0-53 过渡）
@@ -592,6 +596,14 @@ private:
     Control m_tabDragGhost;                  // 拖动光标旁小图标（拖动可见性反馈）           // 目标容器 → 实际父 id（TabControl→当前页 Panel）
     void applyShapePointsText(ControlModel& m, const std::string& text);   // 结构化：shape points（一行一点 x,y）
     void syncShapePoints(ControlModel& m);
+    // Shape 多图元：结构化列表编辑（每个图元一组字段控件）
+    int  syncShapePrimitives(ControlModel& m);   // 模型 primitives → 引擎（返回实际添加数）
+    int  addShapePrimitive(ControlModel& m, const std::string& shape);   // 追加图元 → 返回索引
+    bool removeShapePrimitive(ControlModel& m, size_t idx);              // 删除图元
+    void setShapePrimitiveField(ControlModel& m, size_t idx, const std::string& key,
+                                const nlohmann::json& value);
+    void setShapePrimitiveRect(ControlModel& m, size_t idx, int slot, float value);
+    void applyShapePrimitivePointsText(ControlModel& m, size_t idx, const std::string& text);
     void applyModelToEngine(PlacedControl& pc);     // 模型属性 → 引擎控件（加载应用）
     void ensureSelHandle(Control target);   // 引擎 HandleControl 附加（选中框+8向手柄+光标）
     void detachSelHandle();                 // 分离并隐藏
@@ -627,7 +639,10 @@ private:
     std::vector<std::function<void()>> m_rowRefreshers;
     std::string m_rowsBuiltSig;                 // 已建行集的类型签名（空=未建）
     std::set<std::string> m_collapsedGroups = {
-        "背景色", "边框色", "字体及阴影", "常规"};   // 缺省全收起：初次创建/切换控件只建 4 个组标题行（快）
+        "背景色", "边框色", "字体及阴影", "常规", "轮廓阴影", "多图元",
+        "轮廓阴影 · hover", "轮廓阴影 · pressed", "轮廓阴影 · disabled"};   // 缺省全收起：初次创建/切换控件只建组标题行（快）
+    // Shape 多图元：每个图元的字段行可独立收起（键=控件 id + "#" + 图元序号）
+    std::set<std::string> m_collapsedPrims;
     Control m_propColor;           // 颜色（color-changed 事件回调：onOK 确认触发）
     std::string m_lastColorHex;    // 上次回填/已应用的颜色（echo 抑制）
     void onColorPicked(unsigned char r, unsigned char g, unsigned char b);
