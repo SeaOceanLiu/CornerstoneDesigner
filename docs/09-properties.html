@@ -14,7 +14,7 @@
 
 <h1>10 属性面板</h1>
 
-<p>右侧属性面板编辑当前选中控件的属性。动态表单按属性语义分为<strong>背景色、边框色、字体及阴影、轮廓阴影、常规</strong>五组；布局、外观、行为是使用上的分类，字段会归入对应组。事件单独放在“事件”页签。</p>
+<p>右侧属性面板编辑当前选中控件的属性。动态表单按属性语义分为<strong>背景色、边框色、字体及阴影、轮廓阴影、常规</strong>五组；布局、外观、行为是使用上的分类，字段会归入对应组。普通控件的属性以树形分组呈现：组标题可折叠，字段行右侧是编辑控件，编辑列保持对齐。事件单独放在“事件”页签。</p>
 
 <div class="shot">
   <img src="assets/screenshots/02-workspace.png" alt="属性面板">
@@ -36,7 +36,7 @@
 <tr><td>常规</td><td>控件 ID、布局位置/尺寸/锚点、可见/启用、控件专有行为和结构化字段</td></tr>
 </table>
 
-<p>分组标题默认折叠，点击标题展开；标题前的 <code>[-]</code> / <code>[+]</code> 表示当前是展开/收起状态。切换控件时同一类型会复用已展开状态。分组内没有的字段通常表示该控件类型不支持，或字段属于组件实例 props。</p>
+<p>分组标题默认折叠，点击标题左侧的三角箭头展开/收起；展开后字段行左侧为属性名、右侧为编辑控件，编辑列始终对齐。动态行区域统一使用 18 号字（与分组标题一致），窄面板下标签列宽自适应，同时为编辑控件保留可用宽度。Shape 多图元的每个图元、Button/CheckBox 的“内嵌文本”等也以可折叠子节点呈现。切换控件时同一类型会复用已展开/收起状态。分组内没有的字段通常表示该控件类型不支持，或字段属于组件实例 props。</p>
 
 <h2>10.3 布局</h2>
 
@@ -95,7 +95,9 @@
 
 <p>字段来源是 UICornerstone schema；当 schema 更新时，属性面板会提供新的可用属性。未知字段会保留在原始 JSON 中，不会因为面板暂不支持而丢失。</p>
 
-<p>Shape 的属性行会按当前“图形类型”过滤：只生成该类型真正生效的字段（例如 radius 仅 round-rect、ring-width 仅 circle/ellipse、points 仅 polyline/polygon）。切换图形类型后属性行会自动重建，下拉框下方同时显示当前类型的生效属性提示。Shape 还提供“多图元”分组：通过“＋ 添加图元”逐个添加图形，每个图元有独立的形状、矩形、颜色、线宽等字段控件；<code>primitives</code> 非空时替代顶层单图元绘制，详见 <a href="12-controls-media.html">媒体控件：Shape</a>。</p>
+<p>Shape 的属性行会按当前“图形类型”过滤：只生成该类型真正生效的字段（例如 radius 仅 round-rect、ring-width 仅 circle/ellipse、points 仅 polyline/polygon）。切换图形类型后属性行会自动重建，下拉框下方同时显示当前类型的生效属性提示。Shape 的 <code>clip</code>（默认 true）控制单图元/多图元是否裁剪到控件 rect；<code>clip=false</code> 保留旧溢出行为。Shape 还提供“多图元”分组：通过“＋ 添加图元”逐个添加图形，每个图元有独立的形状、矩形、颜色、线宽等字段控件；每个图元标题右侧提供“上移 / 下移 / 删除”。图元列表按 <strong>前 → 后</strong> 显示（最上面是前景、最下面是背景）：上移为前移一层，下移为后移一层。引擎按 <code>primitives</code> 数组顺序绘制（数组中靠后的图元覆盖靠前的），面板显示顺序与数组顺序相反。<code>primitives</code> 非空时替代顶层单图元绘制，属性面板同时隐藏顶层的图形类型/填充/描边/线宽/半径/环宽/点集等单图元字段，只保留“图元列表”；清空全部图元后自动恢复。详见 <a href="12-controls-media.html">媒体控件：Shape</a>。</p>
+
+<p>Button / CheckBox 的“内嵌文本”组由 schema 的 <code>x-embedded-control</code> 注解生成：展开后可编辑内嵌 caption Label 的 <code>alignment</code>、<code>line-height</code>、<code>line-spacing-ratio</code>、<code>shadow.blur</code>。caption、字体、颜色、阴影启用/偏移仍由宿主行负责，避免重复；内嵌组默认折叠，展开时才解析目标 Label 的字段。</p>
 
 <h2>10.6 多选编辑</h2>
 

@@ -600,6 +600,12 @@ private:
     int  syncShapePrimitives(ControlModel& m);   // 模型 primitives → 引擎（返回实际添加数）
     int  addShapePrimitive(ControlModel& m, const std::string& shape);   // 追加图元 → 返回索引
     bool removeShapePrimitive(ControlModel& m, size_t idx);              // 删除图元
+    bool moveShapePrimitive(ControlModel& m, size_t from, size_t to);    // 调整图元顺序
+    // 索引句柄常驻：同一 prim:ops:<i> 行池键复用同一 Panel；图元数减少时不清理高索引，
+    // 再次增加可继续更新回调。仅内存不整洁，非句柄泄漏/悬垂。
+    std::unordered_map<int, Control> m_primOpUp;     // 图元操作条：上移
+    std::unordered_map<int, Control> m_primOpDown;   // 图元操作条：下移
+    std::unordered_map<int, Control> m_primOpDel;    // 图元操作条：删除
     void setShapePrimitiveField(ControlModel& m, size_t idx, const std::string& key,
                                 const nlohmann::json& value);
     void setShapePrimitiveRect(ControlModel& m, size_t idx, int slot, float value);
@@ -639,7 +645,7 @@ private:
     std::vector<std::function<void()>> m_rowRefreshers;
     std::string m_rowsBuiltSig;                 // 已建行集的类型签名（空=未建）
     std::set<std::string> m_collapsedGroups = {
-        "背景色", "边框色", "字体及阴影", "常规", "轮廓阴影", "多图元",
+        "背景色", "边框色", "字体及阴影", "常规", "轮廓阴影", "多图元", "内嵌文本",
         "轮廓阴影 · hover", "轮廓阴影 · pressed", "轮廓阴影 · disabled"};   // 缺省全收起：初次创建/切换控件只建组标题行（快）
     // Shape 多图元：每个图元的字段行可独立收起（键=控件 id + "#" + 图元序号）
     std::set<std::string> m_collapsedPrims;
@@ -650,6 +656,27 @@ private:
     // Schema 驱动动态属性区
     Control m_propDynamic;                       // propDynamic 容器（absolute 自管布局）
     Control m_dynScroll;                         // 容器底部滚动条（position-changed 驱动）
+    // CR20261117002：属性行 TreeView（编辑器槽承载现有行控件；旧平铺行保留做池/回退）
+    Control m_propTree;
+    bool m_treePropsActive = false;              // 当前趟使用 TreeView 行（普通控件）；bench/组件仍平铺
+    bool m_treeBuilding = false;                 // 建树期间忽略 expand/collapse 回调
+    int m_propTreeIdSeq = 0;                     // 树节点 id 序号（增量更新时只增不减，避免撞旧节点）
+    std::unordered_map<std::string, std::vector<std::string>> m_propTreeChildren;  // 父 id → 直接子 id（增量更新用）
+    std::unordered_set<UIControlHandle> m_treeAttachedHandles;  // 当前挂在树上的编辑器（离开树模式时重挂）
+    std::unordered_map<UIControlHandle, std::string> m_treeEditorNode;  // 编辑器 → 当前树节点 id（解绑/重挂）
+    std::unordered_map<UIControlHandle, std::string> m_treeCaptionBackup;  // CheckBox 树模式清空的 caption 原值
+    std::set<std::string> m_pendingTreeDeltas;   // 待增量更新的组/图元节点 id（空=全量重建）
+    std::vector<std::string> m_treeDeltas;       // 本次 rebuild 应用的增量节点 id
+    void ensurePropTree();
+    void buildPropertyTree();
+    void emitPropertyTreeSpec(const std::function<void(const std::string& id,
+        const std::string& parent, const std::string& label, bool expanded,
+        const Control& editor)>& emit);
+    void applyPropertyTreeDelta(const std::string& nodeId);
+    void attachPropTreeEditor(const std::string& nodeId, Control editor);
+    void pruneTreeEditorSets(const std::unordered_set<UIControlHandle>& attachedNow);
+    void hideFlatRowsNotOnTree();
+    void setPropTreeMode(bool on);
     std::unique_ptr<nlohmann::json> m_schema;    // 引擎 declarative-ui.schema.json
     std::vector<Control> m_dynamicRows;          // 本趟生效行控件（滚动偏移/宽度同步用）
     std::vector<float>   m_dynamicRowY;          // 各行未滚动时的 baseY（与 rows 对齐）
